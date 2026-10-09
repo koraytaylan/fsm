@@ -167,3 +167,13 @@ Focused startup acceptance:
   Genuine native success/retry/compensation, cancellation during unanswered
   elicitation, and real HTTP count/byte saturation still require acceptance;
   this task stays in progress and plan-end gates remain due.
+- Real-binary writer-mode HTTP now has a named unanswered-elicitation
+  cancellation case: another session's identical request ID cannot cancel it;
+  the original session receives typed req/cancelled within the bounded wait,
+  with no elicited event or journal advance. The same physical writer remains
+  held and a second session subsequently commits an event with a verified
+  journal. Disabling only HTTP cancellation routing fails the case on its
+  bounded read; restoration passes. Focused CLI clippy and format/size/diff
+  checks pass. This closes the cancellation-specific transport acceptance,
+  while genuine native handler workflows and real HTTP count/byte saturation
+  still prevent task completion; plan-end gates remain due.

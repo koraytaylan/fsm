@@ -610,3 +610,94 @@ fn production_http_emits_the_live_question_and_keeps_other_sessions_responsive()
         fsm_cli::journal_io::JournalHealth::Ok
     );
 }
+
+#[test]
+fn production_http_cancels_an_unanswered_question_only_in_its_original_session() {
+    use std::io::BufRead;
+    let (directory, store) = seeded("cancel-question");
+    let before = store.journal.last_seq;
+    drop(store);
+    let mut client = Client::start_mode(directory.clone(), Mode::Writer);
+    client.post(r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{"elicitation":{}}}}"#);
+    let original = client.session.clone().unwrap();
+    let mut asking = std::io::BufReader::new(streaming_post(
+        client.address,
+        Some(&original),
+        r#"{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"instance_elicit","arguments":{"instance_id":"instance","event":"finish","request_id":"cancel-live-ask"}}}"#,
+    ));
+    loop {
+        let mut line = String::new();
+        assert!(asking.read_line(&mut line).unwrap() > 0);
+        if let Some(data) = line.strip_prefix("data: ")
+            && value(data.trim()).get("method").and_then(Value::as_str)
+                == Some("elicitation/create")
+        {
+            break;
+        }
+    }
+    let mut blank = String::new();
+    asking.read_line(&mut blank).unwrap();
+    assert_eq!(blank, "\n");
+    client.session = None;
+    client.initialize();
+    let cancel = r#"{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":7}}"#;
+    let mut wrong = String::new();
+    streaming_post(client.address, client.session.as_deref(), cancel)
+        .read_to_string(&mut wrong)
+        .unwrap();
+    assert!(wrong.starts_with("HTTP/1.1 202"), "{wrong}");
+    asking
+        .get_ref()
+        .set_read_timeout(Some(Duration::from_millis(150)))
+        .unwrap();
+    let error = asking.get_ref().peek(&mut [0u8; 1]).unwrap_err();
+    assert!(matches!(
+        error.kind(),
+        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+    ));
+    asking
+        .get_ref()
+        .set_read_timeout(Some(Duration::from_secs(3)))
+        .unwrap();
+    let cancelled_at = Instant::now();
+    let mut accepted = String::new();
+    streaming_post(client.address, Some(&original), cancel)
+        .read_to_string(&mut accepted)
+        .unwrap();
+    assert!(accepted.starts_with("HTTP/1.1 202"), "{accepted}");
+    let mut tail = String::new();
+    asking.read_to_string(&mut tail).unwrap();
+    assert!(cancelled_at.elapsed() < Duration::from_secs(2));
+    let reply = value(
+        tail.lines()
+            .find_map(|line| line.strip_prefix("data: "))
+            .unwrap(),
+    );
+    assert_eq!(reply.get("id"), Some(&Value::Num("7".into())));
+    let result = reply.get("result").unwrap();
+    assert_eq!(result.get("isError"), Some(&Value::Bool(true)));
+    assert_eq!(
+        result
+            .get("structuredContent")
+            .unwrap()
+            .get("error")
+            .unwrap()
+            .get("code")
+            .and_then(Value::as_str),
+        Some("req/cancelled")
+    );
+    assert_eq!(
+        Store::open_read_only(&directory).unwrap().journal.last_seq,
+        before
+    );
+    assert!(matches!(Store::open(&directory), Err(error) if error.code == "store/lock"));
+    let advanced = client.post(r#"{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"instance_send","arguments":{"instance_id":"instance","event":{"name":"finish"},"request_id":"after-cancel"}}}"#);
+    assert_ne!(
+        advanced.get("result").unwrap().get("isError"),
+        Some(&Value::Bool(true))
+    );
+    assert_eq!(
+        fsm_cli::journal_io::verify(&directory).health,
+        fsm_cli::journal_io::JournalHealth::Ok
+    );
+}
