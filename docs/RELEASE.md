@@ -1833,3 +1833,10 @@ or extending its deadline. Graceful output close continues draining normally.
 Hosted elicitation settlement MUST retain the originating response guard on
 its separate feed stream as well as its response stream, until response enqueue
 finishes; unanswered questions continue allowing already committed updates.
+
+HTTP server stop wakes admitted sockets before joining connection workers,
+preventing silent and partial requests from spending the normal 30-second I/O
+timeout during transport retirement; finished workers explicitly close their
+connections despite retained shutdown descriptors. This correction does not
+establish native executor closure or interrupt application work outside socket
+I/O, and changes no journal or wire format.

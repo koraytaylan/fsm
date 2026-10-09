@@ -302,3 +302,43 @@ fn twenty_start_stop_cycles_leak_nothing() {
         drop(server);
     }
 }
+
+#[test]
+fn server_stop_wakes_silent_and_partial_request_reads_before_joining() {
+    use std::{sync::mpsc, time::Duration};
+
+    struct Waiting(mpsc::Sender<()>);
+    impl Handler for Waiting {
+        fn handle(&self, input: &mut dyn BufRead, _: &mut dyn Write) -> std::io::Result<Flow> {
+            self.0.send(()).unwrap();
+            input.read_line(&mut String::new())?;
+            Ok(Flow::Close)
+        }
+    }
+    let bound = bind("127.0.0.1:0".parse().unwrap()).unwrap();
+    let address = bound.addr();
+    let stop = Arc::new(AtomicBool::new(false));
+    let (entered, ready) = mpsc::channel();
+    let (finished, retired) = mpsc::channel();
+    let worker_stop = Arc::clone(&stop);
+    let worker = std::thread::spawn(move || {
+        let result = serve_bound(bound, Arc::new(Waiting(entered)), worker_stop);
+        finished.send(result).unwrap();
+    });
+    let silent = TcpStream::connect(address).unwrap();
+    let mut partial = TcpStream::connect(address).unwrap();
+    partial.write_all(b"G").unwrap();
+    for _ in 0..2 {
+        ready.recv_timeout(Duration::from_secs(2)).unwrap();
+    }
+    stop.store(true, Ordering::Release);
+    let outcome = retired.recv_timeout(Duration::from_secs(1));
+    // Release the clients before asserting, including when the guard is
+    // neutralized, so a regression cannot leave a parked server worker.
+    drop(silent);
+    drop(partial);
+    worker.join().unwrap();
+    outcome
+        .expect("stop must wake sockets without waiting for IO_TIMEOUT")
+        .unwrap();
+}

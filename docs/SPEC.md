@@ -3576,6 +3576,13 @@ Synchronous borrowed HTTP helpers retain their existing caller-clock behavior.
 This writer-only integration retains manual `fsm.executor/1` discovery;
 embedded native scheduling and asynchronous HTTP egress remain pending.
 
+HTTP server stop MUST shut down both halves of every retained admitted socket
+before joining its connection workers, so silent or partial requests do not
+consume the normal socket I/O timeout during retirement. A finished connection
+MUST end its socket even while the accept loop retains a shutdown descriptor.
+This wakes socket I/O only; it does not prove interruptibility of application
+work or native executor closure.
+
 Linux embedded stdio MUST accept `serve --execute --poll-interval-ms N`
 with a positive whole-millisecond interval no greater than 86400000; the
 default is 250 ms. Invalid intervals or use outside embedded stdio MUST

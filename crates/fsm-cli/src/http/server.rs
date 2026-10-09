@@ -113,7 +113,7 @@ pub fn serve_bound(
     stop: Arc<AtomicBool>,
 ) -> std::io::Result<()> {
     let live = Arc::new(AtomicUsize::new(0));
-    let mut threads: Vec<std::thread::JoinHandle<()>> = Vec::new();
+    let mut threads: Vec<(std::thread::JoinHandle<()>, Arc<TcpStream>)> = Vec::new();
     while !stop.load(Ordering::Relaxed) {
         match bound.listener.accept() {
             Ok((socket, _peer)) => {
@@ -134,11 +134,18 @@ pub fn serve_bound(
                     refuse(socket);
                     continue;
                 }
+                // Keep a shutdown handle for each admitted socket so server
+                // stop wakes reads/writes instead of spending IO_TIMEOUT.
+                let Ok(shutdown) = socket.try_clone() else {
+                    continue;
+                };
+                let shutdown = Arc::new(shutdown);
+                let connection_shutdown = Arc::clone(&shutdown);
                 live.fetch_add(1, Ordering::Relaxed);
                 let handler = Arc::clone(&handler);
                 let live_now = Arc::clone(&live);
                 let stop_now = Arc::clone(&stop);
-                threads.push(std::thread::spawn(move || {
+                let thread = std::thread::spawn(move || {
                     // A panic in one connection closes that connection and
                     // nothing else. Everywhere else in this workspace a
                     // panic is a bug and aborts, and that is right: a bug in
@@ -154,12 +161,16 @@ pub fn serve_bound(
                             "fsm http: a connection thread panicked; that connection was closed"
                         );
                     }
+                    // The accept loop retains a descriptor until reaping;
+                    // explicitly end the connection when its worker returns.
+                    let _ = connection_shutdown.shutdown(std::net::Shutdown::Both);
                     live_now.fetch_sub(1, Ordering::Relaxed);
-                }));
+                });
+                threads.push((thread, shutdown));
                 // Finished threads are reaped as we go, so a long-running
                 // server does not accumulate handles for connections that
                 // ended hours ago.
-                threads.retain(|thread| !thread.is_finished());
+                threads.retain(|(thread, _)| !thread.is_finished());
             }
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                 std::thread::sleep(ACCEPT_POLL);
@@ -168,7 +179,10 @@ pub fn serve_bound(
             Err(_) => std::thread::sleep(ACCEPT_POLL),
         }
     }
-    for thread in threads {
+    for (_, socket) in &threads {
+        let _ = socket.shutdown(std::net::Shutdown::Both);
+    }
+    for (thread, _) in threads {
         let _ = thread.join();
     }
     Ok(())

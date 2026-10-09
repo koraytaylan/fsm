@@ -1,5 +1,11 @@
 # API and version policy
 
+HTTP server stop now wakes admitted socket I/O before joining connection
+workers, including silent and partial-request reads; completed connections
+close despite retained shutdown descriptors. This retirement correction changes
+no public signatures, wire discriminators, journal bytes, hashes or error codes
+and establishes no native executor shutdown guarantee.
+
 Writer-only production HTTP now uses the existing private bounded command
 owner and separate session-state locks, with HTTP 503 for host admission
 refusal. Supported wire/format versions, public Rust signatures, journal bytes,

@@ -1224,6 +1224,11 @@ host admission returns HTTP 503, after security and session validation, and
 performs no store mutation. Execution remains manual in writer-only mode;
 native embedded scheduling and asynchronous HTTP egress are still pending.
 
+Stopping the HTTP server shuts down admitted sockets before joining their
+workers, waking silent and partial-request reads without waiting for the normal
+30-second I/O timeout; this transport cleanup does not prove native closure or
+interrupt application work outside socket I/O.
+
 HTTP uses stdio's bounded writer acquisition: when another writer holds a
 healthy store it serves read-only views, refreshed before each call, and never
 upgrades automatically when that writer exits. An unhealthy store still accepts

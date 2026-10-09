@@ -22,6 +22,7 @@ touches:
   - crates/fsm-cli/tests/http_multi_client.rs
   - crates/fsm-cli/tests/http_resume.rs
   - crates/fsm-cli/tests/http_limits.rs
+  - crates/fsm-cli/tests/http_server.rs
   - docs/SPEC.md
   - docs/EMBEDDING.md
   - docs/API-POLICY.md
@@ -93,3 +94,9 @@ Focused startup acceptance:
   HTTP 202 and retired-admission HTTP 503 without fabricating a JSON-RPC result.
   Native owner scheduling, exact HTTP saturation, client-wait responsiveness
   and asynchronous SSE framing still require their original acceptance proof.
+- Server stop now wakes admitted socket I/O before joining connection workers;
+  finished workers also end sockets retained for shutdown. Twenty focused
+  production/fallback, server and limit cases pass, with focused clippy and
+  format/size/diff checks. Disabling only the stop wakeup fails the named silent/
+  partial-request case; restoration passes. This removes a transport retirement
+  delay without claiming application interruptibility or native host closure.
