@@ -3004,3 +3004,8 @@ still bounds idle rechecks. This removes timer delays between eligible
 composition/deadline steps while preserving scheduler eligibility, pure core
 explicit polls, journal formats and public API. Full scheduling fairness,
 retry/compensation and transport acceptance remain plan 0020 obligations.
+The private owner now injects its wait clock independently of logical time;
+production uses the monotonic clock, while deterministic acceptance advances
+wait deadlines without client commands or real sleeps. An exact wait deadline
+is ready immediately. Original lifecycle shutdown deadlines remain unchanged;
+no public signature, record format, hash domain or error code changes.

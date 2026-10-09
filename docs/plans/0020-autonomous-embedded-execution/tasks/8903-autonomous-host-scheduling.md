@@ -99,3 +99,14 @@ coordinator, producer and scoped verifier also pass 42 mocked artifact/evidence
 checks. This scoped success verdict neither changes 8902's inventory nor
 completes 8903's remaining acceptance requirements; no landing OID is assigned
 and the full integration matrix remains outstanding.
+
+
+Independent injected wait-clock acceptance drives eleven owner wait boundaries
+without a session or a real sleep: ten idle prefixes remain unchanged, logical
+time at one tick before the deadline appends nothing, and exact logical due
+time appends one deadline record with the original timestamp. The wait clock
+and logical clock are separate; idle observations do not repeatedly scan a
+complete empty inventory. All 55 executable private-host regressions and
+workspace all-target fixture-enabled clippy pass, with genuine native handlers
+left to disposable CI. Retry, compensation, completion fairness, recovery and
+construction acceptance and the frozen integration gate remain outstanding.

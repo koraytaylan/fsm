@@ -40,6 +40,119 @@ impl Clock for ObservationClock {
     }
 }
 
+struct ManualWaitClock {
+    epoch: Instant,
+    elapsed: Arc<AtomicUsize>,
+    waits: std::sync::mpsc::Sender<Instant>,
+}
+
+impl super::super::native::WaitClock for ManualWaitClock {
+    fn now(&self) -> Instant {
+        self.epoch + Duration::from_millis(self.elapsed.load(Ordering::Acquire) as u64)
+    }
+
+    fn wait(
+        &self,
+        mailbox: &super::super::mailbox::Mailbox,
+        deadline: Instant,
+    ) -> super::super::mailbox::Next {
+        // The barrier follows the complete owner pass, including journal writes.
+        let _ = self.waits.send(deadline);
+        mailbox.next_until_with(deadline, || self.now())
+    }
+}
+
+#[test]
+fn autonomous_schedule_idle_wait_clock_never_supplies_logical_deadline_time() {
+    let scratch = Scratch::new();
+    let mut store = Store::open(&scratch.0).unwrap();
+    let mut clock = FixedClock::new(1000, 0);
+    store
+        .define_machine_on(&mut clock, value(super::interaction::CASE), false, false)
+        .unwrap();
+    store
+        .create_instance_ctx_on(
+            &mut clock,
+            "question_case",
+            "question",
+            "create-question",
+            None,
+            &BTreeMap::new(),
+            &[],
+        )
+        .unwrap();
+    let before = store.journal.last_seq;
+    let calls = Arc::new(AtomicUsize::new(0));
+    let logical = Arc::new(AtomicI64::new(1000));
+    let elapsed = Arc::new(AtomicUsize::new(0));
+    let epoch = Instant::now();
+    let (waits, observed_waits) = std::sync::mpsc::channel();
+    let (owner, handle) = NativeOwner::new(
+        OwnedNativeExecutor::new(store, HandlerTable::default()).unwrap(),
+        ObservationClock {
+            logical: Arc::clone(&logical),
+            calls: Arc::clone(&calls),
+        },
+        DiagnosticOutput::start(std::io::sink()).unwrap(),
+        Duration::from_millis(250),
+        10000,
+    )
+    .unwrap();
+    let owner = owner.with_wait_clock(ManualWaitClock {
+        epoch,
+        elapsed: Arc::clone(&elapsed),
+        waits,
+    });
+    let worker = std::thread::spawn(move || owner.run());
+    // Real time is only a deadlock watchdog; every scheduled wake is injected.
+    let observations = (|| {
+        let mut observations = Vec::new();
+        for step in 0..=10 {
+            let deadline = observed_waits.recv_timeout(Duration::from_secs(3))?;
+            let observed = Store::open_read_only(&scratch.0).unwrap();
+            observations.push((
+                deadline.duration_since(epoch).as_millis(),
+                calls.load(Ordering::Acquire),
+                observed.journal.last_seq,
+            ));
+            if step == 10 {
+                break;
+            }
+            if step == 9 {
+                logical.store(1001, Ordering::Release);
+            }
+            elapsed.store((step + 1) * 50, Ordering::Release);
+            handle.mailbox.wake();
+        }
+        Ok::<_, std::sync::mpsc::RecvTimeoutError>(observations)
+    })();
+    handle.stop();
+    let exit = worker.join().unwrap();
+    assert!(exit.shutdown.writer_released);
+    let observations = observations.unwrap();
+    for (step, (deadline, samples, sequence)) in observations.iter().enumerate() {
+        assert_eq!(*deadline, ((step + 1) * 50) as u128);
+        assert_eq!(*samples, [1, 2, 2, 2, 2, 3, 4, 4, 4, 4, 5][step]);
+        assert_eq!(*sequence, before + u64::from(step == 10));
+    }
+    let reopened = Store::open(&scratch.0).unwrap();
+    let applied = reopened
+        .records
+        .iter()
+        .filter(|record| record.seq > before)
+        .collect::<Vec<_>>();
+    assert_eq!(applied.len(), 1);
+    assert_eq!(
+        applied[0].kind,
+        fsm_core::record::RecordKind::DeadlineApplied
+    );
+    assert_eq!(applied[0].ts, 1001);
+    assert_eq!(
+        crate::journal_io::verify(&scratch.0).health,
+        crate::journal_io::JournalHealth::Ok
+    );
+}
+
 #[test]
 fn autonomous_schedule_long_interval_observes_original_driver_without_deadline_admission() {
     let scratch = Scratch::new();

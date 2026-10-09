@@ -3404,6 +3404,10 @@ work, a refusal, or lifecycle stop MUST end the batch. If work remains at the
 bound, the owner MUST schedule an immediate continuation and offer an admitted
 application command before that continuation. Monotonic waits MUST NOT advance
 logical deadlines; the existing scheduler determines every eligible action.
+The private owner MUST keep its wait clock independently injectable from the
+logical clock, use the monotonic clock in production, and treat equality with
+a wait deadline as ready. Wait-clock injection MUST NOT replace original
+lifecycle shutdown deadlines.
 
 
 Private store-backed protocol reads (resource listing/resolution and argument

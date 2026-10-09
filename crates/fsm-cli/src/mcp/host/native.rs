@@ -26,6 +26,23 @@ const COMMAND_BATCH: usize = 8;
 const EXECUTOR_TURNS: usize = 8;
 const OBSERVATION_INTERVAL: Duration = Duration::from_millis(50);
 
+/// Wait time wakes the owner but never supplies journal timestamps.
+pub(super) trait WaitClock: Send {
+    fn now(&self) -> Instant;
+
+    fn wait(&self, mailbox: &Mailbox, deadline: Instant) -> Next {
+        mailbox.next_until_with(deadline, || self.now())
+    }
+}
+
+struct MonotonicWaitClock;
+
+impl WaitClock for MonotonicWaitClock {
+    fn now(&self) -> Instant {
+        Instant::now()
+    }
+}
+
 /// Carries the original driver back even when shutdown cannot prove closure.
 pub(in crate::mcp) struct NativeExit {
     pub driver: OwnedNativeExecutor,
@@ -38,6 +55,7 @@ pub(in crate::mcp) struct NativeOwner<C> {
     _retirement: Retirement,
     driver: OwnedNativeExecutor,
     clock: C,
+    wait_clock: Box<dyn WaitClock>,
     mailbox: Arc<Mailbox>,
     diagnostics: DiagnosticOutput,
     interval: Duration,
@@ -74,6 +92,7 @@ impl<C: Clock> NativeOwner<C> {
                 _retirement: Retirement(Arc::clone(&mailbox)),
                 driver,
                 clock,
+                wait_clock: Box::new(MonotonicWaitClock),
                 mailbox,
                 diagnostics,
                 interval,
@@ -93,11 +112,17 @@ impl<C: Clock> NativeOwner<C> {
         self
     }
 
+    #[cfg(test)]
+    pub(super) fn with_wait_clock(mut self, clock: impl WaitClock + 'static) -> Self {
+        self.wait_clock = Box::new(clock);
+        self
+    }
+
     /// Service the original native driver independently of application input.
     pub(in crate::mcp) fn run(mut self) -> NativeExit {
         let control = self.driver.control();
         let handlers = crate::mcp::executor::handlers(self.driver.handler_table());
-        let mut next_pass = Instant::now();
+        let mut next_pass = self.wait_clock.now();
         let mut next_observation = next_pass;
         let mut inventory_unpublished = true;
         let mut commands = 0;
@@ -113,7 +138,7 @@ impl<C: Clock> NativeOwner<C> {
                 }
                 break;
             }
-            if commands == COMMAND_BATCH || Instant::now() >= next_pass {
+            if commands == COMMAND_BATCH || self.wait_clock.now() >= next_pass {
                 let lines = self.decision_pass();
                 if let Err(error) = publish(&mut self.diagnostics, lines) {
                     failure = Some(error);
@@ -121,13 +146,13 @@ impl<C: Clock> NativeOwner<C> {
                 }
                 commands = 0;
                 next_pass = if self.decision_ready {
-                    Instant::now()
+                    self.wait_clock.now()
                 } else {
-                    Instant::now() + self.interval
+                    self.wait_clock.now() + self.interval
                 };
-                next_observation = Instant::now() + OBSERVATION_INTERVAL;
+                next_observation = self.wait_clock.now() + OBSERVATION_INTERVAL;
                 inventory_unpublished = true;
-            } else if Instant::now() >= next_observation {
+            } else if self.wait_clock.now() >= next_observation {
                 // An ordinary tick may change retained work without publishing
                 // lifecycle inventory; publish once before trusting quiescence.
                 if inventory_unpublished
@@ -145,18 +170,18 @@ impl<C: Clock> NativeOwner<C> {
                     // Observation cannot authorize binding or entry; wake the
                     // original writer decision rather than waiting on its timer.
                     if self.driver.has_ready_native_work() {
-                        next_pass = Instant::now();
+                        next_pass = self.wait_clock.now();
                     }
                 }
-                next_observation = Instant::now() + OBSERVATION_INTERVAL;
+                next_observation = self.wait_clock.now() + OBSERVATION_INTERVAL;
             }
             // Independent lifecycle control does not need an application
             // command to wake a long configured scheduler interval.
-            let control_check = Instant::now() + OBSERVATION_INTERVAL;
-            match self
-                .mailbox
-                .next_until(next_pass.min(next_observation).min(control_check))
-            {
+            let control_check = self.wait_clock.now() + OBSERVATION_INTERVAL;
+            match self.wait_clock.wait(
+                &self.mailbox,
+                next_pass.min(next_observation).min(control_check),
+            ) {
                 Next::Command(admitted) => {
                     if let Some(store) = self.driver.store_mut() {
                         apply_command(store, &mut self.clock, admitted, Some(&handlers));

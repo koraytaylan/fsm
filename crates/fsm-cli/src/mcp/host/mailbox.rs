@@ -298,6 +298,15 @@ impl Mailbox {
     /// Wait on a monotonic deadline without advancing the injected logical clock.
     #[cfg(target_os = "linux")]
     pub(super) fn next_until(&self, deadline: std::time::Instant) -> Next {
+        self.next_until_with(deadline, std::time::Instant::now)
+    }
+
+    #[cfg(target_os = "linux")]
+    pub(super) fn next_until_with(
+        &self,
+        deadline: std::time::Instant,
+        mut now: impl FnMut() -> std::time::Instant,
+    ) -> Next {
         let mut state = self.state.lock().unwrap_or_else(|p| p.into_inner());
         loop {
             if state.stopped {
@@ -306,9 +315,12 @@ impl Mailbox {
             if let Some(command) = state.queue.pop_front() {
                 return Next::Command(command);
             }
-            let Some(remaining) = deadline.checked_duration_since(std::time::Instant::now()) else {
+            let Some(remaining) = deadline.checked_duration_since(now()) else {
                 return Next::Due;
             };
+            if remaining.is_zero() {
+                return Next::Due;
+            }
             state = self
                 .ready
                 .wait_timeout(state, remaining)
