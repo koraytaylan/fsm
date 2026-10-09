@@ -110,6 +110,40 @@ pub(crate) fn check_pending_cached(
         .get(&effect.instance_id)
         .and_then(|identity| store.state.machines.get(identity))
         .ok_or_else(unknown_definition)?;
+    check_structure(store, effect, table, cache)?;
+    let Some(handler) = table.handlers.get(&effect.effect_name) else {
+        if table.manual_effects.contains(&effect.effect_name) {
+            // Manual compatibility is operator policy, never spawn permission.
+            return Ok(());
+        }
+        return Err(refusal(CheckStatus::Invalid));
+    };
+    substitute(&handler.argv, &effect.args).map_err(|_| refusal(CheckStatus::Invalid))?;
+    if let HandlerKind::Mcp { arguments, .. } = &handler.kind {
+        substitute_arguments(arguments, &effect.args).map_err(|_| refusal(CheckStatus::Invalid))?;
+    }
+    for advance in [&handler.on_ok, &handler.on_failed].into_iter().flatten() {
+        let (status, _) = outcomes::check(&receiver.compiled, advance);
+        if status != CheckStatus::Compatible {
+            return Err(refusal(status));
+        }
+    }
+    Ok(())
+}
+
+/// Advisory candidate selection only; writer-held concrete checks remain mandatory.
+pub(crate) fn check_structure(
+    store: &Store,
+    effect: &PendingEffect,
+    table: &HandlerTable,
+    cache: Option<&AdmissionCache>,
+) -> Result<(), ExecError> {
+    let receiver = store
+        .state
+        .instance_machines
+        .get(&effect.instance_id)
+        .and_then(|identity| store.state.machines.get(identity))
+        .ok_or_else(unknown_definition)?;
     let key = cache.and_then(|_| structural_key(store, effect, table));
     let cached = cache
         .zip(key)
@@ -137,23 +171,6 @@ pub(crate) fn check_pending_cached(
         }
         if let Some((cache, key)) = cache.zip(key) {
             cache.remember(key);
-        }
-    }
-    let Some(handler) = table.handlers.get(&effect.effect_name) else {
-        if table.manual_effects.contains(&effect.effect_name) {
-            // Manual compatibility is operator policy, never spawn permission.
-            return Ok(());
-        }
-        return Err(refusal(CheckStatus::Invalid));
-    };
-    substitute(&handler.argv, &effect.args).map_err(|_| refusal(CheckStatus::Invalid))?;
-    if let HandlerKind::Mcp { arguments, .. } = &handler.kind {
-        substitute_arguments(arguments, &effect.args).map_err(|_| refusal(CheckStatus::Invalid))?;
-    }
-    for advance in [&handler.on_ok, &handler.on_failed].into_iter().flatten() {
-        let (status, _) = outcomes::check(&receiver.compiled, advance);
-        if status != CheckStatus::Compatible {
-            return Err(refusal(status));
         }
     }
     Ok(())

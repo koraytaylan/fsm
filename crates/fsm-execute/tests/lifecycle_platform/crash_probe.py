@@ -42,7 +42,8 @@ PRIVATE_SCHEDULING_CASES = (('private', 'process', 'schedule-success'),
              ('private', 'mcp', 'schedule-queues'))
 
 CONTRACT_ADMISSION_CASES = tuple(('contract', kind, behavior)
-                                 for behavior in ('contract-standalone', 'contract-borrowed')
+                                 for behavior in ('contract-standalone', 'contract-borrowed',
+                                                  'contract-fair-standalone', 'contract-fair-borrowed')
                                  for kind in ('process', 'mcp'))
 
 

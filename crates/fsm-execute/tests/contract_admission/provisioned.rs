@@ -19,16 +19,34 @@ use std::{
 #[test]
 #[ignore = "requires disposable native CI and exact staged process/MCP fixture"]
 fn standalone_native_refusal_preserves_work_and_repair_starts_original_handler() {
-    observe(false);
+    observe(false, Scenario::Repair);
 }
 
 #[test]
 #[ignore = "requires disposable native CI and exact staged process/MCP fixture"]
 fn borrowed_native_refusal_preserves_work_and_repair_starts_original_handler() {
-    observe(true);
+    observe(true, Scenario::Repair);
 }
 
-fn observe(borrowed: bool) {
+#[test]
+#[ignore = "requires disposable native CI and exact staged process/MCP fixture"]
+fn standalone_native_incompatible_machine_cannot_starve_compatible_work() {
+    observe(false, Scenario::Fairness);
+}
+
+#[test]
+#[ignore = "requires disposable native CI and exact staged process/MCP fixture"]
+fn borrowed_native_incompatible_machine_cannot_starve_compatible_work() {
+    observe(true, Scenario::Fairness);
+}
+
+#[derive(Clone, Copy)]
+enum Scenario {
+    Repair,
+    Fairness,
+}
+
+fn observe(borrowed: bool, scenario: Scenario) {
     let manifest = manifest();
     let store_path = PathBuf::from(manifest.get("store").unwrap().as_str().unwrap());
     let resource = PathBuf::from(manifest.get("resource").unwrap().as_str().unwrap());
@@ -37,6 +55,8 @@ fn observe(borrowed: bool) {
     let mut table =
         HandlerTable::parse(&fs::read_to_string(store_path.join("handlers.json")).unwrap())
             .unwrap();
+    table.max_inflight = 1;
+    table.max_inflight_per_instance = 1;
     let mut restore = table.handlers["notify"].clone();
     restore.effect = "restore".into();
     restore.on_ok = Some(Advance {
@@ -131,15 +151,53 @@ fn observe(borrowed: bool) {
         assert!(fsm_store::snapshot::store_states_eq(&state, &current.state));
         assert!(scheduler.inflight_effect(&effect_id).is_none());
     }
-    table.handlers.get_mut("restore").unwrap().on_ok = None;
-    scheduler = Scheduler::new(table.clone());
-    watcher = Watcher::with_handlers(store_path.clone(), &table);
+    let completed_instance = match scenario {
+        Scenario::Repair => {
+            table.handlers.get_mut("restore").unwrap().on_ok = None;
+            scheduler = Scheduler::new(table.clone());
+            watcher = Watcher::with_handlers(store_path.clone(), &table);
+            "original"
+        }
+        Scenario::Fairness => {
+            let mut store = Store::open(&store_path).unwrap();
+            store
+                .define_machine_on(
+                    &mut clock,
+                    parse(
+                        br#"{
+              "format":"fsm.machine/1","name":"compatible-admission","context":[],
+              "events":[{"name":"done","fields":[]}],"effects":[{"name":"notify","fields":[]}],
+              "states":[{"name":"running","entry":{"emit":[{"effect":"notify"}]}},
+                        {"name":"finished","terminal":true}],
+              "initial":"running","transitions":[{"from":"running","on":"done","to":"finished"}]
+            }"#,
+                        &JsonLimits::DEFAULT,
+                    )
+                    .unwrap(),
+                    false,
+                    false,
+                )
+                .unwrap();
+            store
+                .create_instance_ctx_on(
+                    &mut clock,
+                    "compatible-admission",
+                    "z-compatible",
+                    "create-compatible",
+                    None,
+                    &BTreeMap::new(),
+                    &[],
+                )
+                .unwrap();
+            "z-compatible"
+        }
+    };
     let deadline = Instant::now() + Duration::from_secs(20);
     while !resource.join("root-candidate").is_file() {
         let lines = tick(&mut watcher, &mut scheduler, &mut runner, &mut clock);
         assert!(
             Instant::now() < deadline,
-            "repaired original handler never entered: {lines:?}"
+            "compatible handler never entered: {lines:?}"
         );
         std::thread::sleep(Duration::from_millis(5));
     }
@@ -147,7 +205,8 @@ fn observe(borrowed: bool) {
     loop {
         let lines = tick(&mut watcher, &mut scheduler, &mut runner, &mut clock);
         let current = Store::open_read_only(&store_path).unwrap();
-        if current.state.instances["original"].status == fsm_core::machine::Status::Completed
+        if current.state.instances[completed_instance].status
+            == fsm_core::machine::Status::Completed
             && current.state.execution.unresolved().count() == 0
             && runner.local_native_claims().next().is_none()
         {
@@ -158,6 +217,33 @@ fn observe(borrowed: bool) {
             "repaired handler did not settle and retire: {lines:?}"
         );
         std::thread::sleep(Duration::from_millis(5));
+    }
+    if matches!(scenario, Scenario::Fairness) {
+        let current = Store::open_read_only(&store_path).unwrap();
+        assert_eq!(
+            current.state.instances["original"].pending,
+            state.instances["original"].pending
+        );
+        assert_eq!(
+            current.state.instances["original"].status,
+            fsm_core::machine::Status::Running
+        );
+        for record in current
+            .records
+            .iter()
+            .filter(|record| record.kind == fsm_core::record::RecordKind::ExecutionClaimed)
+        {
+            let mut fields = record.body.as_obj().unwrap().clone();
+            fields.remove("request_id");
+            fields.remove("request_fp");
+            let claim =
+                fsm_core::record::execution::Claim::from_value(&Value::Obj(fields)).unwrap();
+            assert_eq!(
+                claim.effect().0,
+                "z-compatible",
+                "incompatible work published an execution claim"
+            );
+        }
     }
     assert_eq!(
         fsm_store::journal_io::verify(&store_path).health,

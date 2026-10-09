@@ -226,6 +226,14 @@ impl Scheduler {
         &self.admission_cache
     }
 
+    pub(crate) fn check_candidate_structure(
+        &self,
+        store: &fsm_store::store::Store,
+        effect: &PendingEffect,
+    ) -> Result<(), ExecError> {
+        crate::contract::check_structure(store, effect, &self.table, Some(&self.admission_cache))
+    }
+
     pub(crate) fn check_pending_contract(
         &self,
         store: &fsm_store::store::Store,

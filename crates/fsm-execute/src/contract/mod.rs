@@ -9,7 +9,7 @@ mod report;
 pub(crate) use admission::check_claimed;
 pub(crate) use admission::check_outcome;
 pub use admission::check_pending;
-pub(crate) use admission::{AdmissionCache, check_pending_cached};
+pub(crate) use admission::{AdmissionCache, check_pending_cached, check_structure};
 pub use effects::analyze_effects;
 pub use outcomes::analyze_contract;
 pub use report::{CheckStatus, EffectSite, FORMAT, Finding, Limits, Report};

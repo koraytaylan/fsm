@@ -192,3 +192,83 @@ fn contended_native_queue_reports_writer_unavailable_and_releases_unclaimed_rese
     assert!(outcome.lines.iter().any(|line| line == "error exec/mode"));
     assert!(scheduler.inflight_effect(&effect).is_none());
 }
+
+#[test]
+fn incompatible_work_cannot_repeatedly_take_the_only_native_selection_slot() {
+    for borrowed in [false, true] {
+        let directory = Directory::new();
+        let (mut store, _, mut table) = durable_fixture(&directory);
+        table.max_inflight = 1;
+        table.max_inflight_per_instance = 1;
+        table.handlers.get_mut("restore").unwrap().on_ok = Some(Advance {
+            event: "undeclared".into(),
+            payload: Value::Obj(BTreeMap::new()),
+            stamps: Vec::new(),
+        });
+        let mut clock = FixedClock::new(2000, 1);
+        store.define_machine_on(&mut clock, parse(br#"{
+          "format":"fsm.machine/1","name":"compatible","context":[],"events":[],
+          "effects":[{"name":"work","fields":[]}],
+          "states":[{"name":"ready","entry":{"emit":[{"effect":"work","args":{"resource":"\"original\""}}]}}],
+          "initial":"ready","transitions":[]
+        }"#, &JsonLimits::DEFAULT).unwrap(), false, false).unwrap();
+        store
+            .create_instance_ctx_on(
+                &mut clock,
+                "compatible",
+                "z-compatible",
+                "create-compatible",
+                None,
+                &BTreeMap::new(),
+                &[],
+            )
+            .unwrap();
+        let good = store.state.instances["z-compatible"].pending[0].clone();
+        let records = store.records.clone();
+        let mut watcher = Watcher::with_handlers(directory.0.clone(), &table);
+        let mut scheduler = Scheduler::new(table);
+        let mut runner = Runner::new_native().unwrap();
+        drop(store);
+        for _ in 0..3 {
+            let lines = if borrowed {
+                let mut writer = Store::open(&directory.0).unwrap();
+                tick_with(
+                    &mut watcher,
+                    &mut scheduler,
+                    &mut runner,
+                    &mut Pipeline,
+                    &mut writer,
+                    &mut clock,
+                    2000,
+                )
+            } else {
+                tick_reporting(
+                    &mut watcher,
+                    &mut scheduler,
+                    &mut runner,
+                    &mut Pipeline,
+                    &directory.0,
+                    &mut clock,
+                    2000,
+                )
+                .lines
+            };
+            assert!(
+                lines
+                    .iter()
+                    .any(|line| line == "error exec/contract_invalid"),
+                "{lines:?}"
+            );
+            assert!(
+                lines
+                    .iter()
+                    .any(|line| line == &format!("observed pending work {good}")),
+                "incompatible work starved the compatible candidate: {lines:?}"
+            );
+            assert_eq!(
+                Store::open_read_only(&directory.0).unwrap().records,
+                records
+            );
+        }
+    }
+}

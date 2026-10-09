@@ -1937,3 +1937,9 @@ pending effects and recheck membership, concrete arguments and receiving
 outcomes, and restart clears evidence. Concrete reconstruction still incurs the
 journal-prefix replay cost at each decision. No public signature, error code,
 persisted format or version changes.
+
+Shared native ticks filter structural refusals before concurrency selection, then
+repeat concrete checks under the writer; incompatible work cannot repeatedly
+take the only slot, while retained owners remain observable and repaired work
+becomes eligible on the next observation. This corrects admission starvation
+without changing public signatures, errors, persisted formats or versions.

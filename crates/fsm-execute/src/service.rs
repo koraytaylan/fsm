@@ -50,6 +50,7 @@ use crate::watch::{Observation, Watcher};
 /// The read-only half of a tick: what the journal says, and what to do about
 /// it.
 struct Plan {
+    structural_refusals: Vec<PendingEffect>,
     observation: Observation,
     directives: Vec<Directive>,
     lines: Vec<String>,
@@ -151,7 +152,8 @@ pub fn tick_reporting(
     // New native queue admission waits for the current writer below.
     let settles = prepare(scheduler, runner, &mut plan);
     let native_starts = runner.uses_native_admission()
-        && (!scheduler.unstartable().is_empty()
+        && (!plan.structural_refusals.is_empty()
+            || !scheduler.unstartable().is_empty()
             || plan
                 .directives
                 .iter()
@@ -335,7 +337,28 @@ fn plan(
         .recover_native_owners(&snapshot, &mut observation, scheduler)
         .map_err(|error| vec![error_line(&error)])?;
     let mut lines: Vec<String> = observation.unresolved.iter().map(error_line).collect();
-    let directives = scheduler.on_observation(&observation, now_ms);
+    let mut structural_refusals = Vec::new();
+    let mut selection = runner.uses_native_admission().then(|| observation.clone());
+    if let Some(selection) = &mut selection {
+        selection.pending.retain(|effect| {
+            if scheduler.inflight_effect(&effect.effect_id).is_some()
+                || observation.execution_owners.iter().any(|(claim, _)| {
+                    claim.effect() == (effect.instance_id.as_str(), effect.effect_id.as_str())
+                })
+            {
+                return true;
+            }
+            if scheduler
+                .check_candidate_structure(&snapshot, effect)
+                .is_err()
+            {
+                structural_refusals.push(effect.clone());
+                return false;
+            }
+            true
+        });
+    }
+    let directives = scheduler.on_observation(selection.as_ref().unwrap_or(&observation), now_ms);
     lines.extend(scheduler.unhandled().iter().map(|effect_id| {
         error_line(
             &ExecError::new(
@@ -373,6 +396,7 @@ fn plan(
         ));
     }
     Ok(Plan {
+        structural_refusals,
         observation,
         directives,
         lines,
@@ -492,6 +516,19 @@ fn queue_native_starts(
         return;
     }
     let writer_allowed = runner.accepts_native_writer(store);
+    for effect in &plan.structural_refusals {
+        let result = if writer_allowed {
+            scheduler.check_pending_contract(store, effect)
+        } else {
+            Err(ExecError::new(
+                "exec/mode",
+                "native admission requires the original healthy durable writer",
+            ))
+        };
+        if let Err(error) = result {
+            plan.lines.push(error_line(&error));
+        }
+    }
     for unstartable in scheduler.unstartable() {
         let result = if writer_allowed {
             scheduler.check_pending_contract(store, &unstartable.effect)

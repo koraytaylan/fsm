@@ -113,3 +113,43 @@ fn explicitly_manual_pending_effect_remains_compatible_and_unacknowledged() {
             .contains(&effect.effect_id)
     );
 }
+
+#[test]
+fn incompatible_machine_does_not_poison_compatible_pending_contract_in_shared_table() {
+    let (mut store, incompatible, mut table) = fixture();
+    table.handlers.get_mut("restore").unwrap().on_ok = Some(fsm_execute::config::Advance {
+        event: "undeclared".into(),
+        payload: Value::Obj(BTreeMap::new()),
+        stamps: Vec::new(),
+    });
+    let mut clock = FixedClock::new(2000, 1);
+    store.define_machine_on(&mut clock, parse(br#"{
+      "format":"fsm.machine/1","name":"compatible","context":[],"events":[],
+      "effects":[{"name":"work","fields":[]}],
+      "states":[{"name":"ready","entry":{"emit":[{"effect":"work","args":{"resource":"\"original\""}}]}}],
+      "initial":"ready","transitions":[]
+    }"#, &JsonLimits::DEFAULT).unwrap(), false, false).unwrap();
+    store
+        .create_instance_ctx_on(
+            &mut clock,
+            "compatible",
+            "z-compatible",
+            "create-compatible",
+            None,
+            &BTreeMap::new(),
+            &[],
+        )
+        .unwrap();
+    let compatible = resolve(&store, &store.state.instances["z-compatible"].pending[0]).unwrap();
+    let state = store.state.clone();
+    let records = store.records.clone();
+    assert_eq!(
+        check_pending(&store, &incompatible, &table)
+            .unwrap_err()
+            .code,
+        "exec/contract_invalid"
+    );
+    check_pending(&store, &compatible, &table).unwrap();
+    assert!(fsm_store::snapshot::store_states_eq(&state, &store.state));
+    assert_eq!(store.records, records);
+}

@@ -7,7 +7,11 @@ import verify_contract_admission_evidence as verifier
 INVENTORY = (('contract', 'process', 'contract-standalone'),
              ('contract', 'mcp', 'contract-standalone'),
              ('contract', 'process', 'contract-borrowed'),
-             ('contract', 'mcp', 'contract-borrowed'))
+             ('contract', 'mcp', 'contract-borrowed'),
+             ('contract', 'process', 'contract-fair-standalone'),
+             ('contract', 'mcp', 'contract-fair-standalone'),
+             ('contract', 'process', 'contract-fair-borrowed'),
+             ('contract', 'mcp', 'contract-fair-borrowed'))
 
 
 class ContractAdmissionEvidence(unittest.TestCase):
@@ -17,7 +21,7 @@ class ContractAdmissionEvidence(unittest.TestCase):
 
     def test_exact_slice_does_not_complete_task_or_verify_executable_bytes(self):
         verdict = self.exercise()
-        self.assertEqual(verdict['cases'], 4)
+        self.assertEqual(verdict['cases'], 8)
         self.assertTrue(verdict['verified'])
         self.assertFalse(verdict['task_complete'])
         self.assertFalse(verdict['gate_released'])

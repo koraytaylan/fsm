@@ -1425,6 +1425,14 @@ NOT be cached. A hit MUST still reconstruct the concrete pending effect and
 check running membership, actual arguments and current receiving outcomes;
 cached evidence MUST NOT become a persisted authorization token.
 
+Shared native candidate selection MUST exclude structurally incompatible or
+unknown unowned work before reserving concurrency slots, so a refused candidate
+cannot repeatedly occupy the only slot and starve compatible work. This
+read-only selection check MUST NOT authorize dispatch or suppress observation of
+retained ownership; the service MUST repeat concrete refusal/admission checks
+under the current healthy writer before new native preparation. A repaired
+candidate becomes eligible on the next observation without a persisted denial.
+
 Prepared native admission MUST repeat the pending-contract check against the
 healthy durable writer before entering uncertain claim publication, and MUST
 require the prepared handler to equal its current loaded-table entry. Refusal
