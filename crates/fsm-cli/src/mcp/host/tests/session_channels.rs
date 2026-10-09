@@ -349,3 +349,100 @@ fn session_channels_long_diagnostic_wait_never_parks_the_writer_owner() {
         crate::journal_io::JournalHealth::Ok
     );
 }
+
+struct FailedDiagnosticClock;
+impl Clock for FailedDiagnosticClock {
+    fn now_ms(&mut self) -> i64 {
+        panic!("injected adapter clock failure")
+    }
+}
+
+#[test]
+fn session_channels_diagnostic_adapter_unwind_cancels_original_controls() {
+    use crate::mcp::host::operation::HostedToolContext;
+    let scratch = Scratch::new();
+    let store = super::seeded(&scratch.0);
+    let prefix = store.journal.last_seq;
+    let (owner, handle) = super::Owner::new(store, FixedClock::new(2000, 0));
+    let session = handle.session().unwrap();
+    let other = handle.session().unwrap();
+    let sink = SharedSink::new();
+    let (notifier, output) = Notifier::hosted_queued(Box::new(sink.writer())).unwrap();
+    let rpc_id = value(r#""diagnostic""#);
+    // Original controls for the same session/request share cancellation;
+    // retaining one makes adapter unwinding observable without a worker race.
+    let reserve = |session: &crate::mcp::host::Session| {
+        session
+            .reserve_diagnostic(
+                crate::mcp::host::Command {
+                    rpc_id: rpc_id.clone(),
+                    tool: "journal_verify".into(),
+                    arguments: value("{}"),
+                },
+                HostedToolContext::new(None, &rpc_id, &notifier).unwrap(),
+            )
+            .unwrap()
+    };
+    let original = reserve(&session);
+    let unrelated = reserve(&other);
+    let unwind = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        handle_request_hosted(
+            &notifier,
+            &session,
+            &scratch.0,
+            &mut FailedDiagnosticClock,
+            &mut true,
+            &mut Live::default(),
+            rpc_id.clone(),
+            "tools/call",
+            Some(value(r#"{"name":"journal_verify","arguments":{}}"#)),
+            "diagnostic session",
+            None,
+            None,
+        )
+    }));
+    assert!(unwind.is_err());
+    assert!(original.cancel.cancelled());
+    assert!(!unrelated.cancel.cancelled());
+    // The detached worker must release its own reservation, while this
+    // original control still occupies exactly one ordinary application slot.
+    let mut pending = Vec::new();
+    let watchdog = Instant::now() + Duration::from_secs(3);
+    while pending.len() < super::SESSION_COMMANDS - 1 {
+        match session.submit(super::command("machine_list", "{}")) {
+            Ok(reply) => pending.push(reply),
+            Err(super::AdmissionError::Busy) => {
+                assert!(
+                    Instant::now() < watchdog,
+                    "diagnostic worker did not retire"
+                );
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            Err(error) => panic!("unexpected admission failure: {error:?}"),
+        }
+    }
+    assert_eq!(
+        session.submit(super::command("machine_list", "{}")).err(),
+        Some(super::AdmissionError::Busy)
+    );
+    drop(original);
+    pending.push(
+        session
+            .submit(super::command("machine_list", "{}"))
+            .unwrap(),
+    );
+    drop(unrelated);
+    handle.stop();
+    owner.run();
+    output.close();
+    let watchdog = Instant::now() + Duration::from_secs(3);
+    while !output.drained() {
+        assert!(Instant::now() < watchdog);
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert_eq!(Store::open(&scratch.0).unwrap().journal.last_seq, prefix);
+    assert_eq!(
+        crate::journal_io::verify(&scratch.0).health,
+        crate::journal_io::JournalHealth::Ok
+    );
+}

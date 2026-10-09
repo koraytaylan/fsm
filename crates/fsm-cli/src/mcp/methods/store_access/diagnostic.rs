@@ -14,6 +14,21 @@ enum Message {
     Complete(Result<Value, ErrorObj>),
 }
 
+struct Retirement<'a> {
+    session: &'a Session,
+    rpc_id: &'a Value,
+    armed: bool,
+}
+impl Drop for Retirement<'_> {
+    fn drop(&mut self) {
+        // Adapter unwinding must cancel before its clock receiver disappears;
+        // the worker retains the original reservation until it actually exits.
+        if self.armed {
+            self.session.cancel(self.rpc_id);
+        }
+    }
+}
+
 struct AdapterClock {
     messages: mpsc::SyncSender<Message>,
     last: i64,
@@ -69,6 +84,11 @@ pub(super) fn call(
             let _ = messages.send(Message::Complete(result));
             drop(request);
         })?;
+    let mut retirement = Retirement {
+        session,
+        rpc_id: &rpc_id,
+        armed: true,
+    };
     let result = (|| loop {
         let message =
             if let Some(input) = context.io.filter(|input| input.borrow().has_owned_wait()) {
@@ -78,13 +98,23 @@ pub(super) fn call(
             };
         match message {
             Message::Time(reply) => {
-                let _ = reply.send(clock.now_ms());
+                // This guard drops before `reply` during unwinding, so the
+                // worker observes cancellation before the rendezvous releases.
+                let mut clock_retirement = Retirement {
+                    session,
+                    rpc_id: &rpc_id,
+                    armed: true,
+                };
+                let now = clock.now_ms();
+                clock_retirement.armed = false;
+                let _ = reply.send(now);
             }
             Message::Complete(result) => break Ok(result),
         }
     })();
+    retirement.armed = result.is_err();
+    drop(retirement);
     if result.is_err() {
-        session.cancel(&rpc_id);
         // Dropping the bounded receiver releases any clock rendezvous; coarse
         // loops observe the original cancellation, and retain admission meanwhile.
         drop(receiver);

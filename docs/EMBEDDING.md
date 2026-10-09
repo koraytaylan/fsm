@@ -3067,3 +3067,6 @@ waits. Session retirement cancels the original work and releases clock waits;
 coarse-loop cancellation remains cooperative, and read-only store opening or
 an operating-system read is not promised to be interruptible. Worker retirement
 retains its charge until actual return and never holds the writer lock.
+Adapter failure, including unwinding from an injected clock, cancels the
+original session/request controls before releasing the clock rendezvous;
+successful completion does not cancel other controls sharing that identity.

@@ -70,9 +70,9 @@ host or allocate an unbounded backlog.
 - **Done when:** the `session_channels` inventory and existing elicitation/cancellation tests pass with bounded egress and no client wait on the writer owner under the stable host gate.
 
 
-Frozen review at `66ba791e`:
+Focused channel review:
 
-- Seventeen focused `session_channels` cases pass, including original native
+- Nineteen focused `session_channels` cases pass, including original native
   deadline progress and a second session response while actual output remains
   blocked, and replay through a replacement session after actual delivery
   failure without another journal append. Affected CLI test-target clippy and
@@ -82,8 +82,12 @@ Frozen review at `66ba791e`:
   A held diagnostic clock permits another session's owner request to complete;
   disabling only diagnostic routing fails the named regression at exit 101.
   The adapter supplies injected clock samples and continues the existing
-  owned-input control wait. Explicit worker cancellation, retained-charge and
-  owned-input lifetime acceptance still require review before completion.
+  owned-input control wait. Adapter clock unwinding cancels original controls,
+  preserves another session's same-ID control, and releases the worker's
+  reservation while retaining an independently held original reservation.
+  Neutralizing only the cancellation guard fails this regression at exit 101;
+  restoring it passes. Full-capacity worker cancellation and owned-input
+  lifetime acceptance still require review before completion.
 - Completion also requires the original count/byte/frame boundary and
   publication-order inventory to be reviewed together with the existing
   elicitation/cancellation tests; no landing OID is assigned.
