@@ -98,17 +98,23 @@ Current acceptance evidence:
   admission limits are preserved. Focused tests, fixture-enabled all-target
   clippy, formatting, size and diff checks pass.
 
-Frozen `fb6a8661` publishes retained native transport diagnostics on ordinary
-decision ticks; focused scheduling tests and all-target fixture clippy pass.
-Native scheduling run `37924655312` fails on both toolchains: the nine-handler
-queue fixture exceeds the SPEC-required eight owned broker connections and
-receives connection resets. This is a fixture admission defect, not evidence
-that the eight-turn fairness bound fails; redesign acceptance within the
-existing broker limit before claiming queue fairness or task completion.
+- Frozen `665a3d28` pins the command limit with 32 prefilled reads and frozen
+  wait time: exactly eight replies precede a logically due deadline poll.
+  Changing only `COMMAND_BATCH` to nine fails at exit 101; restoration passes.
+  Retained verdict digest:
+  `3dfecb0dedf93c1a5e96c9d675c27f464d3d41663321909e38a5fda04b7bcc07`.
+- Frozen `3c4afe45` retains all nine genuine completion cases in waves of seven,
+  respecting the eight-connection broker limit; ordinary ticks expose retained
+  uncertainty diagnostics. The focused native run `37926268833` passes the
+  deterministic cleanup contention, timeout and authority-replacement checks,
+  then fails concurrent queue acceptance because authority acquisition exceeds
+  the original two-second cleanup budget. Concurrent retirement still needs
+  repair; this run cannot prove queue fairness or task completion.
 
 Remaining acceptance: genuine continuously ready completion/application queues
-must satisfy both eight-turn bounds together; the complete frozen
-integration gate and review must pass. Pure scheduler fairness fixtures alone
+must satisfy both eight-turn bounds together; frozen review must pass and
+expensive integration gates remain due at plan completion under the user's
+2026-10-09 cadence. Pure scheduler fairness fixtures alone
 do not prove owner wiring. No landing OID is assigned and the original written
 inventory above is unchanged.
 
