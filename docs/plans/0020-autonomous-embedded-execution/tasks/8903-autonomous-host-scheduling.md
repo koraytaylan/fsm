@@ -110,3 +110,17 @@ complete empty inventory. All 55 executable private-host regressions and
 workspace all-target fixture-enabled clippy pass, with genuine native handlers
 left to disposable CI. Retry, compensation, completion fairness, recovery and
 construction acceptance and the frozen integration gate remain outstanding.
+
+
+Frozen `25cdc79b` preserves genuine process/MCP autonomous success on both
+native toolchains in [CI 37916980391](https://github.com/koraytaylan/fsm/actions/runs/37916980391),
+independent retained-report digest
+`affbe461cceb900a1783df3ed56d928c812bd172e2af3eff41b4cf1d04b679a8`.
+This remains a scoped verdict with no task completion or independent staged-byte
+comparison. The separate scheduling inventory now adds process/MCP retry
+observers: protected authority timeout must produce an actual attempted
+settlement, injected logical time must preserve the prefix one tick before
+backoff and admit attempt two exactly at expiry, and the successor must finish
+without a session or another command. These observers compile and the expanded
+producer/verifier faults pass; runtime verification is still outstanding and
+the remaining written 8903 inventory and full integration gate stay open.

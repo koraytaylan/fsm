@@ -13,7 +13,7 @@ use fsm_execute::config::HandlerTable;
 
 use super::{FixedClock, Store, Value, acceptance_owner, command, seeded, value};
 
-const HELD_MACHINE: &str = r#"{
+pub(super) const HELD_MACHINE: &str = r#"{
  "format":"fsm.machine/1","name":"held_completion","context":[],
  "events":[{"name":"done","fields":[]}],"effects":[{"name":"notify","fields":[]}],
  "states":[{"name":"running","entry":{"emit":[{"effect":"notify","args":{}}]}},
@@ -190,14 +190,14 @@ fn identity(pid: u32) -> String {
     fields[19].into()
 }
 
-fn field<'a>(manifest: &'a Value, name: &str) -> &'a str {
+pub(super) fn field<'a>(manifest: &'a Value, name: &str) -> &'a str {
     manifest
         .get(name)
         .and_then(Value::as_str)
         .expect("protected fixture field")
 }
 
-fn manifest() -> Value {
+pub(super) fn manifest() -> Value {
     assert_eq!(std::env::var("GITHUB_ACTIONS").as_deref(), Ok("true"));
     let path = PathBuf::from(
         std::env::var_os("FSM_COMPLETION_NATIVE_MANIFEST").expect("Root coordinator manifest"),

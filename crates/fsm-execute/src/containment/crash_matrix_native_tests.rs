@@ -144,16 +144,18 @@ fn provisioned_private_scheduling_owner_matrix() {
             &format!("FSM_CRASH_{variable}_SHA256"),
         );
     }
-    for kind in ["process", "mcp"] {
-        scenario(
-            &staging,
-            &nonce[..24],
-            Scenario {
-                host: "private",
-                kind,
-                behavior: "schedule-success",
-            },
-        );
+    for behavior in ["schedule-success", "schedule-retry"] {
+        for kind in ["process", "mcp"] {
+            scenario(
+                &staging,
+                &nonce[..24],
+                Scenario {
+                    host: "private",
+                    kind,
+                    behavior,
+                },
+            );
+        }
     }
     fs::remove_dir_all(staging).unwrap();
 }
@@ -301,6 +303,8 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
         .arg(staging.join(artifact))
         .args(["--exact", if behavior == "schedule-success" {
             "mcp::host::tests::held_handlers::autonomous_schedule_real_handler_success_without_another_command"
+        } else if behavior == "schedule-retry" {
+            "mcp::host::tests::scheduling_handlers::autonomous_schedule_real_timeout_retry_pins_backoff_without_another_command"
         } else if behavior == "private-output" {
             "mcp::host::tests::held_handlers::execution_host_inherited_output_pipes_allow_read_mutation_and_stop"
         } else if private {
@@ -489,6 +493,7 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                             | "capacity-held"
                             | "private-output"
                             | "schedule-success"
+                            | "schedule-retry"
                     ) {
                         "hold-result"
                     } else {
