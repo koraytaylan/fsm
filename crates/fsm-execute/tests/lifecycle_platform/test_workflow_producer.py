@@ -135,6 +135,12 @@ class Retirement(unittest.TestCase):
     def test_selected_case_requires_its_original_marker(self):
         self.exercise('selected-missing', selected=probe.CASES[0][0], missing=True)
 
+    def test_staged_fixture_is_selected_as_its_own_native_case(self):
+        self.exercise('selected-staged', selected='native_staged_fixture_refusal_recovery')
+
+    def test_staged_fixture_cannot_pass_without_its_exact_marker(self):
+        self.exercise('selected-staged-missing', selected='native_staged_fixture_refusal_recovery', missing=True)
+
     def test_unresolved_namespace_retains_authority(self):
         self.exercise('namespace-retained', clear=False)
 

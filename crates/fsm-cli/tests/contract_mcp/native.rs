@@ -1,5 +1,8 @@
 //! One provisioned real stdio draft/repair/create workflow; no local substitute.
 
+#[path = "native/staged.rs"]
+pub(super) mod staged;
+
 use super::*;
 use fsm_core::record::RecordKind;
 use std::io::Read;

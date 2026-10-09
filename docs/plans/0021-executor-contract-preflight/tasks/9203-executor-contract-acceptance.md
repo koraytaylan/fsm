@@ -12,6 +12,12 @@ touches:
   - crates/fsm-cli/tests/executor_contract_acceptance.rs
   - crates/fsm-cli/tests/fixtures/contract/
   - crates/fsm-cli/tests/mcp_execute_workflow.rs
+  - crates/fsm-cli/tests/executor_contract_mcp.rs
+  - crates/fsm-cli/tests/contract_mcp/native.rs
+  - crates/fsm-cli/tests/contract_mcp/native/staged.rs
+  - crates/fsm-execute/src/containment/workflow_native_tests.rs
+  - crates/fsm-execute/tests/lifecycle_platform/workflow_probe.py
+  - crates/fsm-execute/tests/lifecycle_platform/test_workflow_producer.py
   - examples/
   - README.md
   - docs/EXAMPLES.md

@@ -13,6 +13,7 @@ import workflow_failure_export
 
 CASES = (
     ('native_draft_repair_execution', 1),
+    ('native_staged_fixture_refusal_recovery', 1),
     ('workflow_http::native_http_delete_preserves_an_active_handler_and_completes_once', 1),
     ('workflow_http::native_http_success_retry_and_compensation_with_zero_sessions', 3),
     ('workflow_race::stdio_eof::broken_output_stops_live_tree_with_open_input_and_recovers', 1),

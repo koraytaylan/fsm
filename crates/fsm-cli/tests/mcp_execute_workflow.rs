@@ -158,7 +158,12 @@ fn workflow_handler() {
             .find_map(|argument| argument.strip_prefix("handler-directory="))
             .expect("explicit workflow directory argument"),
     );
-    assert!(arguments.contains(&format!("handler-resource={RESOURCE}")));
+    let expected_resource = if matches!(operation, "inspect" | "work" | "recover") {
+        "target"
+    } else {
+        RESOURCE
+    };
+    assert!(arguments.contains(&format!("handler-resource={expected_resource}")));
     assert!(arguments.contains(&"handler-run=run-1".to_owned()));
     let mut calls = OpenOptions::new()
         .create(true)
@@ -182,7 +187,11 @@ fn workflow_handler() {
     let failed = workflow_stdio::failed_operation(failed, operation, &directory);
     match operation {
         "suspend" => fs::write(&phase, "suspended").unwrap(),
-        "perform_work" => {
+        "perform_work" | "work" => {
+            if operation == "work" {
+                assert_eq!(fs::read_to_string(&phase).unwrap(), "active");
+                fs::write(&phase, "suspended").unwrap();
+            }
             assert_eq!(fs::read_to_string(&phase).unwrap(), "suspended");
             let template = directory.join(".work-template");
             let shared = template.exists();
@@ -204,7 +213,7 @@ fn workflow_handler() {
                     .unwrap();
             }
         }
-        "restore" => {
+        "restore" | "recover" => {
             assert_eq!(fs::read_to_string(&phase).unwrap(), "suspended");
             if !failed {
                 fs::write(&phase, "active").unwrap();

@@ -110,7 +110,7 @@ its historical pending operation. A subsequently loaded incompatible late
 outcome must defeat the saved good report without side effects, until restoring
 the original table lets that same work proceed. The executed Store fixture
 also completes all four corrected outcome transitions. Eight focused Rust cases
-and 27 mocked artifact/producer cases pass, with
+and 29 mocked artifact/producer cases pass, with
 feature-enabled CLI/executor all-target clippy and format/size/diff checks;
 the genuine native case remains ignored locally and unexecuted. Scoped review
 `cf1fda5d8bc40bee707a11760def30fd1ff3fb407c56f83ab0f9a8db2abac467`
@@ -125,7 +125,15 @@ precondition/work/recovery fixtures and full reports. Five focused tests pass
 canonical CLI bytes, manual/no-outcome distinctions, unknown stamp evidence,
 complete-catalogue resolution, unchanged stores and successful host shutdown.
 CLI all-target clippy and format/size checks pass; focused review digest
-`8d3dc079884c171730354ba506e329004fde1bfdf20db84999d1dff08b9c7e5a`.
+`1eaf9c6a2ac933a37eef799d2f716e36b3308db18990fe196dd0eaf605fcb738`
+indexes that parity verdict and the exact staged fixture's protected native
+process-handler wiring. The added original embedded-host case requires byte-exact
+offline/stored CLI and MCP reports, unchanged refusal state and zero operations,
+then quiet inspect/work/recover ordering and three original closures after repair.
+The executed protected-binding report test passes; eight focused MCP tests and
+29 mocked producer/artifact tests pass with feature-enabled CLI/executor clippy.
+Both native MCP-target cases remain ignored locally, and standalone/MCP-handler
+integration of these exact fixtures and native sensitivity remain outstanding.
 The README and operator example now document machine checking, repair,
 manual policy and current-state admission; eight executable example tests pass,
 including the documented offline order check without creating a store.

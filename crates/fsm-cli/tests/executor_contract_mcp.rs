@@ -11,6 +11,13 @@ fn native_draft_repair_execution() {
     native::run();
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "requires disposable native CI and exact protected staged fixture bindings"]
+fn native_staged_fixture_refusal_recovery() {
+    native::staged::run();
+}
+
 #[cfg(all(
     target_os = "linux",
     any(target_arch = "x86_64", target_arch = "aarch64")

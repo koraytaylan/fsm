@@ -74,6 +74,9 @@ pub(super) fn stage_artifact(destination: &Path, source_variable: &str, digest_v
 }
 
 fn table(helper: &Path, resource: &Path, failures: &str) -> Value {
+    if failures == "contract-staged" {
+        return staged_contract_table(helper, resource);
+    }
     let mut table = object([
         ("format", Value::Str("fsm.handlers/1".into())),
         (
@@ -178,10 +181,84 @@ fn table(helper: &Path, resource: &Path, failures: &str) -> Value {
     table
 }
 
+fn staged_contract_table(helper: &Path, resource: &Path) -> Value {
+    let mut table = fsm_core::json::parse(
+        include_bytes!("../../../fsm-cli/tests/fixtures/contract/workflow-repaired.handlers.json"),
+        &fsm_core::json::JsonLimits::DEFAULT,
+    )
+    .unwrap();
+    let Value::Obj(fields) = &mut table else {
+        unreachable!()
+    };
+    let Value::Arr(handlers) = fields.get_mut("handlers").unwrap() else {
+        unreachable!()
+    };
+    for handler in handlers {
+        let operation = text(handler, "effect").unwrap().to_owned();
+        let Value::Obj(fields) = handler else {
+            unreachable!()
+        };
+        // Only private executable bindings change; the public contract remains
+        // the independently specified staged table, including its sole resource argument.
+        fields.insert(
+            "argv".into(),
+            Value::Arr(
+                [
+                    helper.to_str().unwrap().to_owned(),
+                    "workflow_handler".into(),
+                    "--exact".into(),
+                    "--nocapture".into(),
+                    format!("handler-operation={operation}"),
+                    "handler-resource={resource}".into(),
+                    "handler-run=run-1".into(),
+                    format!("handler-directory={}", resource.display()),
+                    "handler-failures=work".into(),
+                ]
+                .into_iter()
+                .map(Value::Str)
+                .collect(),
+            ),
+        );
+    }
+    table
+}
+
+#[test]
+fn staged_native_table_preserves_independent_report() {
+    let machine = fsm_core::json::parse(
+        include_bytes!("../../../fsm-cli/tests/fixtures/contract/workflow.machine.json"),
+        &fsm_core::json::JsonLimits::DEFAULT,
+    )
+    .unwrap();
+    let compiled = fsm_core::spec::compile_accepted(&machine).unwrap();
+    let table = staged_contract_table(Path::new("/protected/test"), Path::new("/resource"));
+    let table =
+        fsm_execute::config::HandlerTable::parse(&String::from_utf8(canon_bytes(&table)).unwrap())
+            .unwrap();
+    let expected =
+        include_str!("../../../fsm-cli/tests/fixtures/contract/workflow-repaired.report.json")
+            .replace("$MACHINE_ID", &compiled.machine_id);
+    let expected =
+        fsm_core::json::parse(expected.as_bytes(), &fsm_core::json::JsonLimits::DEFAULT).unwrap();
+    assert_eq!(
+        fsm_execute::contract::analyze_contract(
+            &compiled,
+            &std::collections::BTreeMap::new(),
+            &table,
+            fsm_execute::contract::Limits::default()
+        )
+        .unwrap()
+        .to_value(),
+        expected
+    );
+}
+
 fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
     use fsm_core::record::{RecordKind, execution::Claim};
     use fsm_store::store::VerifiedClosure;
-    let expected = if failure == "contract-draft" {
+    let expected = if failure == "contract-staged" {
+        3
+    } else if failure == "contract-draft" {
         4
     } else if failure == "quiet-retry"
         || failure.starts_with("crash-")
@@ -505,6 +582,10 @@ pub(super) fn run() {
     let cases = [
         ("native_draft_repair_execution", vec!["contract-draft"]),
         (
+            "native_staged_fixture_refusal_recovery",
+            vec!["contract-staged"],
+        ),
+        (
             "workflow_http::native_http_delete_preserves_an_active_handler_and_completes_once",
             vec!["http-delete-active"],
         ),
@@ -698,8 +779,11 @@ pub(super) fn run() {
                     <= 107
             );
             let catalogue = table(&helper, &resource, failure);
-            let operator_table =
-                (case == "native_draft_repair_execution").then(|| catalogue.clone());
+            let operator_table = (matches!(
+                case,
+                "native_draft_repair_execution" | "native_staged_fixture_refusal_recovery"
+            ))
+            .then(|| catalogue.clone());
             let fixture = if failure.starts_with("full-disk") {
                 Fixture::new_for_full_disk_workflow(catalogue)
             } else {
@@ -756,7 +840,7 @@ pub(super) fn run() {
             .unwrap();
         let mut child = Command::new("/usr/bin/python3")
             .args(["-c", "import os,sys;os.setgroups([]);os.setgid(65534);os.setuid(65534);os.execv(sys.argv[1],sys.argv[1:])"])
-            .arg(if case == "native_draft_repair_execution" { contract_mcp.as_ref().unwrap() } else { &helper }).args(["--exact", case, "--ignored", "--nocapture", "--color", "never"])
+            .arg(if matches!(case, "native_draft_repair_execution" | "native_staged_fixture_refusal_recovery") { contract_mcp.as_ref().unwrap() } else { &helper }).args(["--exact", case, "--ignored", "--nocapture", "--color", "never"])
             .env("FSM_NATIVE_WORKFLOW_MANIFEST", &manifest_path)
             .env("TMPDIR", &fixtures[0].store)
             .stdin(Stdio::null()).stdout(log.try_clone().unwrap()).stderr(log)
