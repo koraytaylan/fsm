@@ -151,35 +151,21 @@ ordered completion, stale-report bypass and plan-end gates remain outstanding.
 
 Manual Phase R binds the six-task bundle to validation base `15172d8298f271abfd0bd1d5b47617d1108ceefc` after plans 0022 and 0020 complete: closed frontmatter, repository-relative footprints and the acyclic local dependency graph pass, with uncreated deliverables explicitly inventoried; task-cache validation digest `4298d27510c4726206598590ca50efd51e0aeca49c5605aae9f004697820f1f7`. Task 9101 completes its focused inventory at `efcb4f9e`, with 67 stable effect/configuration/public-surface cases and focused lint/format/diff checks passing; self-review verdict `dfd37ee9a1867119e4c63a048ad58b1030b7db590fe118b95dcee1edff82f9a1`; task 9102 completes at `ed811ab6` with eleven focused outcome tests and self-review verdict `b9a671329f5a8177a34529118e6925015757c21b9a064f5d5371820bd71ac271`; task 9103 is in progress; prior independent preparation remains subject to current task acceptance, and admission/MCP/final acceptance remain incomplete. Full gates run at plan completion.
 
-Focused native admission has a stable/MSRV CI dispatch at `4a7efce3`, without
-unrelated suites or portable gates. Checkpoint `f286deb7` passes sixteen real
-process/MCP refusal/repair, fairness, unknown-outcome and missing-argument axes
-on each toolchain, with original native closure verified before every marker.
-The first timeout case then refuses an invalid manually constructed zero-backoff
-fixture. Retry preparation now retains the parsed positive backoff, checks
-invalid warm/cold observations at eligibility, and requires repaired work to
-remain idle one millisecond before its durable due time before starting at it.
-Checkpoint `5131b76f` then reaches the timeout claim but cannot bind its changed
-policy against the original protected catalogue. Root staging now approves the
-exact timeout and ack-only policies before provisioning; an independently
-specified full-handler/fingerprint comparison passes all eight kind/path branches.
-Checkpoint `0ffedd0e` then starts and stops the timeout handler on both toolchains,
-but DynamicUser cleanup unlinks its candidate marker. Root now owns the empty
-contention observation slot; entry requires actual nonempty PID bytes, and the
-original bytes/time remain available for refusal and retry comparisons.
-Checkpoint `bcb16ee6` passes twenty native axes on both toolchains, including
-actual timeout/reap under writer contention, invalid warm/cold retry refusal and
-positive-backoff boundary/repair. The next manual fixture incorrectly forbids
-the documented `exec/unhandled_effect` stall; it now requires exactly one such
-diagnostic, preserves pending work and refuses every other error.
-Cancellation, bound-entry and recovery observers share readable-empty Root PID
-slots and strict missing candidate/result markers; repaired completion releases
-the complete original tree. Thirteen focused admission cases, two real portable
-barrier cases, 27 mocked producer/verifier cases and admission-target clippy pass,
-with format/size/diff checks, and lifecycle-target clippy passes. Frozen verdict
-`8fdd792e8b27f11b32b27f27c604ca3581b4882942b8fcbd45588b63dea82b43`
-indexes the actual failures and corrections; the remaining physical inventory,
-native sensitivity and plan-end gates remain open.
+Focused native admission checkpoint `aba0bbfd` passes twenty-four real
+process/MCP axes on both stable and MSRV: refusal/repair, fairness, unknown
+outcomes, missing arguments, original timeout/reap under writer contention,
+invalid warm/cold retry refusal, positive-backoff boundary and manual-policy
+repair. Root verifies the original closures before each independent marker.
+The next ack-only fixture incorrectly requires a legacy ack record; its corrected
+inventory requires one atomic original `ExecutionSettled` acknowledgement,
+matching derived key/sequence/fingerprint, no synthetic event or handoff, and
+unchanged later observations. Thirteen focused admission cases, the independent
+protected-policy test, two portable barrier cases and focused lint/format/size/diff
+checks pass. Frozen verdict
+`f6e28788e9afd718a3c74bbf92d42dd2e83140e2a1af0536ad88da4b9c2584b6`
+indexes the native failures, fixture corrections and preceding proofs outside the
+repository; the remaining sixteen axes, native guard sensitivity and plan-end
+gates remain open.
 
 Bound entry now reuses its freshly reconstructed effect from the same immutable
 writer, removing its duplicate prefix replay while retaining concrete admission

@@ -30,6 +30,7 @@ touches:
   - crates/fsm-execute/tests/contract_admission/provisioned/receiver.rs
   - crates/fsm-execute/tests/contract_admission/provisioned/cancellation.rs
   - crates/fsm-execute/tests/contract_admission/provisioned/retry.rs
+  - crates/fsm-execute/tests/contract_admission/provisioned/settlement.rs
   - crates/fsm-execute/src/containment/crash_matrix_native_tests.rs
   - crates/fsm-execute/src/containment/crash_matrix_contracts.rs
   - crates/fsm-execute/tests/lifecycle_platform/crash_probe.py

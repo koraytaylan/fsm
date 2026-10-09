@@ -8,6 +8,8 @@ mod cancellation;
 mod receiver;
 #[path = "provisioned/retry.rs"]
 mod retry;
+#[path = "provisioned/settlement.rs"]
+mod settlement;
 use fsm_execute::{
     config::Advance,
     run::{Pipeline, Runner},
@@ -741,20 +743,7 @@ fn observe(borrowed: bool, scenario: Scenario) {
     }
     if matches!(scenario, Scenario::AckOnly) {
         let current = Store::open_read_only(&store_path).unwrap();
-        assert_eq!(
-            current
-                .records
-                .iter()
-                .filter(|record| record.kind == fsm_core::record::RecordKind::EffectAcked)
-                .count(),
-            1
-        );
-        assert!(
-            current
-                .records
-                .iter()
-                .all(|record| record.kind != fsm_core::record::RecordKind::EventApplied)
-        );
+        settlement::assert_ack_only(&current, completed_instance, &effect_id);
         let settled_records = current.records.clone();
         drop(current);
         for _ in 0..3 {
