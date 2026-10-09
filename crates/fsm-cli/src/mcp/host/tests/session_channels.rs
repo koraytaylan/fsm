@@ -271,3 +271,81 @@ fn session_channels_reconnect_replays_committed_mutation_after_actual_delivery_f
         crate::journal_io::JournalHealth::Ok
     );
 }
+
+struct HeldDiagnosticClock {
+    entered: Option<mpsc::Sender<()>>,
+    resume: mpsc::Receiver<()>,
+}
+impl Clock for HeldDiagnosticClock {
+    fn now_ms(&mut self) -> i64 {
+        if let Some(entered) = self.entered.take() {
+            entered.send(()).unwrap();
+            self.resume.recv_timeout(Duration::from_secs(5)).unwrap();
+        }
+        2000
+    }
+}
+
+#[test]
+fn session_channels_long_diagnostic_wait_never_parks_the_writer_owner() {
+    let scratch = Scratch::new();
+    let store = super::seeded(&scratch.0);
+    let prefix = store.journal.last_seq;
+    let (owner, handle) = super::Owner::new(store, FixedClock::new(2000, 0));
+    let diagnostic = handle.session().unwrap();
+    let healthy = handle.session().unwrap();
+    let worker = std::thread::spawn(move || owner.run());
+    let sink = SharedSink::new();
+    let (notifier, output) = Notifier::hosted_queued(Box::new(sink.writer())).unwrap();
+    let (entered, observed) = mpsc::channel();
+    let (release, resume) = mpsc::channel();
+    let path = scratch.0.clone();
+    let caller = std::thread::spawn(move || {
+        handle_request_hosted(
+            &notifier,
+            &diagnostic,
+            &path,
+            &mut HeldDiagnosticClock {
+                entered: Some(entered),
+                resume,
+            },
+            &mut true,
+            &mut Live::default(),
+            value(r#""diagnostic""#),
+            "tools/call",
+            Some(value(
+                r#"{"name":"journal_verify","arguments":{},"_meta":{"progressToken":"diagnostic"}}"#,
+            )),
+            "diagnostic session",
+            None,
+            None,
+        )
+    });
+    observed.recv_timeout(Duration::from_secs(3)).unwrap();
+    let reply = healthy
+        .submit(super::command("machine_list", "{}"))
+        .unwrap()
+        .recv_timeout(Duration::from_millis(500));
+    release.send(()).unwrap();
+    let diagnostic_reply = caller.join().unwrap();
+    handle.stop();
+    worker.join().unwrap();
+    output.close();
+    let watchdog = Instant::now() + Duration::from_secs(3);
+    while !output.drained() {
+        assert!(Instant::now() < watchdog);
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert!(
+        reply
+            .expect("diagnostic held the writer owner")
+            .result
+            .is_ok()
+    );
+    assert!(diagnostic_reply.is_ok());
+    assert_eq!(Store::open(&scratch.0).unwrap().journal.last_seq, prefix);
+    assert_eq!(
+        crate::journal_io::verify(&scratch.0).health,
+        crate::journal_io::JournalHealth::Ok
+    );
+}

@@ -18,6 +18,15 @@ pub(super) fn wait<T>(
     input: &RefCell<SessionIo<'_>>,
 ) -> io::Result<T> {
     let receiver = admission.map_err(super::admission_error)?;
+    wait_receiver(session, output, &receiver, input)
+}
+
+pub(super) fn wait_receiver<T>(
+    session: &Session,
+    output: &Notifier,
+    receiver: &mpsc::Receiver<T>,
+    input: &RefCell<SessionIo<'_>>,
+) -> io::Result<T> {
     loop {
         super::check_wait(session, output)?;
         match receiver.try_recv() {

@@ -71,12 +71,12 @@ pub(super) struct Mailbox {
     ready: Condvar,
 }
 
-pub(super) struct Admitted {
-    pub session: Arc<SessionState>,
-    pub command: Operation,
-    pub reply: Reply,
-    pub cancel: CancelFlag,
-    pub reservation: Reservation,
+pub(in crate::mcp) struct Admitted {
+    pub(super) session: Arc<SessionState>,
+    pub(super) command: Operation,
+    pub(super) reply: Reply,
+    pub(super) cancel: CancelFlag,
+    pub(super) reservation: Reservation,
 }
 
 pub(super) struct Reservation {
@@ -194,6 +194,15 @@ impl Mailbox {
     }
 
     /// Own bounded admission and controls independently of writer dispatch.
+    pub(super) fn reserve_diagnostic(
+        self: &Arc<Self>,
+        session: Arc<SessionState>,
+        command: Operation,
+    ) -> Result<Admitted, AdmissionError> {
+        let mut state = self.state.lock().unwrap_or_else(|p| p.into_inner());
+        self.reserve_locked(&mut state, session, command, Reply::Retired)
+    }
+
     fn reserve_locked(
         self: &Arc<Self>,
         state: &mut State,

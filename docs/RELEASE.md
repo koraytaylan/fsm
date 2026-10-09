@@ -1780,3 +1780,17 @@ mismatched binding/handoff remains an immediate refusal. Waiting MUST release
 the authority lock and MUST NOT burn an allocation until the full inventory
 proves original closure; handoff and absence never establish closure. No public
 API, journal format or error code changes.
+
+
+Hosted long read-only tools (`simulate`, `instance_history`, `journal_verify`
+and `journal_replay`) run in session-owned workers against a fresh read-only
+store, never on the writer owner. Each worker retains its original host/session
+count and allocation reservation and original cancellation control until it
+returns; worker concurrency is bounded by those existing admission counts.
+Clock samples are requested through a one-message rendezvous with the adapter,
+so injected clock behavior is preserved without introducing wall-clock reads.
+Owned-input adapters continue lifetime and cancellation routing during these
+waits. Session retirement cancels the original work and releases clock waits;
+coarse-loop cancellation remains cooperative, and read-only store opening or
+an operating-system read is not promised to be interruptible. Worker retirement
+retains its charge until actual return and never holds the writer lock.

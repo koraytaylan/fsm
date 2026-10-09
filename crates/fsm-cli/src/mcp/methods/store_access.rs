@@ -5,6 +5,7 @@
 
 use std::{io, path::PathBuf};
 
+mod diagnostic;
 mod input_wait;
 mod interaction;
 
@@ -131,6 +132,14 @@ impl StoreAccess<'_> {
                 interaction::call(session, output, clock, arguments, context)
             }
             Self::Hosted {
+                session,
+                output,
+                data_dir,
+                ..
+            } if tools::PROGRESS_TOOLS.contains(&name) => {
+                diagnostic::call(session, output, data_dir, clock, name, arguments, context)
+            }
+            Self::Hosted {
                 session, output, ..
             } => {
                 if let Some(input) = context.io {
@@ -217,6 +226,14 @@ fn wait<T>(
     admission: Result<std::sync::mpsc::Receiver<T>, AdmissionError>,
 ) -> io::Result<T> {
     let receiver = admission.map_err(admission_error)?;
+    wait_receiver(session, output, &receiver)
+}
+
+fn wait_receiver<T>(
+    session: &Session,
+    output: &crate::mcp::notify::Notifier,
+    receiver: &std::sync::mpsc::Receiver<T>,
+) -> io::Result<T> {
     loop {
         check_wait(session, output)?;
         match receiver.recv_timeout(std::time::Duration::from_millis(50)) {

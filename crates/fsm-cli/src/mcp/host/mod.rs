@@ -68,6 +68,20 @@ pub(super) struct Session {
 }
 
 impl Session {
+    pub(in crate::mcp) fn reserve_diagnostic(
+        &self,
+        command: Command,
+        context: operation::HostedToolContext,
+    ) -> Result<mailbox::Admitted, AdmissionError> {
+        self.mailbox.reserve_diagnostic(
+            Arc::clone(&self.original),
+            Operation::HostedTool {
+                command,
+                context: Box::new(context),
+            },
+        )
+    }
+
     pub(in crate::mcp) fn submit_hosted(
         &self,
         command: Command,
@@ -304,5 +318,34 @@ fn apply_command(
 impl<C> Drop for Owner<C> {
     fn drop(&mut self) {
         self.mailbox.stop();
+    }
+}
+
+impl mailbox::Admitted {
+    pub(in crate::mcp) fn diagnostic(
+        &self,
+        data_dir: &std::path::Path,
+        clock: &mut dyn Clock,
+    ) -> Result<Value, ErrorObj> {
+        if !self.session.is_open() || self.cancel.cancelled() {
+            return Err(super::cancel::CancelFlag::refusal());
+        }
+        let mut store = Store::open_read_only(data_dir)?;
+        let Operation::HostedTool { command, context } = &self.command else {
+            unreachable!("original diagnostic request")
+        };
+        let tool_context = super::tools::ToolCtx {
+            notifier: Some(&context.notifier),
+            meta: context.metadata.clone(),
+            cancel: self.cancel.clone(),
+            ..Default::default()
+        };
+        super::tools::dispatch_with(
+            &mut store,
+            clock,
+            &command.tool,
+            &command.arguments,
+            &tool_context,
+        )
     }
 }
