@@ -13,7 +13,9 @@ import verify_completion_evidence as verifier
 INVENTORY = (('private', 'process', 'private-held'), ('private', 'mcp', 'private-held'),
              ('boundary', 'process', 'boundary-held'), ('boundary', 'mcp', 'boundary-held'),
                        ('boundary', 'process', 'boundary-settled'),
-                       ('boundary', 'mcp', 'boundary-settled'))
+                       ('boundary', 'mcp', 'boundary-settled'),
+                       ('boundary', 'process', 'boundary-deferred'),
+                       ('boundary', 'mcp', 'boundary-deferred'))
 COMMIT = 'a' * 40
 RUSTC = 'fixture compiler'
 
@@ -56,7 +58,7 @@ class CompletionEvidence(unittest.TestCase):
 
     def test_exact_private_slice_cannot_complete_the_task_or_verify_binary_bytes(self):
         verdict = self.exercise()
-        self.assertEqual(verdict['cases'], 6)
+        self.assertEqual(verdict['cases'], 8)
         self.assertTrue(verdict['verified'])
         self.assertFalse(verdict['task_complete'])
         self.assertFalse(verdict['gate_released'])

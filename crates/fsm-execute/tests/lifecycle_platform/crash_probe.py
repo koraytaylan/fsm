@@ -17,7 +17,9 @@ PRIVATE_OWNER_CASES = (('private', 'process', 'private-held'),
                        ('boundary', 'process', 'boundary-held'),
                        ('boundary', 'mcp', 'boundary-held'),
                        ('boundary', 'process', 'boundary-settled'),
-                       ('boundary', 'mcp', 'boundary-settled'))
+                       ('boundary', 'mcp', 'boundary-settled'),
+                       ('boundary', 'process', 'boundary-deferred'),
+                       ('boundary', 'mcp', 'boundary-deferred'))
 
 
 def staging_paths():
@@ -76,7 +78,7 @@ def main():
                         ('authority::allocator::native_tests::crash_matrix::provisioned_private_completion_owner_matrix'
                          if private else 'authority::allocator::native_tests::crash_matrix::provisioned_lifecycle_candidate_matrix'),
                         '--ignored', '--nocapture', '--color', 'never'])
-        timeout = 600 if private else 3900
+        timeout = 800 if private else 3900
         try:
             result = subprocess.run(command, cwd=repo, capture_output=True, timeout=timeout)
             report['timed_out'] = False

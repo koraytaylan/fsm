@@ -100,6 +100,7 @@ fn provisioned_private_completion_owner_matrix() {
         ("private", "private-held"),
         ("boundary", "boundary-held"),
         ("boundary", "boundary-settled"),
+        ("boundary", "boundary-deferred"),
     ] {
         for kind in ["process", "mcp"] {
             scenario(
@@ -258,6 +259,10 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
         .arg(staging.join(artifact))
         .args(["--exact", if private {
             "mcp::host::tests::held_handlers::execution_host_real_held_handler_allows_read_mutation_and_stop_without_release"
+        } else if behavior == "boundary-deferred" && kind == "process" {
+            "native::async_completion_process_pending_writer_refusal_retains_completion"
+        } else if behavior == "boundary-deferred" {
+            "native::async_completion_mcp_pending_writer_refusal_retains_completion"
         } else if behavior == "boundary-settled" && kind == "process" {
             "native::async_completion_process_repeated_polling_settles_once"
         } else if behavior == "boundary-settled" {
@@ -430,6 +435,7 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                             | "private-held"
                             | "boundary-held"
                             | "boundary-settled"
+                            | "boundary-deferred"
                     ) {
                         "hold-result"
                     } else {
@@ -446,7 +452,7 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
             Value::Num(
                 if matches!(
                     behavior,
-                    "private-held" | "boundary-held" | "boundary-settled"
+                    "private-held" | "boundary-held" | "boundary-settled" | "boundary-deferred"
                 ) {
                     "30000"
                 } else {
@@ -531,6 +537,7 @@ fn verify(fixture: &Fixture, behavior: &str) {
                     | "private-held"
                     | "boundary-held"
                     | "boundary-settled"
+                    | "boundary-deferred"
             ) {
                 1
             } else {

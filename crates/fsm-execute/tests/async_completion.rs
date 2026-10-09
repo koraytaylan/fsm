@@ -55,6 +55,19 @@ mod native {
     enum CompletionMode {
         AbortHeld,
         Release,
+        DeferredWriter,
+    }
+
+    #[test]
+    #[ignore = "requires disposable native CI and exact staged process fixture"]
+    fn async_completion_process_pending_writer_refusal_retains_completion() {
+        observe("process", CompletionMode::DeferredWriter);
+    }
+
+    #[test]
+    #[ignore = "requires disposable native CI and exact staged MCP fixture"]
+    fn async_completion_mcp_pending_writer_refusal_retains_completion() {
+        observe("mcp", CompletionMode::DeferredWriter);
     }
 
     fn observe(kind: &str, mode: CompletionMode) {
@@ -150,9 +163,35 @@ mod native {
             assert!(!resource.join("root-release").exists());
             assert_eq!(driver.store_mut().unwrap().journal.last_seq, prefix);
         }
-        if matches!(mode, CompletionMode::Release) {
+        if matches!(
+            mode,
+            CompletionMode::Release | CompletionMode::DeferredWriter
+        ) {
             for role in ["grandchild", "child", "root"] {
                 fs::write(resource.join(format!("{role}-release")), b"release").unwrap();
+            }
+            if matches!(mode, CompletionMode::DeferredWriter) {
+                let mut retained = recover_original(&original, &original_hash);
+                let mut reader = Store::open_read_only(&store_path).unwrap();
+                let records = reader.records.clone();
+                assert_eq!(reader.state.execution.unresolved().count(), 1);
+                assert_eq!(reader.state.instances["held"].pending.len(), 1);
+                assert_eq!(
+                    retained.settle(&mut reader, &mut clock).unwrap_err().code,
+                    "exec/mode"
+                );
+                assert!(retained.progress().retained && retained.completion().is_some());
+                assert_eq!(Store::open_read_only(&store_path).unwrap().records, records);
+                retained
+                    .settle(driver.store_mut().unwrap(), &mut clock)
+                    .unwrap();
+                let settled = driver.store_mut().unwrap().records.clone();
+                for _ in 0..3 {
+                    retained
+                        .settle(driver.store_mut().unwrap(), &mut clock)
+                        .unwrap();
+                    assert_eq!(driver.store_mut().unwrap().records, settled);
+                }
             }
             let deadline = Instant::now() + Duration::from_secs(12);
             while driver.store_mut().unwrap().state.instances["held"].status
@@ -178,7 +217,10 @@ mod native {
         assert!(control.report().admission_closed);
         assert_eq!(
             resource.join("root-release").exists(),
-            matches!(mode, CompletionMode::Release)
+            matches!(
+                mode,
+                CompletionMode::Release | CompletionMode::DeferredWriter
+            )
         );
         let deadline = Instant::now() + Duration::from_secs(12);
         while control.report().phase != ExecutorPhase::Stopped {
@@ -199,35 +241,26 @@ mod native {
         assert!(driver.store_mut().is_none());
         assert_eq!(
             resource.join("root-release").exists(),
-            matches!(mode, CompletionMode::Release)
+            matches!(
+                mode,
+                CompletionMode::Release | CompletionMode::DeferredWriter
+            )
         );
         let verified = fsm_store::journal_io::verify(&store_path);
         assert_eq!(verified.health, fsm_store::journal_io::JournalHealth::Ok);
         let mut reopened = Store::open(&store_path).unwrap();
         assert_eq!(verified.records, reopened.records.len() as u64);
         assert_eq!(reopened.state.execution.unresolved().count(), 0);
-        if matches!(mode, CompletionMode::Release) {
+        if matches!(
+            mode,
+            CompletionMode::Release | CompletionMode::DeferredWriter
+        ) {
             assert!(reopened.state.instances["held"].pending.is_empty());
             assert_eq!(
                 reopened.state.instances["held"].status,
                 fsm_core::machine::Status::Completed
             );
-            let mut recovered =
-                NativeRun::recover(&original, &original_hash, Duration::from_secs(10)).unwrap();
-            let deadline = Instant::now() + Duration::from_secs(12);
-            let completion = loop {
-                if let Some(completion) = recovered.poll().unwrap() {
-                    break completion;
-                }
-                assert!(
-                    Instant::now() < deadline,
-                    "original completion recovery timed out"
-                );
-                std::thread::sleep(Duration::from_millis(5));
-            };
-            assert!(recovered.reap().unwrap());
-            let mut retained =
-                NativeExecution::from_completion(&original, &original_hash, completion).unwrap();
+            let mut retained = recover_original(&original, &original_hash);
             let records = reopened.records.clone();
             let mut reader = Store::open_read_only(&store_path).unwrap();
             assert_eq!(
@@ -256,6 +289,27 @@ mod native {
                 1
             );
         }
+    }
+
+    fn recover_original(
+        original: &fsm_core::record::execution::Claim,
+        original_hash: &str,
+    ) -> NativeExecution {
+        let mut recovered =
+            NativeRun::recover(original, original_hash, Duration::from_secs(10)).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(12);
+        let completion = loop {
+            if let Some(completion) = recovered.poll().unwrap() {
+                break completion;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "original completion recovery timed out"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        };
+        assert!(recovered.reap().unwrap());
+        NativeExecution::from_completion(original, original_hash, completion).unwrap()
     }
 
     fn field<'a>(manifest: &'a Value, name: &str) -> &'a str {
