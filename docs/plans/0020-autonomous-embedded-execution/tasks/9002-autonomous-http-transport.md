@@ -177,3 +177,14 @@ Focused startup acceptance:
   checks pass. This closes the cancellation-specific transport acceptance,
   while genuine native handler workflows and real HTTP count/byte saturation
   still prevent task completion; plan-end gates remain due.
+- A real writer-mode HTTP byte-pressure case now verifies that a synthetic
+  argument allocation above the original session budget receives HTTP 503
+  before tool validation, journal advance or request-ID claim. Its smaller
+  shape reaches semantic validation through HTTP 200; retrying the refused ID
+  with valid arguments commits as nonduplicate and the journal verifies.
+  Disabling only the original session-byte guard fails the named HTTP case;
+  restoration passes. This is a retained-allocation refusal case, not an exact
+  byte-boundary or
+  concurrent count-saturation verdict. Focused CLI clippy passes; genuine
+  native workflows and the remaining exact/concurrent admission acceptance
+  still prevent task completion.

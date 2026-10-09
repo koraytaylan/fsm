@@ -701,3 +701,61 @@ fn production_http_cancels_an_unanswered_question_only_in_its_original_session()
         fsm_cli::journal_io::JournalHealth::Ok
     );
 }
+
+#[test]
+fn production_http_refuses_retained_argument_byte_pressure_without_writing() {
+    let (directory, store) = seeded("argument-admission");
+    drop(store);
+    let mut client = Client::start_mode(directory.clone(), Mode::Writer);
+    client.initialize();
+    let padding = |count: usize| {
+        (0..count)
+            .map(|n| format!("\"field-{n}\":null"))
+            .collect::<Vec<_>>()
+            .join(",")
+    };
+    let small = format!(
+        r#"{{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{{"name":"instance_get","arguments":{{"instance_id":"instance","padding":{{{}}}}}}}}}"#,
+        padding(2000)
+    );
+    // The synthetic argument is rejected by tool validation after admission;
+    // its smaller form must still reach that JSON-RPC result through HTTP 200.
+    let small_response = client.post(&small);
+    assert_eq!(
+        small_response
+            .get("result")
+            .unwrap()
+            .get("structuredContent")
+            .unwrap()
+            .get("error")
+            .unwrap()
+            .get("code")
+            .and_then(Value::as_str),
+        Some("req/args_invalid")
+    );
+    let before = Store::open_read_only(&directory).unwrap().journal.last_seq;
+    let oversized = format!(
+        r#"{{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{{"name":"instance_send","arguments":{{"instance_id":"instance","event":{{"name":"finish"}},"request_id":"byte-refused","padding":{{{}}}}}}}}}"#,
+        padding(4100)
+    );
+    let mut response = String::new();
+    streaming_post(client.address, client.session.as_deref(), &oversized)
+        .read_to_string(&mut response)
+        .unwrap();
+    assert!(response.starts_with("HTTP/1.1 503"), "{response}");
+    assert_eq!(
+        Store::open_read_only(&directory).unwrap().journal.last_seq,
+        before
+    );
+    let admitted = client.post(r#"{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"instance_send","arguments":{"instance_id":"instance","event":{"name":"finish"},"request_id":"byte-refused"}}}"#);
+    let result = admitted.get("result").unwrap();
+    assert_ne!(result.get("isError"), Some(&Value::Bool(true)));
+    assert_eq!(
+        result.get("structuredContent").unwrap().get("duplicate"),
+        Some(&Value::Bool(false))
+    );
+    assert_eq!(
+        fsm_cli::journal_io::verify(&directory).health,
+        fsm_cli::journal_io::JournalHealth::Ok
+    );
+}
