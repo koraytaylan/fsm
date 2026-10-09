@@ -1552,34 +1552,33 @@ wire capability, journal/hash format or supported Rust API. Native executor
 ownership, interactive continuations, bounded egress and transport routing have
 separate contracts and acceptance inventories.
 
-The staged private Linux native command owner now retains the existing
+The private Linux native command owner retains the existing
 OwnedNativeExecutor and drives its decision passes independently of client
 input, sharing the writer-only owner's complete command boundary. Stop fences
 original native admission before queue rejection and returns the original
 driver/report after supervised polling, retaining uncertain ownership for its
 caller. Operator diagnostics use the existing bounded output worker. This
 private integration changes no supported public signature, error code, wire
-discriminator, journal/hash format, dependency or MSRV; production transports
-do not construct it yet, so public autonomous execution remains unimplemented.
-Quiet deadline progress and writer release are focused host evidence, not
-real-process/MCP responsiveness or complete transport acceptance.
+discriminator, journal/hash format, dependency or MSRV. Supported production
+stdio and HTTP construct this owner; their focused real-process acceptance is
+recorded in plan 0020, with full integration gates due at plan completion.
 
 Private host protocol-read commands now cover resource listing/resolution and
 argument completion through the same bounded mailbox as tools, capturing one
 committed prefix and charging URI/Value allocation capacities. They reuse the
-existing resolvers and the original native driver's sanitized handler table;
-this adds no public wire/error/journal/hash change and does not yet connect
-production stdio or HTTP to the command host.
+existing resolvers and the original native driver's sanitized handler table.
+Production stdio and HTTP use this command boundary; public wire/error/journal
+formats and hashes are unchanged.
 
 The shared MCP method handler now has a private hosted entry that submits tools
 and protocol reads to the owner, leaving response formatting and client waits
 in the session adapter. Borrowed public helper signatures and wire responses
 remain unchanged. Admission busy, cancelled-request retirement and transport
 output failures have distinct internal types, so a committed request cannot
-be mislabeled server-busy when output is saturated. Production transports do
-not select this entry yet; interactive/progress forwarding and full egress
-admission remain outstanding, with no shipped autonomous capability or new
-public error/journal/hash/version/dependency/MSRV claim.
+be mislabeled server-busy when output is saturated. Supported production
+transports select this entry with interactive continuations, progress forwarding
+and bounded egress admission; public errors, journal/hash formats, versions,
+dependencies and MSRV remain unchanged.
 
 The private owned stdio composition now connects the existing capped framing
 and shared hosted method handler to the native owner with independent bounded

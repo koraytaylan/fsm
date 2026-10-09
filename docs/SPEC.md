@@ -3479,8 +3479,8 @@ including at a full application count, and MUST NOT accept another session's
 continuation. Retained question/continuation allocations and the returned
 answer MUST be charged conservatively to the existing host/session byte limits;
 growth that cannot fit MUST refuse before settlement, with no mutation or key
-claim. Parser/operation temporaries remain independently bounded, and this
-staging does not claim the complete encoded-egress budget is finished.
+claim. Parser/operation temporaries remain independently bounded; encoded egress
+MUST obey the session output and transport-specific budgets below.
 
 Preparation MUST retain the immutable original machine identity, not a cloned
 compiled machine or Store reference. It captures the journal prefix and the
@@ -3500,8 +3500,9 @@ session close and native stop MUST remain observable between finite owned-input
 waits without an application slot. Cancellation after preparation returns the
 existing req/cancelled tool outcome and cannot cancel an already committed
 workflow. EOF or an unanswered-client timeout MUST release the continuation
-reservation without changing durable workflow state. Production selection,
-full progress/egress integration and versioned discovery remain outstanding.
+reservation without changing durable workflow state. Supported production
+transports MUST select the autonomous host, bounded progress/egress channels
+and versioned discovery described below.
 
 The private hosted stdio output adapter MUST cap one complete canonical frame,
 including its trailing LF, at 16 MiB before allocating encoded bytes. Its

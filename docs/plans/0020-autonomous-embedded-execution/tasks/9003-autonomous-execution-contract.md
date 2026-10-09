@@ -84,3 +84,9 @@ Focused progress:
   A transport-document regression and 29 executor/document cases pass with CLI
   all-target clippy and format/size/diff checks. The complete public-contract
   audit and frozen plan-end integration gates remain outstanding.
+- The follow-up audit reconciled duplicated native-owner, hosted-method and
+  protocol-read paragraphs across SPEC, API-POLICY, EMBEDDING and RELEASE,
+  replacing obsolete production-selection and lifecycle-route claims with the
+  implemented transport contracts. Thirty focused discovery/document checks
+  and format/size/diff pass; older recovery clauses still require source-backed
+  review before the final plan freeze, and full gates have not started.

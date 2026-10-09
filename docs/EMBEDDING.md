@@ -2434,7 +2434,8 @@ recorded success/failure refuses and must use its original completion path.
 Retain the execution and closure transports until reap/EOF; transaction success
 alone cannot discard a helper or release scheduler capacity. Exact original
 replay is required after consumption, and pruning may cause conservative refusal.
-The production lifecycle driver and bounded report remain unimplemented.
+Production native owners retain these original transports through bounded
+shutdown and report observed closure or uncertainty before writer release.
 
 
 ### Local native admission provenance
@@ -2457,7 +2458,8 @@ SessionIo::read_line accepts up to 16 MiB excluding LF and returns InvalidData
 for an oversized reply after discarding that frame without retaining its tail;
 later frames stay readable. It still blocks on silent input or unfinished
 oversized-frame drainage, so independent lifecycle/control handling must not
-wait for it. The owned production lifecycle route remains unimplemented.
+wait for it. Production native transports use owned input workers so the
+original lifecycle control remains independent of these borrowed-reader waits.
 
 
 ### Admission-free native completion observation
@@ -2659,8 +2661,8 @@ fallback; contended/unhealthy startup preserves the exact observed diagnostic
 prefix without publication or reopening into execution. Borrowed session APIs
 retain their bounds and explicit backend selection. Unsupported production
 embedded stdio refuses; supported Linux embedded HTTP retains its shared owner
-independently of sessions, with full transport acceptance still incomplete. This routing change
-does not establish installed native or autonomous plan 20 acceptance.
+independently of sessions. Focused real-process transport acceptance is recorded
+in plan 0020; full integration gates remain due at plan completion.
 
 Production native stdio failures expose the initiating I/O message and kind
 with separate actual shutdown, endpoint removal/error and output drainage
@@ -2829,7 +2831,8 @@ inline diagnostics/EOF shutdown remain outside the bounded owned-host claim.
 A quiet HTTP mailbox poll leaves the question outstanding and returns to the
 elicitation deadline check; DELETE closes the original mailbox and wakes its
 readers, and late replies cannot revive it. HTTP reverse-request streaming,
-bounded mailbox admission and autonomous executor ownership remain incomplete;
+bounded mailbox admission and autonomous executor ownership use the production
+HTTP contracts above;
 this polling correction alone does not provide a working interactive HTTP flow.
 
 HTTP reverse-response POSTs receive 503 when their session mailbox has 64
@@ -2846,34 +2849,33 @@ also checks its cancellation flag without requiring progress metadata. A
 never-dispatched cancelled request produces no response or Store mutation;
 cancellation does not revoke a durable workflow already created.
 
-The staged private Linux native command owner now retains the existing
+The private Linux native command owner retains the existing
 OwnedNativeExecutor and drives its decision passes independently of client
 input, sharing the writer-only owner's complete command boundary. Stop fences
 original native admission before queue rejection and returns the original
 driver/report after supervised polling, retaining uncertain ownership for its
 caller. Operator diagnostics use the existing bounded output worker. This
 private integration changes no supported public signature, error code, wire
-discriminator, journal/hash format, dependency or MSRV; production transports
-do not construct it yet, so public autonomous execution remains unimplemented.
-Quiet deadline progress and writer release are focused host evidence, not
-real-process/MCP responsiveness or complete transport acceptance.
+discriminator, journal/hash format, dependency or MSRV. Supported production
+stdio and HTTP construct this owner; their focused real-process acceptance is
+recorded in plan 0020, with full integration gates due at plan completion.
 
 Private host protocol-read commands now cover resource listing/resolution and
 argument completion through the same bounded mailbox as tools, capturing one
 committed prefix and charging URI/Value allocation capacities. They reuse the
-existing resolvers and the original native driver's sanitized handler table;
-this adds no public wire/error/journal/hash change and does not yet connect
-production stdio or HTTP to the command host.
+existing resolvers and the original native driver's sanitized handler table.
+Production stdio and HTTP use this command boundary; public wire/error/journal
+formats and hashes are unchanged.
 
 The shared MCP method handler now has a private hosted entry that submits tools
 and protocol reads to the owner, leaving response formatting and client waits
 in the session adapter. Borrowed public helper signatures and wire responses
 remain unchanged. Admission busy, cancelled-request retirement and transport
 output failures have distinct internal types, so a committed request cannot
-be mislabeled server-busy when output is saturated. Production transports do
-not select this entry yet; interactive/progress forwarding and full egress
-admission remain outstanding, with no shipped autonomous capability or new
-public error/journal/hash/version/dependency/MSRV claim.
+be mislabeled server-busy when output is saturated. Supported production
+transports select this entry with interactive continuations, progress forwarding
+and bounded egress admission; public errors, journal/hash formats, versions,
+dependencies and MSRV remain unchanged.
 
 The private owned stdio composition now connects the existing capped framing
 and shared hosted method handler to the native owner with independent bounded
