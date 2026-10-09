@@ -358,6 +358,112 @@ impl Clock for FailedDiagnosticClock {
 }
 
 #[test]
+fn session_channels_diagnostic_cancel_at_full_host_capacity_releases_one_slot() {
+    let scratch = Scratch::new();
+    let store = super::seeded(&scratch.0);
+    let prefix = store.journal.last_seq;
+    let (owner, handle) = super::Owner::new(store, FixedClock::new(2000, 0));
+    let session = handle.session().unwrap();
+    let others = (0..3)
+        .map(|_| handle.session().unwrap())
+        .collect::<Vec<_>>();
+    let sink = SharedSink::new();
+    let (notifier, output) = Notifier::hosted_queued(Box::new(sink.writer())).unwrap();
+    let (entered, observed) = mpsc::channel();
+    let (release, resume) = mpsc::channel();
+    let path = scratch.0.clone();
+    let diagnostic = session.clone();
+    let caller = std::thread::spawn(move || {
+        handle_request_hosted(
+            &notifier,
+            &diagnostic,
+            &path,
+            &mut HeldDiagnosticClock {
+                entered: Some(entered),
+                resume,
+            },
+            &mut true,
+            &mut Live::default(),
+            value(r#""diagnostic""#),
+            "tools/call",
+            Some(value(
+                r#"{"name":"simulate","arguments":{"machine":"owner_case","events":[{"name":"finish","payload":{}},{"name":"finish","payload":{}}],"on_reject":"continue"}}"#,
+            )),
+            "diagnostic session",
+            None,
+            None,
+        )
+    });
+    observed.recv_timeout(Duration::from_secs(3)).unwrap();
+    // Keep the owner idle: all 31 ordinary commands remain admitted while
+    // the original diagnostic retains the thirty-second application slot.
+    let mut pending = (0..super::SESSION_COMMANDS - 1)
+        .map(|_| {
+            session
+                .submit(super::command("machine_list", "{}"))
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
+    for other in &others {
+        for _ in 0..super::SESSION_COMMANDS {
+            pending.push(other.submit(super::command("machine_list", "{}")).unwrap());
+        }
+    }
+    assert_eq!(pending.len() + 1, super::HOST_COMMANDS);
+    let extra = handle.session().unwrap();
+    assert_eq!(
+        extra.submit(super::command("machine_list", "{}")).err(),
+        Some(super::AdmissionError::Busy)
+    );
+    assert_eq!(extra.cancel(&value(r#""diagnostic""#)), 0);
+    assert_eq!(session.cancel(&value(r#""diagnostic""#)), 1);
+    assert_eq!(
+        extra.submit(super::command("machine_list", "{}")).err(),
+        Some(super::AdmissionError::Busy),
+        "cancellation cannot release a worker that has not returned"
+    );
+    release.send(()).unwrap();
+    assert!(caller.join().unwrap().is_ok());
+    assert_eq!(session.cancel(&value(r#""diagnostic""#)), 0);
+    pending.push(extra.submit(super::command("machine_list", "{}")).unwrap());
+    assert_eq!(
+        extra.submit(super::command("machine_list", "{}")).err(),
+        Some(super::AdmissionError::Busy),
+        "worker retirement must release exactly one host slot"
+    );
+    handle.stop();
+    owner.run();
+    output.close();
+    let watchdog = Instant::now() + Duration::from_secs(3);
+    while !output.drained() {
+        assert!(Instant::now() < watchdog);
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    let frames = sink.text().lines().map(value).collect::<Vec<_>>();
+    assert_eq!(frames.len(), 1);
+    let result = frames[0].get("result").unwrap();
+    assert_eq!(
+        result.get("isError"),
+        Some(&fsm_core::json::Value::Bool(true))
+    );
+    assert_eq!(
+        result
+            .get("structuredContent")
+            .unwrap()
+            .get("error")
+            .unwrap()
+            .get("code")
+            .and_then(fsm_core::json::Value::as_str),
+        Some("req/cancelled")
+    );
+    assert_eq!(Store::open(&scratch.0).unwrap().journal.last_seq, prefix);
+    assert_eq!(
+        crate::journal_io::verify(&scratch.0).health,
+        crate::journal_io::JournalHealth::Ok
+    );
+}
+
+#[test]
 fn session_channels_diagnostic_adapter_unwind_cancels_original_controls() {
     use crate::mcp::host::operation::HostedToolContext;
     let scratch = Scratch::new();

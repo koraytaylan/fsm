@@ -72,7 +72,7 @@ host or allocate an unbounded backlog.
 
 Focused channel review:
 
-- Nineteen focused `session_channels` cases pass, including original native
+- Twenty focused `session_channels` cases pass, including original native
   deadline progress and a second session response while actual output remains
   blocked, and replay through a replacement session after actual delivery
   failure without another journal append. Affected CLI test-target clippy and
@@ -86,8 +86,13 @@ Focused channel review:
   preserves another session's same-ID control, and releases the worker's
   reservation while retaining an independently held original reservation.
   Neutralizing only the cancellation guard fails this regression at exit 101;
-  restoring it passes. Full-capacity worker cancellation and owned-input
-  lifetime acceptance still require review before completion.
-- Completion also requires the original count/byte/frame boundary and
-  publication-order inventory to be reviewed together with the existing
-  elicitation/cancellation tests; no landing OID is assigned.
+  restoring it passes. A held production diagnostic retains the thirty-second
+  host slot while all other application slots remain occupied; original-session
+  cancellation reaches it without admitting another application command,
+  returns `req/cancelled`, and releases exactly one slot after actual return.
+  Another session cannot cancel that request. Owned-input diagnostic lifetime
+  acceptance still requires review before completion.
+- The three exact count/retained-byte/encoded-frame egress boundary cases and
+  all eighteen existing elicitation/cancellation integration cases pass.
+  Completion still requires the publication-order and owned-input diagnostic
+  lifetime inventories to be reviewed together; no landing OID is assigned.
