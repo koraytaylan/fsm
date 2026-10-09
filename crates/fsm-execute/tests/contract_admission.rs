@@ -15,6 +15,10 @@ use std::collections::BTreeMap;
 #[path = "contract_admission/service.rs"]
 mod service;
 
+#[cfg(target_os = "linux")]
+#[path = "contract_admission/provisioned.rs"]
+mod provisioned;
+
 fn fixture() -> (Store, PendingEffect, HandlerTable) {
     let mut store = Store::open_memory().unwrap();
     let mut clock = FixedClock::new(1000, 1);

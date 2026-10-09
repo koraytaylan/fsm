@@ -41,7 +41,7 @@ class Retirement(unittest.TestCase):
             command.assert_not_called()
 
     def exercise(self, *, initial=True, clear=True, stages=False, timeout=False,
-                 missing=False, changed=False, export_error=False, private=False, scheduling=False):
+                 missing=False, changed=False, export_error=False, private=False, scheduling=False, contract=False):
         with tempfile.TemporaryDirectory(dir=os.environ['TMPDIR']) as scratch:
             directory = Path(scratch)
             artifact = directory / 'never-executed'
@@ -56,6 +56,9 @@ class Retirement(unittest.TestCase):
             if scheduling:
                 markers = [f'FSM_NATIVE_CRASH_CASE candidate-result {host} {kind} {behavior}'.encode()
                            for host, kind, behavior in probe.PRIVATE_SCHEDULING_CASES]
+            if contract:
+                markers = [f'FSM_NATIVE_CRASH_CASE candidate-result {host} {kind} {behavior}'.encode()
+                           for host, kind, behavior in probe.CONTRACT_ADMISSION_CASES]
             if missing:
                 markers.pop()
             output = b'\n'.join(markers) + b'\n1 passed; 0 failed; 0 ignored;\n'
@@ -74,12 +77,13 @@ class Retirement(unittest.TestCase):
                       if timeout else subprocess.CompletedProcess([], 0, output, b''))
             with (
                 patch.dict(os.environ, GITHUB_ACTIONS='true', RUNNER_OS='Linux'),
-                patch.object(probe.argparse.ArgumentParser, 'parse_args', return_value=SimpleNamespace(toolchain='stable', report=report, private_owner=private, private_scheduling=scheduling)),
+                patch.object(probe.argparse.ArgumentParser, 'parse_args', return_value=SimpleNamespace(toolchain='stable', report=report, private_owner=private, private_scheduling=scheduling, contract_admission=contract)),
                 patch.object(probe.authority, 'build_authority', return_value=artifact),
                 patch.object(probe, 'build_crash_artifacts', return_value={name: artifact for name in ('TEST', 'FIXTURE', 'CLI')}),
                 patch.object(probe, 'build_host_test', return_value=artifact) as host_build,
                 patch.object(probe, 'build_boundary_test', return_value=artifact) as boundary_build,
                 patch.object(probe, 'build_owner_test', return_value=artifact),
+                patch.object(probe, 'build_completion_test', return_value=artifact) as contract_build,
                 patch.object(probe.authority, 'authority_state_is_clear', side_effect=[initial, clear] if initial else [False]),
                 patch.object(probe, 'staging_paths', side_effect=[set(), {Path('/mock/stage')} if stages else set()]),
                 patch.object(probe.subprocess, 'check_output', side_effect=check_output) as checked,
@@ -104,10 +108,10 @@ class Retirement(unittest.TestCase):
                 else:
                     self.assertEqual(probe.main(), 1 if timeout or missing else 0)
                 evidence = json.loads(report.read_text())
-                self.assertEqual(evidence['scope'], 'private-owner-scheduling' if scheduling else 'public-and-private-held-handlers' if private else 'pre-publication-collected-candidates-supervisor-death-domain-close-journal-cuts-host-claim-enrolled-authorization-and-repeated-noisy-hosts')
+                self.assertEqual(evidence['scope'], 'native-contract-refusal-repair' if contract else 'private-owner-scheduling' if scheduling else 'public-and-private-held-handlers' if private else 'pre-publication-collected-candidates-supervisor-death-domain-close-journal-cuts-host-claim-enrolled-authorization-and-repeated-noisy-hosts')
                 self.assertEqual(evidence['passed'], clear and not stages and not timeout and not missing and not changed)
                 self.assertFalse(evidence['gate_released'])
-                self.assertEqual(run.call_args_list[0].kwargs['timeout'], 1400 if scheduling else 1200 if private else 3900)
+                self.assertEqual(run.call_args_list[0].kwargs['timeout'], 900 if contract else 1400 if scheduling else 1200 if private else 3900)
                 if private:
                     host_build.assert_called_once()
                     boundary_build.assert_called_once()
@@ -125,6 +129,16 @@ class Retirement(unittest.TestCase):
                     self.assertIn('GITHUB_ACTIONS=true', evidence['command'])
                     self.assertEqual(evidence['command'][-5],
                                      'authority::allocator::native_tests::crash_matrix::provisioned_private_scheduling_owner_matrix')
+                elif contract:
+                    host_build.assert_not_called()
+                    boundary_build.assert_not_called()
+                    contract_build.assert_called_once()
+                    self.assertEqual(set(evidence['artifacts']), {'CONTRACT', 'FIXTURE', 'CLI'})
+                    self.assertEqual(len(evidence['cases']), 4)
+                    self.assertEqual(evidence['scope'], 'native-contract-refusal-repair')
+                    self.assertFalse(evidence['task_complete'])
+                    self.assertEqual(evidence['command'][-5],
+                                     'authority::allocator::native_tests::crash_matrix::provisioned_contract_admission_matrix')
                 else:
                     host_build.assert_not_called()
                     boundary_build.assert_not_called()
@@ -138,6 +152,15 @@ class Retirement(unittest.TestCase):
                     self.assertEqual(evidence['retained_authority'], installed)
                     if export_error:
                         self.assertIn('export unavailable', evidence['failure_export_error'])
+
+    def test_contract_admission_selects_both_entries_and_handler_kinds(self):
+        self.exercise(contract=True)
+
+    def test_missing_contract_admission_axis_cannot_pass(self):
+        self.exercise(contract=True, missing=True)
+
+    def test_contract_admission_timeout_preserves_failed_evidence(self):
+        self.exercise(contract=True, timeout=True)
 
     def test_success_retires_only_the_installed_identity(self):
         self.exercise()

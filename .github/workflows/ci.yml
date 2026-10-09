@@ -224,6 +224,26 @@ jobs:
             --source-commit "$GITHUB_SHA" \
             --rustc "$(rustc +${{ matrix.rust }} --version)" \
             --report-dir "$FSM_NATIVE_CACHE/scheduling-evidence"
+      - name: Provisioned native contract refusal and repair
+        if: ${{ !inputs.completion_owner_only && !inputs.scheduling_owner_only }}
+        run: >-
+          python3 crates/fsm-execute/tests/lifecycle_platform/crash_probe.py
+          --contract-admission --toolchain '${{ matrix.rust }}'
+          --report '${{ env.FSM_NATIVE_CACHE }}/contract-admission-evidence/contract-admission.json'
+      - name: Verify native contract refusal and repair evidence
+        if: ${{ !inputs.completion_owner_only && !inputs.scheduling_owner_only }}
+        run: |
+          python3 crates/fsm-execute/tests/lifecycle_platform/verify_contract_admission_evidence.py \
+            --source-commit "$GITHUB_SHA" \
+            --rustc "$(rustc +${{ matrix.rust }} --version)" \
+            --report-dir "$FSM_NATIVE_CACHE/contract-admission-evidence"
+      - name: Retain native contract admission evidence
+        if: ${{ always() && !inputs.completion_owner_only && !inputs.scheduling_owner_only }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-contract-admission-${{ matrix.rust }}
+          path: ${{ env.FSM_NATIVE_CACHE }}/contract-admission-evidence
+          if-no-files-found: error
       - name: Provisioned lifecycle candidate crash matrix
         if: ${{ !inputs.completion_owner_only && !inputs.scheduling_owner_only }}
         id: crash_matrix

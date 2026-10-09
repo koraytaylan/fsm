@@ -170,6 +170,46 @@ fn provisioned_private_scheduling_owner_matrix() {
     fs::remove_dir_all(staging).unwrap();
 }
 
+#[test]
+#[ignore = "requires disposable native CI and exact staged contract admission artifacts"]
+fn provisioned_contract_admission_matrix() {
+    assert_eq!(
+        std::env::var("FSM_NATIVE_FIXTURE_DISPOSABLE").as_deref(),
+        Ok("1")
+    );
+    assert_eq!(fs::metadata("/proc/self").unwrap().uid(), 0);
+    let seed = format!("{}-{:?}", std::process::id(), std::time::SystemTime::now());
+    let nonce = fsm_core::sha256::to_hex(&fsm_core::sha256::sha256(seed.as_bytes()));
+    let staging = PathBuf::from(format!("/usr/libexec/fsm-crash-{}", &nonce[..24]));
+    fs::DirBuilder::new().mode(0o755).create(&staging).unwrap();
+    fs::set_permissions(&staging, fs::Permissions::from_mode(0o755)).unwrap();
+    for (name, variable) in [
+        ("contract-test", "CONTRACT"),
+        ("fixture", "FIXTURE"),
+        ("fsm", "CLI"),
+    ] {
+        super::workflow_cases::stage_artifact(
+            &staging.join(name),
+            &format!("FSM_CRASH_{variable}_ARTIFACT"),
+            &format!("FSM_CRASH_{variable}_SHA256"),
+        );
+    }
+    for behavior in ["contract-standalone", "contract-borrowed"] {
+        for kind in ["process", "mcp"] {
+            scenario(
+                &staging,
+                &nonce[..24],
+                Scenario {
+                    host: "contract",
+                    kind,
+                    behavior,
+                },
+            );
+        }
+    }
+    fs::remove_dir_all(staging).unwrap();
+}
+
 fn scenario(staging: &Path, nonce: &str, case: Scenario) {
     let Scenario {
         host,
@@ -317,9 +357,10 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
     let log_path = staging.join(format!("{host}-{kind}-{behavior}.log"));
     let log = fs::File::create(&log_path).unwrap();
     let private = host == "private";
-    let completion = private || matches!(host, "boundary" | "capacity");
+    let completion = private || matches!(host, "boundary" | "capacity" | "contract");
     let artifact = match host {
         "private" => "host-test",
+        "contract" => "contract-test",
         "boundary" => "boundary-test",
         "capacity" => "owner-test",
         _ => "matrix-test",
@@ -327,7 +368,11 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
     let mut command = Command::new("/usr/bin/python3");
     command.args(["-c", "import os,sys;os.setgroups([]);os.setgid(65534);os.setuid(65534);os.execv(sys.argv[1],sys.argv[1:])"])
         .arg(staging.join(artifact))
-        .args(["--exact", if behavior == "schedule-success" {
+        .args(["--exact", if behavior == "contract-standalone" {
+            "provisioned::standalone_native_refusal_preserves_work_and_repair_starts_original_handler"
+        } else if behavior == "contract-borrowed" {
+            "provisioned::borrowed_native_refusal_preserves_work_and_repair_starts_original_handler"
+        } else if behavior == "schedule-success" {
             "mcp::host::tests::held_handlers::autonomous_schedule_real_handler_success_without_another_command"
         } else if behavior == "schedule-queues" {
             "mcp::host::tests::scheduling_handlers::autonomous_schedule_ready_completions_yield_to_admitted_application_within_eight_turns"
@@ -362,7 +407,7 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
         } else {
             "native::production_candidate_result_crash_retains_original_tree_until_verified_closure"
         }, "--ignored", "--nocapture", "--color", "never"])
-        .env(if completion { "FSM_COMPLETION_NATIVE_MANIFEST" } else { "FSM_LIFECYCLE_NATIVE_MANIFEST" }, &manifest)
+        .env(if host == "contract" { "FSM_CONTRACT_NATIVE_MANIFEST" } else if completion { "FSM_COMPLETION_NATIVE_MANIFEST" } else { "FSM_LIFECYCLE_NATIVE_MANIFEST" }, &manifest)
         .env("TMPDIR", &fixture.store)
         .stdin(Stdio::null()).stdout(log.try_clone().unwrap()).stderr(log);
     if completion {
@@ -528,6 +573,8 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                             | "boundary-deferred"
                             | "capacity-held"
                             | "private-output"
+                            | "contract-standalone"
+                            | "contract-borrowed"
                             | "schedule-success"
                             | "schedule-retry"
                             | "schedule-compensation"
@@ -557,6 +604,8 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                         | "boundary-deferred"
                         | "capacity-held"
                         | "private-output"
+                        | "contract-standalone"
+                        | "contract-borrowed"
                         | "schedule-success"
                         | "schedule-recovery"
                         | "schedule-construction"
@@ -727,6 +776,8 @@ fn verify(fixture: &Fixture, behavior: &str) {
                     | "boundary-deferred"
                     | "capacity-held"
                     | "private-output"
+                    | "contract-standalone"
+                    | "contract-borrowed"
                     | "schedule-success"
                     | "schedule-recovery"
             ) {

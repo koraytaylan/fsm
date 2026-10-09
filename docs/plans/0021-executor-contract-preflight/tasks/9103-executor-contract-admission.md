@@ -26,6 +26,13 @@ touches:
   - crates/fsm-execute/src/run/native_client/execution.rs
   - crates/fsm-execute/tests/contract_admission.rs
   - crates/fsm-execute/tests/contract_admission/service.rs
+  - crates/fsm-execute/tests/contract_admission/provisioned.rs
+  - crates/fsm-execute/src/containment/crash_matrix_native_tests.rs
+  - crates/fsm-execute/tests/lifecycle_platform/crash_probe.py
+  - crates/fsm-execute/tests/lifecycle_platform/test_crash_producer.py
+  - crates/fsm-execute/tests/lifecycle_platform/verify_contract_admission_evidence.py
+  - crates/fsm-execute/tests/lifecycle_platform/test_contract_admission_evidence.py
+  - .github/workflows/ci.yml
   - crates/fsm-execute/tests/pipeline.rs
   - crates/fsm-execute/tests/pipeline/recovery.rs
   - crates/fsm-execute/tests/fixtures/contract/

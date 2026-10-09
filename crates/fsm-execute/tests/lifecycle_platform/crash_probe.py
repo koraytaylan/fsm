@@ -8,7 +8,7 @@ import subprocess
 import sys
 
 import authority_probe as authority
-from cli_artifact import build_crash_artifacts, build_host_test, build_boundary_test, build_owner_test
+from cli_artifact import build_crash_artifacts, build_host_test, build_boundary_test, build_owner_test, build_completion_test
 from workflow_probe import digest
 import workflow_failure_export
 
@@ -41,6 +41,11 @@ PRIVATE_SCHEDULING_CASES = (('private', 'process', 'schedule-success'),
              ('private', 'process', 'schedule-queues'),
              ('private', 'mcp', 'schedule-queues'))
 
+CONTRACT_ADMISSION_CASES = tuple(('contract', kind, behavior)
+                                 for behavior in ('contract-standalone', 'contract-borrowed')
+                                 for kind in ('process', 'mcp'))
+
+
 def staging_paths():
     return set(Path('/usr/libexec').glob('fsm-crash-*'))
 
@@ -54,10 +59,13 @@ def main():
                         help='exercise the public and private held-handler cases')
     modes.add_argument('--private-scheduling', action='store_true',
                        help='exercise the separate private scheduling inventory')
+    modes.add_argument('--contract-admission', action='store_true',
+                       help='exercise standalone and borrowed native contract refusal/repair')
     args = parser.parse_args()
     private = getattr(args, 'private_owner', False)
     scheduling = getattr(args, 'private_scheduling', False)
-    observer = private or scheduling
+    contract = getattr(args, 'contract_admission', False)
+    observer = private or scheduling or contract
     assert __debug__ and os.environ.get('GITHUB_ACTIONS') == 'true'
     assert os.environ.get('RUNNER_OS') == 'Linux'
     repo = Path(__file__).resolve().parents[4]
@@ -68,7 +76,11 @@ def main():
     artifacts = build_crash_artifacts(repo, args.toolchain)
     if observer:
         artifacts.pop('TEST')
-        artifacts['HOST'] = build_host_test(repo, args.toolchain)
+        if not contract:
+            artifacts['HOST'] = build_host_test(repo, args.toolchain)
+    if contract:
+        artifacts['CONTRACT'] = build_completion_test(repo, args.toolchain, 'fsm-execute',
+            ['--test', 'contract_admission'], 'contract_admission', ['test'])
     if private:
         artifacts['BOUNDARY'] = build_boundary_test(repo, args.toolchain)
         artifacts['OWNER'] = build_owner_test(repo, args.toolchain)
@@ -92,6 +104,9 @@ def main():
                       scope='private-owner-scheduling', task_complete=False)
     installed = json.loads(subprocess.check_output(
         [*installer, 'install', '--source', str(executable), '--sha256', expected], timeout=10))
+    if contract:
+        report.update(schema='fsm.native-contract-admission/1',
+                      scope='native-contract-refusal-repair', task_complete=False)
     try:
         command = ['sudo', '-n', 'env', 'TMPDIR=' + os.environ['TMPDIR'],
                    'FSM_NATIVE_FIXTURE_DISPOSABLE=1',
@@ -104,11 +119,12 @@ def main():
         if observer:
             command.append('GITHUB_ACTIONS=true')
         command.extend([str(fixture), '--exact',
-                        ('authority::allocator::native_tests::crash_matrix::provisioned_private_scheduling_owner_matrix'
+                        ('authority::allocator::native_tests::crash_matrix::provisioned_contract_admission_matrix'
+                         if contract else 'authority::allocator::native_tests::crash_matrix::provisioned_private_scheduling_owner_matrix'
                          if scheduling else 'authority::allocator::native_tests::crash_matrix::provisioned_private_completion_owner_matrix'
                          if private else 'authority::allocator::native_tests::crash_matrix::provisioned_lifecycle_candidate_matrix'),
                         '--ignored', '--nocapture', '--color', 'never'])
-        timeout = 1400 if scheduling else 1200 if private else 3900
+        timeout = 900 if contract else 1400 if scheduling else 1200 if private else 3900
         try:
             result = subprocess.run(command, cwd=repo, capture_output=True, timeout=timeout)
             report['timed_out'] = False
@@ -134,12 +150,22 @@ def main():
                                      passed=result.stdout.splitlines().count(
                                          f'FSM_NATIVE_CRASH_CASE candidate-result {host} {kind} {behavior}'.encode()) == 1)
                                  for host, kind, behavior in PRIVATE_SCHEDULING_CASES])
+        if contract:
+            report.update(cases=[dict(host=host, kind=kind, behavior=behavior,
+                                     passed=result.stdout.splitlines().count(
+                                         f'FSM_NATIVE_CRASH_CASE candidate-result {host} {kind} {behavior}'.encode()) == 1)
+                                 for host, kind, behavior in CONTRACT_ADMISSION_CASES])
         report['passed'] = (result.returncode == 0
                             and b'1 passed; 0 failed; 0 ignored;' in result.stdout
                             and all(row['passed'] for row in report['cases']))
         assert subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=repo, text=True).strip() == commit
         assert not subprocess.check_output(['git', 'status', '--porcelain', '--untracked-files=no'], cwd=repo)
     except BaseException:
+        if contract:
+            report.update(cases=[dict(host=host, kind=kind, behavior=behavior,
+                                     passed=result.stdout.splitlines().count(
+                                         f'FSM_NATIVE_CRASH_CASE candidate-result {host} {kind} {behavior}'.encode()) == 1)
+                                 for host, kind, behavior in CONTRACT_ADMISSION_CASES])
         report['passed'] = False
         raise
     finally:
