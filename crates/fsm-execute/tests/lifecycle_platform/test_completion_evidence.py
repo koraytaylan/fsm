@@ -78,6 +78,18 @@ class CompletionEvidence(unittest.TestCase):
             with self.subTest(alter=alter), self.assertRaises(ValueError):
                 self.exercise(alter_log=alter)
 
+    def test_every_public_and_private_handler_case_is_required(self):
+        for index, case in enumerate(INVENTORY):
+            with self.subTest(case=case), self.assertRaises(ValueError):
+                self.exercise(alter_log=lambda lines: lines.pop(index))
+
+    def test_public_boundary_artifact_cannot_be_omitted_or_rebound(self):
+        for alter in [lambda report: report['artifacts'].pop('BOUNDARY'),
+                      lambda report: report['artifacts']['BOUNDARY'].update(path='/other/test'),
+                      lambda report: report['artifacts']['BOUNDARY'].update(sha256='e' * 64)]:
+            with self.subTest(alter=alter), self.assertRaises(ValueError):
+                self.exercise(alter_report=alter)
+
     def test_rejects_wrong_artifact_binding_and_wrong_coordinator(self):
         changes = [lambda report: report['command'].append(report['command'][6]),
                    lambda report: report['artifacts']['HOST'].update(sha256='e' * 64),
