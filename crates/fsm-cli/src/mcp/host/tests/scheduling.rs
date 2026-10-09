@@ -586,3 +586,82 @@ fn autonomous_schedule_continuously_ready_application_gets_each_bounded_turn() {
         crate::journal_io::JournalHealth::Ok
     );
 }
+
+#[test]
+fn autonomous_schedule_ready_commands_yield_after_eight_without_wait_time() {
+    let scratch = Scratch::new();
+    let mut store = Store::open(&scratch.0).unwrap();
+    let mut clock = FixedClock::new(1000, 0);
+    store
+        .define_machine_on(&mut clock, value(super::interaction::CASE), false, false)
+        .unwrap();
+    store
+        .create_instance_ctx_on(
+            &mut clock,
+            "question_case",
+            "question",
+            "create-question",
+            None,
+            &BTreeMap::new(),
+            &[],
+        )
+        .unwrap();
+    let before = store.journal.last_seq;
+    struct AdmissionClock(bool);
+    impl Clock for AdmissionClock {
+        fn now_ms(&mut self) -> i64 {
+            if std::mem::replace(&mut self.0, false) {
+                1000
+            } else {
+                1001
+            }
+        }
+    }
+    let (waits, _observed_waits) = std::sync::mpsc::channel();
+    let (owner, handle) = NativeOwner::new(
+        OwnedNativeExecutor::new(store, HandlerTable::default()).unwrap(),
+        AdmissionClock(true),
+        DiagnosticOutput::start(std::io::sink()).unwrap(),
+        Duration::from_secs(86400),
+        10000,
+    )
+    .unwrap();
+    let owner = owner.with_wait_clock(ManualWaitClock {
+        epoch: Instant::now(),
+        elapsed: Arc::new(AtomicUsize::new(0)),
+        waits,
+    });
+    let sessions = (0..4)
+        .map(|_| handle.session().unwrap())
+        .collect::<Vec<_>>();
+    // Neither the wait clock nor the one-day interval can authorize this poll;
+    // the eighth admitted command alone must yield to the logical due deadline.
+    let replies = (0..32)
+        .map(|index| {
+            sessions[index % 4]
+                .submit(super::command(
+                    "instance_get",
+                    r#"{"instance_id":"question"}"#,
+                ))
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
+    let worker = std::thread::spawn(move || owner.run());
+    let outcomes = replies
+        .into_iter()
+        .map(|reply| reply.recv_timeout(Duration::from_secs(3)).unwrap())
+        .collect::<Vec<_>>();
+    handle.stop();
+    let exit = worker.join().unwrap();
+    assert!(exit.failure.is_none() && exit.shutdown.writer_released);
+    for (index, outcome) in outcomes.iter().enumerate() {
+        assert!(outcome.result.is_ok());
+        assert_eq!(outcome.committed_seq, before + u64::from(index >= 8));
+    }
+    let reopened = Store::open(&scratch.0).unwrap();
+    assert_eq!(reopened.journal.last_seq, before + 1);
+    assert_eq!(
+        crate::journal_io::verify(&scratch.0).health,
+        crate::journal_io::JournalHealth::Ok
+    );
+}
