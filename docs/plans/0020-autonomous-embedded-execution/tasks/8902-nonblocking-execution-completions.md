@@ -74,10 +74,14 @@ owner from answering another eligible request.
 - **Done when:** real process and MCP fixtures pass the low-level `async_completion` and private CLI `execution_host` inventories without handler waits on the store owner, while existing executor recovery and public-surface gates pass under the stable host gate.
 
 
-Acceptance remains incomplete: the required `async_completion` target is
-absent, and the private host real held-handler observer and protected coordinator
-have no passing disposable-CI runtime evidence yet. Existing ownership fixtures
-with an empty handler table do not establish held process/MCP responsiveness.
+Acceptance remains incomplete: `async_completion` now contains real held-process
+and held-MCP public-driver cases, but those cases have only compile/lint evidence.
+The private host observer passes both handler kinds on stable/MSRV at frozen
+`217e5e84`; scoped runtime verdict
+`568c9272b2fafe095aedb1b439b0bd33f41d0fb95b16ffe42e68d25f129250d7`.
+This proves read/mutation/control responsiveness before release through the real
+lifecycle adapter, not the remaining capacity, generation, backpressure,
+interrupted-settlement or full-gate inventory.
 The written tests above remain the acceptance inventory; existing worker and
 empty-handler checks cannot replace it. Historical implementation checkpoints
 are preserved in the task cache under SHA-256

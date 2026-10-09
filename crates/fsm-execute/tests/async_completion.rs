@@ -1,0 +1,196 @@
+//! The public driver is observed with genuine barrier-held native handlers.
+//! Ignored cases require the protected disposable-CI coordinator, not local setup.
+
+#[cfg(target_os = "linux")]
+mod native {
+    use std::{
+        collections::BTreeMap,
+        fs,
+        io::Read,
+        os::unix::fs::{MetadataExt, OpenOptionsExt},
+        path::PathBuf,
+        time::{Duration, Instant},
+    };
+
+    use fsm_core::json::{JsonLimits, Value, parse};
+    use fsm_execute::{
+        config::HandlerTable,
+        service::{ExecutorPhase, OwnedNativeExecutor, ShutdownMode},
+    };
+    use fsm_store::{clock::FixedClock, store::Store};
+
+    const MACHINE: &[u8] = br#"{
+     "format":"fsm.machine/1","name":"async_completion","context":[],
+     "events":[{"name":"done","fields":[]}],"effects":[{"name":"notify","fields":[]}],
+     "states":[{"name":"running","entry":{"emit":[{"effect":"notify","args":{}}]}},
+               {"name":"finished","terminal":true}],
+     "initial":"running","transitions":[{"from":"running","on":"done","to":"finished"}]
+    }"#;
+
+    #[test]
+    #[ignore = "requires disposable native CI and exact staged process fixture"]
+    fn async_completion_process_dispatch_poll_and_stop_do_not_wait_for_release() {
+        observe("process");
+    }
+
+    #[test]
+    #[ignore = "requires disposable native CI and exact staged MCP fixture"]
+    fn async_completion_mcp_dispatch_poll_and_stop_do_not_wait_for_release() {
+        observe("mcp");
+    }
+
+    fn observe(kind: &str) {
+        let manifest = manifest();
+        assert_eq!(field(&manifest, "kind"), kind);
+        let store_path = PathBuf::from(field(&manifest, "store"));
+        let resource = PathBuf::from(field(&manifest, "resource"));
+        assert!(!resource.join("root-release").exists());
+        let mut store = Store::open(&store_path).unwrap();
+        let mut clock = FixedClock::new(2000, 0);
+        store
+            .define_machine_on(
+                &mut clock,
+                parse(MACHINE, &JsonLimits::DEFAULT).unwrap(),
+                false,
+                false,
+            )
+            .unwrap();
+        store
+            .create_instance_ctx_on(
+                &mut clock,
+                "async_completion",
+                "held",
+                "create-held",
+                None,
+                &BTreeMap::new(),
+                &[],
+            )
+            .unwrap();
+        let handlers =
+            HandlerTable::parse(&fs::read_to_string(store_path.join("handlers.json")).unwrap())
+                .unwrap();
+        let mut driver = OwnedNativeExecutor::new(store, handlers).unwrap();
+        driver.enable_worker_polling();
+        let control = driver.control();
+        let deadline = Instant::now() + Duration::from_secs(12);
+        while !resource.join("root-candidate").is_file() {
+            let entered = Instant::now();
+            let _ = driver.tick(&mut clock, 2000);
+            assert!(
+                entered.elapsed() < Duration::from_secs(2),
+                "dispatch waited on a held handler"
+            );
+            assert!(!resource.join("root-release").exists());
+            assert!(
+                Instant::now() < deadline,
+                "real handler did not reach its barrier"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(
+            driver
+                .store_mut()
+                .unwrap()
+                .state
+                .execution
+                .unresolved()
+                .count(),
+            1
+        );
+        assert_eq!(
+            driver.store_mut().unwrap().state.instances["held"]
+                .pending
+                .len(),
+            1
+        );
+        let prefix = driver.store_mut().unwrap().journal.last_seq;
+
+        // Invoke the public completion boundary on the same writer owner while
+        // the actual process/MCP conversation is still held outside that owner.
+        for _ in 0..3 {
+            let entered = Instant::now();
+            let _ = driver.poll(&mut clock, 2000);
+            assert!(
+                entered.elapsed() < Duration::from_secs(2),
+                "completion polling waited on release"
+            );
+            assert!(!resource.join("root-release").exists());
+            assert_eq!(driver.store_mut().unwrap().journal.last_seq, prefix);
+        }
+        let entered = Instant::now();
+        let request = control.stop(ShutdownMode::Abort, 10000).unwrap();
+        assert!(
+            entered.elapsed() < Duration::from_secs(2),
+            "stop request waited on release"
+        );
+        assert!(control.report().admission_closed);
+        assert!(!resource.join("root-release").exists());
+        let deadline = Instant::now() + Duration::from_secs(12);
+        while control.report().phase != ExecutorPhase::Stopped {
+            let entered = Instant::now();
+            let _ = driver.poll(&mut clock, 2000);
+            assert!(
+                entered.elapsed() < Duration::from_secs(2),
+                "shutdown polling waited on the handler"
+            );
+            assert!(
+                Instant::now() < deadline,
+                "native abort did not retire the original attempt"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let report = request.wait();
+        assert!(report.inventory_complete && report.helpers_retired && report.writer_released);
+        assert!(driver.store_mut().is_none());
+        assert!(!resource.join("root-release").exists());
+        let verified = fsm_store::journal_io::verify(&store_path);
+        assert_eq!(verified.health, fsm_store::journal_io::JournalHealth::Ok);
+        let reopened = Store::open(&store_path).unwrap();
+        assert_eq!(verified.records, reopened.records.len() as u64);
+        assert_eq!(reopened.state.execution.unresolved().count(), 0);
+    }
+
+    fn field<'a>(manifest: &'a Value, name: &str) -> &'a str {
+        manifest
+            .get(name)
+            .and_then(Value::as_str)
+            .expect("protected fixture field")
+    }
+
+    fn manifest() -> Value {
+        assert_eq!(std::env::var("GITHUB_ACTIONS").as_deref(), Ok("true"));
+        let path = PathBuf::from(
+            std::env::var_os("FSM_COMPLETION_NATIVE_MANIFEST").expect("Root coordinator manifest"),
+        );
+        assert!(path.is_absolute());
+        for parent in path.ancestors().skip(1) {
+            let metadata = fs::symlink_metadata(parent).unwrap();
+            assert!(metadata.is_dir());
+            assert_eq!(metadata.uid(), 0);
+            assert_eq!(metadata.mode() & 0o022, 0);
+        }
+        let mut file = fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(0o400000)
+            .open(&path)
+            .unwrap();
+        let metadata = file.metadata().unwrap();
+        assert!(metadata.is_file() && metadata.len() <= 65_536);
+        assert_eq!(
+            (metadata.uid(), metadata.mode() & 0o7777, metadata.nlink()),
+            (0, 0o444, 1)
+        );
+        let mut encoded = Vec::new();
+        Read::by_ref(&mut file)
+            .take(65_537)
+            .read_to_end(&mut encoded)
+            .unwrap();
+        assert!(encoded.len() <= 65_536);
+        let current = fs::symlink_metadata(path).unwrap();
+        assert_eq!(
+            (metadata.dev(), metadata.ino()),
+            (current.dev(), current.ino())
+        );
+        parse(&encoded, &JsonLimits::DEFAULT).unwrap()
+    }
+}
