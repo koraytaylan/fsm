@@ -624,10 +624,11 @@ impl Endpoint {
         // would hand the client a gap it cannot detect; an id this session
         // never issued is `400`, because that is the client's mistake rather
         // than time passing.
-        let resume = match request
+        let resume_id = request
             .header("last-event-id")
-            .and_then(|id| id.parse::<u64>().ok())
-        {
+            .and_then(|id| id.parse::<u64>().ok());
+        let mut last_id = resume_id.unwrap_or_else(|| stream.next_id());
+        let resume = match resume_id {
             None => Vec::new(),
             Some(last) => match stream.resume_after(last) {
                 Ok(missed) => missed,
@@ -638,7 +639,6 @@ impl Endpoint {
             },
         };
         begin_stream(out)?;
-        let mut last_id = stream.next_id();
         for event in resume {
             // The bytes that were sent, not bytes regenerated now.
             write_event(out, event.id, &event.data)?;
@@ -687,7 +687,10 @@ impl Endpoint {
             if self.sessions.with(session_id, |_| ()).is_none() {
                 return;
             }
-            let (events, _gap) = stream.replay_after(last_id);
+            let (events, gap) = stream.replay_after(last_id);
+            if gap {
+                return;
+            }
             for event in events {
                 if write_event(out, event.id, &event.data).is_err() {
                     return;

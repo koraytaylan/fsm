@@ -139,13 +139,17 @@ impl Stream {
         let id = *next;
         let mut kept = self.kept.lock().unwrap_or_else(|e| e.into_inner());
         let mut bytes = self.bytes.lock().unwrap_or_else(|e| e.into_inner());
-        kept.push(Kept {
-            id,
-            data: data.to_vec(),
-        });
-        *bytes += data.len();
-        // Both bounds, oldest first, whichever is reached.
-        while kept.len() > REPLAY_EVENTS || (*bytes > REPLAY_BYTES && kept.len() > 1) {
+        if data.len() > REPLAY_BYTES {
+            kept.clear();
+            *bytes = 0;
+            *self
+                .evicted_through
+                .lock()
+                .unwrap_or_else(|e| e.into_inner()) = id;
+            return Some(id);
+        }
+        // Evict before cloning, so even transient retained payload stays bounded.
+        while kept.len() >= REPLAY_EVENTS || *bytes > REPLAY_BYTES - data.len() {
             let dropped = kept.remove(0);
             *bytes -= dropped.data.len();
             *self
@@ -153,6 +157,11 @@ impl Stream {
                 .lock()
                 .unwrap_or_else(|e| e.into_inner()) = dropped.id;
         }
+        kept.push(Kept {
+            id,
+            data: data.to_vec(),
+        });
+        *bytes += data.len();
         Some(id)
     }
 
@@ -210,7 +219,11 @@ impl Stream {
     /// than that was already dropped.
     pub fn replay_after(&self, id: u64) -> (Vec<Kept>, bool) {
         let kept = self.kept.lock().unwrap_or_else(|e| e.into_inner());
-        let gap = kept.first().is_some_and(|first| first.id > id + 1);
+        let gap = id
+            < *self
+                .evicted_through
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
         (
             kept.iter().filter(|event| event.id > id).cloned().collect(),
             gap,
@@ -237,6 +250,7 @@ pub struct SessionStream<W: Write> {
     out: W,
     stream: Arc<Stream>,
     pending: Vec<u8>,
+    failed: bool,
 }
 
 impl<W: Write> SessionStream<W> {
@@ -245,6 +259,7 @@ impl<W: Write> SessionStream<W> {
             out,
             stream,
             pending: Vec::new(),
+            failed: false,
         }
     }
 
@@ -258,6 +273,9 @@ impl<W: Write> SessionStream<W> {
 
 impl<W: Write> Write for SessionStream<W> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        if self.failed {
+            return Err(std::io::ErrorKind::InvalidData.into());
+        }
         if self.stream.retired.load(Ordering::Acquire) {
             self.pending.clear();
             return Err(std::io::ErrorKind::BrokenPipe.into());
@@ -273,6 +291,11 @@ impl<W: Write> Write for SessionStream<W> {
                     write_event(&mut self.out, id, &data)?;
                 }
             } else {
+                if self.pending.len() == REPLAY_BYTES {
+                    self.pending = Vec::new();
+                    self.failed = true;
+                    return Err(std::io::ErrorKind::InvalidData.into());
+                }
                 self.pending.push(*byte);
             }
         }

@@ -348,3 +348,49 @@ mod native {
         );
     }
 }
+
+#[test]
+fn live_http_stream_closes_on_overflow_instead_of_delivering_a_gap() {
+    struct OverflowAtHeaders {
+        bytes: Vec<u8>,
+        stream: Arc<Stream>,
+        stop: Arc<std::sync::atomic::AtomicBool>,
+        seeded: bool,
+    }
+    impl Write for OverflowAtHeaders {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.bytes.extend_from_slice(bytes);
+            if self.seeded {
+                self.stop.store(true, Ordering::Release);
+            }
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            if !self.seeded {
+                for _ in 0..=super::super::sse::REPLAY_EVENTS {
+                    self.stream.record(b"event");
+                }
+                self.seeded = true;
+            }
+            Ok(())
+        }
+    }
+    let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let endpoint = Endpoint::new(DEFAULT_PATH, None, "").with_stop(Arc::clone(&stop));
+    let session = initialize(&endpoint, 1000);
+    let stream = endpoint.stream_state(&session);
+    let mut out = OverflowAtHeaders {
+        bytes: Vec::new(),
+        stream: Arc::clone(&stream),
+        stop,
+        seeded: false,
+    };
+    let mut get = request("", Some(&session));
+    get.method = "GET".into();
+    endpoint
+        .serve(&get, &mut FixedClock::new(1000, 0), &mut out)
+        .unwrap();
+    assert!(String::from_utf8(out.bytes).unwrap().ends_with("\r\n\r\n"));
+    assert!(!stream.is_open());
+    assert!(stream.replay_after(0).1);
+}

@@ -1,5 +1,12 @@
 # Embedding fsm as a library
 
+SSE replay retains at most 256 events and 1 MiB of payload, including a single
+oversized event. A line writer refuses payload beyond 1 MiB and stays failed;
+exactly 1 MiB is accepted. Direct recording of an oversized sent event keeps
+its ID but drops payload and older events, reporting a replay gap even when
+empty; a live consumer closes on gaps and reconnecting clients receive the
+existing 409/re-initialize response.
+
 Public native preparation MUST use owned allocations: `start` and `for_store`
 request `prepare-owned`, and `poll` returns `NativePreparedOwner`; callers retain
 the guard and read metadata through `domain()`. The unprivileged broker and

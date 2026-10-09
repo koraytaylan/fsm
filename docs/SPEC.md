@@ -3590,6 +3590,16 @@ bounded asynchronous HTTP egress acceptance remain separately required.
 Unsupported production embedded HTTP MUST refuse before opening the store or
 binding rather than silently serving a manual writer for `--execute`.
 
+HTTP SSE replay MUST retain at most 256 events and 1 MiB of payload bytes,
+including when one event alone exceeds the byte bound. Direct recording of an
+oversized sent event MUST advance its ID without retaining its payload, evict
+older events and report the resulting gap, including an empty replay buffer.
+Line-based SSE writers MUST refuse a frame beyond 1 MiB before appending the
+excess byte, clear partial storage and remain failed so a suffix cannot become
+a fabricated event; an exact-bound frame followed by newline MUST remain valid.
+A live SSE delivery loop MUST close on a replay gap instead of skipping events;
+reconnection retains the existing 409/re-initialize refusal.
+
 Every HTTP session incarnation MUST own its original protocol state, host
 generation, reverse mailbox and replay stream. DELETE and lazy idle-expiry
 sweeps, including public session-count observations, MUST remove that

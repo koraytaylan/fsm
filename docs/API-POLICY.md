@@ -1,5 +1,9 @@
 # API and version policy
 
+Private SSE bound enforcement retains public signatures, event IDs and existing
+resume refusals; an oversized line writer reports an I/O InvalidData error.
+No journal bytes, hashes, error-code strings or versions change.
+
 HTTP DELETE and lazy expiry now retire transport resources with their original
 session incarnation, including host generation, reverse mailbox and replay
 stream; public session-count sweeps do the same. Atomic resource binding refuses

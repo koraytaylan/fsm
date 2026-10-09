@@ -1,5 +1,9 @@
 # Releasing
 
+HTTP SSE now enforces the replay byte ceiling for individual events, refuses
+oversized partial line frames without emitting suffix events, and closes live
+delivery on replay gaps; asynchronous POST delivery remains pending in 9002.
+
 HTTP idle-expiry sweeps now retire original protocol/host state, reverse waits
 and replay streams together, including sweeps through public session counts.
 DELETE uses that same retirement; neither action stops the shared execution

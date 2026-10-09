@@ -298,3 +298,45 @@ fn the_buffer_does_not_outlive_the_session() {
     );
     assert_eq!(stream.buffered_events(), 0);
 }
+
+#[test]
+fn one_oversized_record_never_exceeds_replay_storage_and_reports_an_empty_gap() {
+    let stream = Stream::default();
+    assert_eq!(stream.record(&vec![b'x'; REPLAY_BYTES]), 1);
+    assert_eq!(stream.buffered_bytes(), REPLAY_BYTES);
+    assert_eq!(stream.record(&vec![b'y'; REPLAY_BYTES + 1]), 2);
+    assert_eq!(stream.buffered_bytes(), 0);
+    assert_eq!(stream.buffered_events(), 0);
+    assert!(matches!(stream.resume_after(1), Err(ResumeError::Evicted)));
+    let (events, gap) = stream.replay_after(1);
+    assert!(events.is_empty());
+    assert!(gap);
+    assert!(!stream.replay_after(2).1);
+    assert!(!stream.replay_after(u64::MAX).1);
+    assert_eq!(stream.record(b"next"), 3);
+    assert!(stream.replay_after(1).1);
+    assert_eq!(stream.resume_after(2).unwrap()[0].data, b"next");
+}
+
+#[test]
+fn fragmented_sse_frame_accepts_the_exact_byte_limit_and_refuses_its_first_excess() {
+    let stream = Arc::new(Stream::default());
+    let mut writer = SessionStream::new(std::io::sink(), Arc::clone(&stream));
+    writer.write_all(&vec![b'x'; REPLAY_BYTES - 1]).unwrap();
+    writer.write_all(b"x").unwrap();
+    writer.write_all(b"\n").unwrap();
+    assert_eq!(stream.buffered_bytes(), REPLAY_BYTES);
+    assert_eq!(stream.next_id(), 1);
+    writer.write_all(&vec![b'y'; REPLAY_BYTES]).unwrap();
+    assert_eq!(
+        writer.write_all(b"y").unwrap_err().kind(),
+        std::io::ErrorKind::InvalidData
+    );
+    assert_eq!(
+        writer.write_all(b"suffix\n").unwrap_err().kind(),
+        std::io::ErrorKind::InvalidData
+    );
+    assert_eq!(stream.next_id(), 1);
+    assert_eq!(stream.buffered_events(), 1);
+    assert_eq!(stream.buffered_bytes(), REPLAY_BYTES);
+}

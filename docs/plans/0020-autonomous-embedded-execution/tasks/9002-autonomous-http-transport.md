@@ -141,3 +141,13 @@ Focused startup acceptance:
   subprocess entry remains intentionally ignored. Genuine installed-handler,
   saturation and asynchronous SSE/elicitation acceptance remain outstanding;
   task 9002 stays in progress and full gates remain due at plan completion.
+- SSE replay now enforces the byte ceiling even for one oversized event,
+  evicts before cloning new payload, and reports empty-buffer gaps. Fragmented
+  line writers accept exactly 1 MiB and refuse the first excess byte, releasing
+  partial storage and refusing suffix publication. Live GET closes on gaps and
+  captures its delivery cursor before headers instead of skipping newly arriving
+  events. Eighteen focused replay/SSE cases and the production-facing overflow
+  case pass; neutralizing each oversized-record, partial-frame and live-gap
+  guard fails its named case, and restoring it passes. CLI all-target clippy
+  and format/size/diff checks pass; asynchronous POST and the remaining native/
+  admission acceptance are still required before this task can land.
