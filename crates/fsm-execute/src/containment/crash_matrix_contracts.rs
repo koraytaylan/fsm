@@ -88,3 +88,62 @@ pub(super) fn prepare_observations(resource: &Path, behavior: &str) {
         fs::set_permissions(candidate, fs::Permissions::from_mode(0o666)).unwrap();
     }
 }
+
+pub(super) fn run_admission_matrix() {
+    assert_eq!(
+        std::env::var("FSM_NATIVE_FIXTURE_DISPOSABLE").as_deref(),
+        Ok("1")
+    );
+    assert_eq!(fs::metadata("/proc/self").unwrap().uid(), 0);
+    let seed = format!("{}-{:?}", std::process::id(), std::time::SystemTime::now());
+    let nonce = fsm_core::sha256::to_hex(&fsm_core::sha256::sha256(seed.as_bytes()));
+    let staging = PathBuf::from(format!("/usr/libexec/fsm-crash-{}", &nonce[..24]));
+    fs::DirBuilder::new().mode(0o755).create(&staging).unwrap();
+    fs::set_permissions(&staging, fs::Permissions::from_mode(0o755)).unwrap();
+    for (name, variable) in [
+        ("contract-test", "CONTRACT"),
+        ("fixture", "FIXTURE"),
+        ("fsm", "CLI"),
+    ] {
+        super::super::workflow_cases::stage_artifact(
+            &staging.join(name),
+            &format!("FSM_CRASH_{variable}_ARTIFACT"),
+            &format!("FSM_CRASH_{variable}_SHA256"),
+        );
+    }
+    for behavior in [
+        "contract-standalone",
+        "contract-borrowed",
+        "contract-fair-standalone",
+        "contract-fair-borrowed",
+        "contract-unknown-standalone",
+        "contract-unknown-borrowed",
+        "contract-argument-standalone",
+        "contract-argument-borrowed",
+        "contract-contention-standalone",
+        "contract-contention-borrowed",
+        "contract-manual-standalone",
+        "contract-manual-borrowed",
+        "contract-ack-only-standalone",
+        "contract-ack-only-borrowed",
+        "contract-recovery-standalone",
+        "contract-recovery-borrowed",
+        "contract-bound-standalone",
+        "contract-bound-borrowed",
+        "contract-cancel-standalone",
+        "contract-cancel-borrowed",
+    ] {
+        for kind in ["process", "mcp"] {
+            scenario(
+                &staging,
+                &nonce[..24],
+                Scenario {
+                    host: "contract",
+                    kind,
+                    behavior,
+                },
+            );
+        }
+    }
+    fs::remove_dir_all(staging).unwrap();
+}
