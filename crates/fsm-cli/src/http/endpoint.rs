@@ -43,7 +43,8 @@ pub struct Endpoint {
     /// goes through it — a guard nothing calls guards nothing.
     store: super::writer::SerializedWriter,
     sessions: Sessions,
-    lives: Mutex<BTreeMap<String, Live>>,
+    lives: Mutex<BTreeMap<String, std::sync::Arc<SessionLive>>>,
+    host: Option<std::sync::Arc<crate::mcp::http_host::SharedWriter>>,
     /// Inbound responses, per session, waiting for whoever asked.
     mailboxes: Mutex<BTreeMap<String, std::sync::Arc<Mailbox>>>,
     /// Each session's event stream: what it has sent, and whether anybody is
@@ -73,6 +74,20 @@ pub enum Answer {
     Accepted,
 }
 
+struct SessionLive {
+    live: Mutex<Live>,
+    cancellations: crate::mcp::cancel::Cancellations,
+    hosted: Option<crate::mcp::http_host::HostedSession>,
+}
+
+impl SessionLive {
+    fn close(&self) {
+        if let Some(hosted) = &self.hosted {
+            hosted.close();
+        }
+    }
+}
+
 impl Endpoint {
     pub fn new(path: &str, store: Option<Store>, mode_note: &'static str) -> Self {
         Self {
@@ -80,6 +95,7 @@ impl Endpoint {
             store: super::writer::SerializedWriter::new(store),
             sessions: Sessions::default(),
             lives: Mutex::new(BTreeMap::new()),
+            host: None,
             mailboxes: Mutex::new(BTreeMap::new()),
             streams: Mutex::new(BTreeMap::new()),
             policy: None,
@@ -103,13 +119,31 @@ impl Endpoint {
         self
     }
 
-    fn new_live(&self) -> Live {
+    pub(crate) fn with_host(
+        mut self,
+        host: std::sync::Arc<crate::mcp::http_host::SharedWriter>,
+    ) -> Self {
+        self.host = Some(host);
+        self
+    }
+
+    fn session_live(&self, id: &str) -> std::io::Result<std::sync::Arc<SessionLive>> {
+        let mut lives = self.lives.lock_safe();
+        if let Some(live) = lives.get(id) {
+            return Ok(std::sync::Arc::clone(live));
+        }
         let mut live = Live::default();
         if let Some((dir, detail)) = &self.degraded {
             live.degraded_dir = Some(dir.clone());
             live.degraded = Some(detail.clone());
         }
-        live
+        let state = std::sync::Arc::new(SessionLive {
+            cancellations: live.cancellations.clone(),
+            live: Mutex::new(live),
+            hosted: self.host.as_ref().map(|host| host.session()).transpose()?,
+        });
+        lives.insert(id.to_owned(), std::sync::Arc::clone(&state));
+        Ok(state)
     }
 
     /// The same endpoint, with a posture to enforce.
@@ -175,7 +209,9 @@ impl Endpoint {
                     if let Some(mailbox) = self.mailboxes.lock_safe().remove(id) {
                         mailbox.close();
                     }
-                    self.lives.lock_safe().remove(id);
+                    if let Some(live) = self.lives.lock_safe().remove(id) {
+                        live.close();
+                    }
                     // The stream closes with the session, and says nothing
                     // on its way out: there is nothing to say and the client
                     // may already be gone.
@@ -330,31 +366,70 @@ impl Endpoint {
         let mut reader = MailboxReader::new(std::sync::Arc::clone(&mailbox));
         let io = std::cell::RefCell::new(SessionIo::new(&notifier, &mut reader));
 
+        let state = match self.session_live(&session_id) {
+            Ok(state) => state,
+            Err(_) => return write_response(out, &Response::error(503)),
+        };
         {
-            let mut lives = self.lives.lock_safe();
-            let live = lives
-                .entry(session_id.clone())
-                .or_insert_with(|| self.new_live());
+            let mut live = state.live.lock_safe();
             let mut initialized = true;
-            // Every session's call, through one lock, for the whole call.
-            self.store.with_store(|store| {
-                let _ = handle_request(
+            if let Some(hosted) = &state.hosted {
+                hosted.dispatch(
                     &notifier,
-                    store,
                     clock,
-                    &mut initialized,
-                    live,
+                    &mut live,
                     id,
                     method,
                     params,
                     self.mode_note,
-                    Some(&io),
-                    Some(&feed_out),
-                );
-            });
+                    &io,
+                    &feed_out,
+                )?;
+            } else {
+                self.store.with_store(|store| {
+                    let _ = handle_request(
+                        &notifier,
+                        store,
+                        clock,
+                        &mut initialized,
+                        &mut live,
+                        id,
+                        method,
+                        params,
+                        self.mode_note,
+                        Some(&io),
+                        Some(&feed_out),
+                    );
+                });
+            }
         }
 
         let written = sink.text();
+        if written.is_empty()
+            && let Some(hosted) = &state.hosted
+        {
+            return write_response(
+                out,
+                &if hosted.is_retired() {
+                    Response::error(503)
+                } else {
+                    Response::text(202, "")
+                },
+            );
+        }
+        if written.lines().any(|line| {
+            parse(line.as_bytes(), &JsonLimits::DEFAULT)
+                .ok()
+                .and_then(|response| {
+                    response
+                        .get("error")
+                        .and_then(|error| error.get("code"))
+                        .cloned()
+                })
+                == Some(Value::Num("-32004".into()))
+        }) {
+            return write_response(out, &Response::error(503));
+        }
         if streaming {
             begin_stream(out)?;
             let mut stream = StreamWriter::new(&mut *out, 1);
@@ -391,9 +466,12 @@ impl Endpoint {
         if method == "notifications/cancelled"
             && let Some(requested) = params.as_ref().and_then(|p| p.get("requestId"))
         {
-            let mut lives = self.lives.lock_safe();
-            let live = lives.entry(session_id).or_insert_with(|| self.new_live());
-            live.cancellations.cancel(requested);
+            if let Ok(state) = self.session_live(&session_id) {
+                state.cancellations.clone().cancel(requested);
+                if let Some(hosted) = &state.hosted {
+                    hosted.cancel(requested);
+                }
+            }
         }
     }
 

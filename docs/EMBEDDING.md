@@ -1217,6 +1217,13 @@ person using it.
 
 ### Sessions
 
+Production writer-only HTTP requests share one bounded committing owner.
+Sessions hold separate protocol state; cancellation and DELETE can retire the
+original request/session without stopping that writer. A request refused by
+host admission returns HTTP 503, after security and session validation, and
+performs no store mutation. Execution remains manual in writer-only mode;
+native embedded scheduling and asynchronous HTTP egress are still pending.
+
 HTTP uses stdio's bounded writer acquisition: when another writer holds a
 healthy store it serves read-only views, refreshed before each call, and never
 upgrades automatically when that writer exits. An unhealthy store still accepts

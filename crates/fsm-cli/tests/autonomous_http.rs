@@ -22,6 +22,10 @@ struct Client {
     address: SocketAddr,
     session: Option<String>,
 }
+enum Mode {
+    Writer,
+    Embedded,
+}
 impl Drop for Client {
     fn drop(&mut self) {
         let _ = self.child.kill();
@@ -31,6 +35,10 @@ impl Drop for Client {
 }
 impl Client {
     fn start(directory: PathBuf) -> Self {
+        Self::start_mode(directory, Mode::Embedded)
+    }
+
+    fn start_mode(directory: PathBuf, mode: Mode) -> Self {
         let reservation = TcpListener::bind("127.0.0.1:0").unwrap();
         let address = reservation.local_addr().unwrap();
         drop(reservation);
@@ -59,14 +67,17 @@ impl Client {
             ),
         ]));
         fs::write(&handlers, fsm_core::canon::canon_bytes(&table)).unwrap();
-        let child = Command::new(env!("CARGO_BIN_EXE_fsm"))
+        let mut command = Command::new(env!("CARGO_BIN_EXE_fsm"));
+        command
             .env_remove("FSM_HTTP_TOKEN")
             .arg("--data-dir")
             .arg(&directory)
             .args(["serve", "--http"])
-            .arg(address.to_string())
-            .args(["--execute", "--handlers"])
-            .arg(&handlers)
+            .arg(address.to_string());
+        if matches!(mode, Mode::Embedded) {
+            command.args(["--execute", "--handlers"]).arg(&handlers);
+        }
+        let child = command
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(fs::File::create(directory.join("server.stderr")).unwrap())
@@ -141,6 +152,58 @@ impl Client {
                 .unwrap(),
         )
     }
+}
+
+#[test]
+fn production_http_writer_shares_committed_results_and_idempotency_across_sessions() {
+    let (directory, store) = seeded("shared-writer");
+    drop(store);
+    let mut client = Client::start_mode(directory.clone(), Mode::Writer);
+    client.initialize();
+    let first_session = client.session.clone().unwrap();
+    let capabilities = client.executor();
+    assert_eq!(
+        capabilities.get("mode").and_then(Value::as_str),
+        Some("writer")
+    );
+    assert_eq!(
+        capabilities.get("executes_effects"),
+        Some(&Value::Bool(false))
+    );
+    assert!(matches!(Store::open(&directory), Err(error) if error.code == "store/lock"));
+    let send = r#"{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"instance_send","arguments":{"instance_id":"instance","event":{"name":"finish"},"request_id":"shared-finish"}}}"#;
+    let result = client.post(send);
+    assert_ne!(
+        result.get("result").unwrap().get("isError"),
+        Some(&Value::Bool(true))
+    );
+    let committed = Store::open_read_only(&directory).unwrap().journal.last_seq;
+    client.session = None;
+    client.initialize();
+    assert_ne!(client.session.as_ref().unwrap(), &first_session);
+    let replay = client.post(send);
+    let first = result
+        .get("result")
+        .unwrap()
+        .get("structuredContent")
+        .unwrap();
+    let duplicate = replay
+        .get("result")
+        .unwrap()
+        .get("structuredContent")
+        .unwrap();
+    assert_eq!(first.get("duplicate"), Some(&Value::Bool(false)));
+    assert_eq!(duplicate.get("duplicate"), Some(&Value::Bool(true)));
+    for field in ["seq", "state_hash", "configuration", "effects_pending"] {
+        assert_eq!(duplicate.get(field), first.get(field));
+    }
+    let observed = Store::open_read_only(&directory).unwrap();
+    assert_eq!(observed.journal.last_seq, committed);
+    assert_eq!(observed.state.execution.unresolved().count(), 0);
+    assert_eq!(
+        fsm_cli::journal_io::verify(&directory).health,
+        fsm_cli::journal_io::JournalHealth::Ok
+    );
 }
 fn seeded(name: &str) -> (PathBuf, Store) {
     let directory =

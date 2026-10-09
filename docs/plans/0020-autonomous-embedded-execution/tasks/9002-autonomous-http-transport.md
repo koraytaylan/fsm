@@ -10,6 +10,8 @@ touches:
   - crates/fsm-cli/src/http/mod.rs
   - crates/fsm-cli/src/http/startup.rs
   - crates/fsm-cli/src/mcp/serve.rs
+  - crates/fsm-cli/src/mcp/mod.rs
+  - crates/fsm-cli/src/mcp/http_host.rs
   - crates/fsm-cli/src/http/endpoint.rs
   - crates/fsm-cli/src/http/writer.rs
   - crates/fsm-cli/src/http/session.rs
@@ -81,3 +83,13 @@ Focused startup acceptance:
   admission, asynchronous SSE delivery and zero-client lifetime acceptance
   remain incomplete; this startup repair establishes no autonomous capability
   or task landing, and full gates remain due at plan completion.
+- Writer-only production HTTP now selects the existing bounded command owner
+  and immutable replies; per-session protocol locks replace the global Live
+  lock, cancellation/DELETE bypass those waits, and pre-admission busy replies
+  map to HTTP 503. A real-binary two-session fixture verifies the shared writer,
+  duplicate-result contract, unchanged replay sequence and a verified journal.
+  Twenty-seven focused HTTP cases, source/test-target clippy and format/size/
+  diff checks pass. Review repaired empty hosted replies to preserve cancelled
+  HTTP 202 and retired-admission HTTP 503 without fabricating a JSON-RPC result.
+  Native owner scheduling, exact HTTP saturation, client-wait responsiveness
+  and asynchronous SSE framing still require their original acceptance proof.

@@ -85,12 +85,30 @@ pub fn run_http(ctx: &mut Ctx, args: &Args, addr: &str, mode: ServeMode) -> u8 {
     );
 
     let opened = startup::open(&ctx.data_dir, &mode);
+    let mut store = opened.store;
+    let hosted_writer = if matches!(&mode, ServeMode::Writer)
+        && store
+            .as_ref()
+            .is_some_and(|store| !store.journal.is_read_only())
+    {
+        match crate::mcp::http_host::SharedWriter::start(
+            store.take().expect("observed original writer"),
+        ) {
+            Ok(host) => Some(std::sync::Arc::new(host)),
+            Err(_) => return 1,
+        }
+    } else {
+        None
+    };
     let bind = policy.bind;
     // One flag for both halves: the accept loop stops taking connections and
     // the streams parked in `Endpoint::deliver` end, rather than holding
     // threads open past the server they belong to.
     let stop = Arc::new(AtomicBool::new(false));
-    let mut endpoint = endpoint::Endpoint::new(&policy.path, opened.store, opened.mode_note);
+    let mut endpoint = endpoint::Endpoint::new(&policy.path, store, opened.mode_note);
+    if let Some(host) = hosted_writer {
+        endpoint = endpoint.with_host(host);
+    }
     if let Some(detail) = opened.diagnostic {
         endpoint = endpoint.with_degraded(ctx.data_dir.clone(), detail);
     }

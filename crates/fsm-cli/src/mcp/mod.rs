@@ -10,6 +10,7 @@ pub mod descriptions;
 pub mod elicit;
 mod executor;
 mod host;
+pub(crate) mod http_host;
 pub mod jsonrpc;
 pub mod logging;
 pub mod methods;

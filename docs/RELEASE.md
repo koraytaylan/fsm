@@ -1,5 +1,11 @@
 # Releasing
 
+Writer-only HTTP routes store calls through one private bounded owner; session
+protocol state and cancellation controls are separate, and admission refusal
+returns HTTP 503. Real-binary cross-session idempotency verifies one committed
+result without duplicate journal mutation. Native HTTP scheduling and complete
+asynchronous egress acceptance remain unfinished in task 9002.
+
 HTTP fallback now refreshes healthy contended stores without upgrading to a
 writer and serves unhealthy-store diagnosis from the original directory in
 every session. Real-binary configured-handler refusal cases cover both paths;

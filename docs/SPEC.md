@@ -3565,6 +3565,17 @@ start no handlers. Authentication and origin checks still precede dispatch.
 This fallback does not establish autonomous HTTP execution, whose shared-host
 integration and real-handler acceptance remain separately pending.
 
+Production HTTP writer-only mode MUST dispatch store-backed requests through
+one bounded command owner with owned arguments and immutable committed replies.
+HTTP sessions MUST retain separate protocol-state locks; cancellation and
+original-session retirement MUST bypass a session's request wait. DELETE MUST
+close only that original host session and MUST NOT stop the shared writer.
+Refusal by bounded host admission MUST return HTTP 503 before any refused
+operation mutates the journal, after existing security and session checks.
+Synchronous borrowed HTTP helpers retain their existing caller-clock behavior.
+This writer-only integration retains manual `fsm.executor/1` discovery;
+embedded native scheduling and asynchronous HTTP egress remain pending.
+
 Linux embedded stdio MUST accept `serve --execute --poll-interval-ms N`
 with a positive whole-millisecond interval no greater than 86400000; the
 default is 250 ms. Invalid intervals or use outside embedded stdio MUST

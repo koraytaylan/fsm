@@ -1,5 +1,11 @@
 # API and version policy
 
+Writer-only production HTTP now uses the existing private bounded command
+owner and separate session-state locks, with HTTP 503 for host admission
+refusal. Supported wire/format versions, public Rust signatures, journal bytes,
+hashes, dependency and MSRV contracts remain unchanged; discovery stays manual
+`fsm.executor/1`. Native embedded HTTP execution is not yet advertised.
+
 HTTP startup now preserves healthy contention as a refreshed read-only server
 and retains unhealthy-store diagnostics per session, matching stdio's mode
 contract. No journal bytes, hashes, wire discriminators, public Rust signatures,
