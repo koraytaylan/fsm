@@ -16,7 +16,8 @@ touches:
   - docs/SPEC.md
   - docs/EMBEDDING.md
   - docs/API-POLICY.md
-status: planned
+  - docs/RELEASE.md
+status: in_progress
 merged_as: ""
 ---
 # Autonomous Host Scheduling
@@ -60,3 +61,19 @@ independent of whether a client happens to submit another request.
   resulting journal verifies; read-only and degraded hosts start no fixture.
 
 - **Done when:** every `autonomous_schedule` case passes with no client request required to drive an eligible executor action, and the stable host gate preserves deterministic core and persistence behavior.
+
+
+Bounded follow-up decisions now drive the original lifecycle driver through
+at most eight ticks with one logical sample, continue immediately after durable
+progress or retained readiness, and offer admitted commands between batches.
+Five `autonomous_schedule` cases and 54 executable private-host regressions pass;
+two genuine native handler cases remain ignored locally. Workspace all-target
+fixture-enabled clippy, formatting, size and diff checks pass. The production
+turn bound has retained 0/101/0 sensitivity evidence, task-cache digest
+`412c26375075bb38f96e117f029c868f1aef6f1cd731e881ad2d6a8a76ecb04e`.
+This is preliminary evidence for bounded progress, composition, logical deadline
+boundaries and application service; the original native success/retry,
+timeout/backoff boundaries, compensation, completion-queue fairness, interrupted
+acknowledgement, idle wait-clock and construction inventories still require
+explicit acceptance, followed by the frozen integration gate. No landing OID
+is assigned and the written inventory is unchanged.

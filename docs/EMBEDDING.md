@@ -2995,3 +2995,12 @@ An already verified native completion uses its original closure-bound healthy ph
 After native recovery persists an attempted settlement, watcher-driven scheduling derives the next attempt and backoff from that original settlement just as it does for a legacy attempt record; interrupted and acknowledged settlements do not add failed attempts, and restart does not renew the journaled backoff.
 
 Native preparation refused by worker capacity before helper dispatch stays queued for a later owner turn; it does not create an unknown allocation or publish an attempt outcome.
+
+Private native owner decisions now follow durable progress or retained native
+readiness for up to eight driver ticks using one logical timestamp, then offer
+an admitted application command before continuing immediately if work remains.
+An unchanged idle prefix or refusal ends the batch; the configured poll interval
+still bounds idle rechecks. This removes timer delays between eligible
+composition/deadline steps while preserving scheduler eligibility, pure core
+explicit polls, journal formats and public API. Full scheduling fairness,
+retry/compensation and transport acceptance remain plan 0020 obligations.

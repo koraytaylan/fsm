@@ -23,6 +23,7 @@ use super::{
 };
 
 const COMMAND_BATCH: usize = 8;
+const EXECUTOR_TURNS: usize = 8;
 const OBSERVATION_INTERVAL: Duration = Duration::from_millis(50);
 
 /// Carries the original driver back even when shutdown cannot prove closure.
@@ -40,6 +41,7 @@ pub(in crate::mcp) struct NativeOwner<C> {
     mailbox: Arc<Mailbox>,
     diagnostics: DiagnosticOutput,
     interval: Duration,
+    decision_ready: bool,
     shutdown_timeout_ms: i64,
     publication: Option<crate::mcp::notify::Notifier>,
 }
@@ -75,6 +77,7 @@ impl<C: Clock> NativeOwner<C> {
                 mailbox,
                 diagnostics,
                 interval,
+                decision_ready: false,
                 shutdown_timeout_ms,
                 publication: None,
             },
@@ -117,7 +120,11 @@ impl<C: Clock> NativeOwner<C> {
                     break;
                 }
                 commands = 0;
-                next_pass = Instant::now() + self.interval;
+                next_pass = if self.decision_ready {
+                    Instant::now()
+                } else {
+                    Instant::now() + self.interval
+                };
                 next_observation = Instant::now() + OBSERVATION_INTERVAL;
                 inventory_unpublished = true;
             } else if Instant::now() >= next_observation {
@@ -227,7 +234,32 @@ impl<C: Clock> NativeOwner<C> {
             .as_ref()
             .and_then(crate::mcp::notify::Notifier::publication_guard);
         let now_ms = self.clock.now_ms();
-        let lines = self.driver.tick(&mut FixedClock::new(now_ms, 0), now_ms);
+        let mut clock = FixedClock::new(now_ms, 0);
+        let control = self.driver.control();
+        let mut lines = Vec::new();
+        self.decision_ready = false;
+        for _ in 0..EXECUTOR_TURNS {
+            if control.report().phase != ExecutorPhase::Running {
+                self.decision_ready = false;
+                break;
+            }
+            let Some(before) = self.driver.store_mut().map(|store| store.journal.last_seq) else {
+                break;
+            };
+            let tick = self.driver.tick(&mut clock, now_ms);
+            let refused = tick.iter().any(|line| line.starts_with("error "));
+            lines.extend(tick);
+            let progressed = self
+                .driver
+                .store_mut()
+                .is_some_and(|store| store.journal.last_seq != before);
+            // Rescan only after durable progress or retained local readiness;
+            // an unchanged fixed clock cannot turn this batch into an idle spin.
+            self.decision_ready = !refused && (progressed || self.driver.has_ready_native_work());
+            if !self.decision_ready {
+                break;
+            }
+        }
         after_commit();
         lines
     }

@@ -3397,6 +3397,15 @@ Operator diagnostics MUST use the existing bounded output worker, with loss
 counted explicitly. Complete completion fairness, real-handler responsiveness
 and production transport integration remain acceptance obligations.
 
+An ordinary private native owner decision MUST use one injected logical sample
+for at most eight original driver ticks. Follow-up ticks MUST require a changed
+durable prefix or retained native readiness; an unchanged prefix with no ready
+work, a refusal, or lifecycle stop MUST end the batch. If work remains at the
+bound, the owner MUST schedule an immediate continuation and offer an admitted
+application command before that continuation. Monotonic waits MUST NOT advance
+logical deadlines; the existing scheduler determines every eligible action.
+
+
 Private store-backed protocol reads (resource listing/resolution and argument
 completion) MUST share the tool command mailbox, original session generation,
 count/byte admission and cancellation controls. Charge retained resource-URI

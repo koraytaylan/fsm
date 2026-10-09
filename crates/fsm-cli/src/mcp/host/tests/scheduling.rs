@@ -164,3 +164,258 @@ fn execution_host_native_decision_pass_uses_one_sample_for_both_deadline_records
         crate::journal_io::JournalHealth::Ok
     );
 }
+
+fn scheduled_owner<C: Clock>(store: Store, clock: C) -> (NativeOwner<C>, super::super::Handle) {
+    NativeOwner::new(
+        OwnedNativeExecutor::new(store, HandlerTable::default()).unwrap(),
+        clock,
+        DiagnosticOutput::start(std::io::sink()).unwrap(),
+        Duration::from_millis(86400000),
+        10000,
+    )
+    .unwrap()
+}
+
+fn nested_invocations(path: &std::path::Path, depth: usize) -> Store {
+    use fsm_core::hashes::{digest_of, machine_id};
+    let mut store = Store::open(path).unwrap();
+    let mut clock = FixedClock::new(1000, 0);
+    let mut child = None;
+    for level in (0..=depth).rev() {
+        let source = match &child {
+            Some(digest) => format!(
+                r#"{{"format":"fsm.machine/1","name":"level-{level}","context":[],"events":[],"effects":[],"states":[{{"name":"running","invoke":[{{"id":"next","machine":"{digest}"}}]}},{{"name":"finished","terminal":true}}],"initial":"running","transitions":[{{"from":"running","on":"$done.invoke.next","to":"finished"}}]}}"#
+            ),
+            None => format!(
+                r#"{{"format":"fsm.machine/1","name":"level-{level}","context":[],"events":[],"effects":[],"states":[{{"name":"waiting"}},{{"name":"finished","terminal":true}}],"initial":"waiting","transitions":[],"deadlines":[{{"name":"due","from":"waiting","after":"dur(0, ms)","to":"finished"}}]}}"#
+            ),
+        };
+        let definition = value(&source);
+        child = Some(digest_of(&machine_id(&definition)).unwrap().to_string());
+        store
+            .define_machine_on(&mut clock, definition, false, false)
+            .unwrap();
+    }
+    store
+        .create_instance_ctx_on(
+            &mut clock,
+            "level-0",
+            "root",
+            "create-root",
+            None,
+            &BTreeMap::new(),
+            &[],
+        )
+        .unwrap();
+    store
+}
+
+#[test]
+fn autonomous_schedule_composition_reaches_quiescence_in_one_decision_without_rpc() {
+    let scratch = Scratch::new();
+    let store = nested_invocations(&scratch.0, 1);
+    let calls = Arc::new(AtomicUsize::new(0));
+    let (mut owner, handle) = scheduled_owner(store, CountingClock(Arc::clone(&calls)));
+    let lines = owner.decision_pass();
+    let samples = calls.load(Ordering::Acquire);
+    let observed = Store::open_read_only(&scratch.0).unwrap();
+    let status = observed.state.instances["root"].status;
+    let records = observed.records.clone();
+    drop(observed);
+    handle.stop();
+    let exit = owner.run();
+    assert!(exit.shutdown.writer_released);
+    assert!(
+        !lines.iter().any(|line| line.starts_with("error ")),
+        "{lines:?}"
+    );
+    assert_eq!(status, fsm_core::machine::Status::Completed);
+    assert_eq!(samples, 1);
+    assert!(
+        records
+            .iter()
+            .filter(
+                |record| record.kind == fsm_core::record::RecordKind::InstanceInvoked
+                    || record.kind == fsm_core::record::RecordKind::InvocationReturned
+            )
+            .all(|record| record.ts == 1001)
+    );
+    assert_eq!(
+        crate::journal_io::verify(&scratch.0).health,
+        crate::journal_io::JournalHealth::Ok
+    );
+}
+
+#[test]
+fn autonomous_schedule_decision_yields_after_eight_progressing_turns() {
+    let scratch = Scratch::new();
+    let store = deadline_chain(&scratch.0, 10);
+    let before = store.journal.last_seq;
+    let calls = Arc::new(AtomicUsize::new(0));
+    let (mut owner, handle) = scheduled_owner(store, CountingClock(Arc::clone(&calls)));
+    let first = owner.decision_pass();
+    let first_observed = Store::open_read_only(&scratch.0).unwrap();
+    let first_sequence = first_observed.journal.last_seq;
+    let first_status = first_observed.state.instances["chain"].status;
+    drop(first_observed);
+    let mut later = Vec::new();
+    for _ in 0..3 {
+        later.extend(owner.decision_pass());
+    }
+    let observed = Store::open_read_only(&scratch.0).unwrap();
+    let final_status = observed.state.instances["chain"].status;
+    drop(observed);
+    handle.stop();
+    let exit = owner.run();
+    assert!(exit.shutdown.writer_released);
+    assert!(
+        !first
+            .iter()
+            .chain(&later)
+            .any(|line| line.starts_with("error ")),
+        "{first:?} {later:?}"
+    );
+    assert_eq!(first_sequence - before, 8);
+    assert_eq!(first_status, fsm_core::machine::Status::Running);
+    assert_eq!(final_status, fsm_core::machine::Status::Completed);
+    assert_eq!(
+        crate::journal_io::verify(&scratch.0).health,
+        crate::journal_io::JournalHealth::Ok
+    );
+}
+
+#[test]
+fn autonomous_schedule_deadline_one_tick_before_and_exact_due_use_logical_time() {
+    let scratch = Scratch::new();
+    let mut store = Store::open(&scratch.0).unwrap();
+    let mut clock = FixedClock::new(1000, 0);
+    store
+        .define_machine_on(&mut clock, value(super::interaction::CASE), false, false)
+        .unwrap();
+    store
+        .create_instance_ctx_on(
+            &mut clock,
+            "question_case",
+            "question",
+            "create-question",
+            None,
+            &BTreeMap::new(),
+            &[],
+        )
+        .unwrap();
+    let before = store.journal.last_seq;
+    let calls = Arc::new(AtomicUsize::new(0));
+    let logical = Arc::new(AtomicI64::new(1000));
+    let (mut owner, handle) = scheduled_owner(
+        store,
+        ObservationClock {
+            logical: Arc::clone(&logical),
+            calls: Arc::clone(&calls),
+        },
+    );
+    let early = owner.decision_pass();
+    let early_sequence = Store::open_read_only(&scratch.0).unwrap().journal.last_seq;
+    logical.store(1001, Ordering::Release);
+    let due = owner.decision_pass();
+    let observed = Store::open_read_only(&scratch.0).unwrap();
+    let records = observed.records.clone();
+    drop(observed);
+    let samples = calls.load(Ordering::Acquire);
+    handle.stop();
+    let exit = owner.run();
+    assert!(exit.shutdown.writer_released);
+    assert!(
+        !early
+            .iter()
+            .chain(&due)
+            .any(|line| line.starts_with("error ")),
+        "{early:?} {due:?}"
+    );
+    assert_eq!(early_sequence, before);
+    let applied = records
+        .iter()
+        .filter(|record| record.seq > before)
+        .collect::<Vec<_>>();
+    assert_eq!(applied.len(), 1);
+    assert_eq!(
+        applied[0].kind,
+        fsm_core::record::RecordKind::DeadlineApplied
+    );
+    assert_eq!(applied[0].ts, 1001);
+    assert_eq!(samples, 2);
+    assert_eq!(
+        crate::journal_io::verify(&scratch.0).health,
+        crate::journal_io::JournalHealth::Ok
+    );
+}
+
+fn deadline_chain(path: &std::path::Path, count: usize) -> Store {
+    let mut states = (0..count)
+        .map(|index| format!(r#"{{"name":"stage-{index}"}}"#))
+        .collect::<Vec<_>>();
+    states.push(format!(r#"{{"name":"stage-{count}","terminal":true}}"#));
+    let deadlines = (0..count).map(|index| format!(r#"{{"name":"due-{index}","from":"stage-{index}","after":"dur(0, ms)","to":"stage-{}"}}"#, index + 1)).collect::<Vec<_>>();
+    let definition = value(&format!(
+        r#"{{"format":"fsm.machine/1","name":"deadline-chain","context":[],"events":[],"effects":[],"states":[{}],"initial":"stage-0","transitions":[],"deadlines":[{}]}}"#,
+        states.join(","),
+        deadlines.join(",")
+    ));
+    let mut store = Store::open(path).unwrap();
+    let mut clock = FixedClock::new(1000, 0);
+    store
+        .define_machine_on(&mut clock, definition, false, false)
+        .unwrap();
+    store
+        .create_instance_ctx_on(
+            &mut clock,
+            "deadline-chain",
+            "chain",
+            "create-chain",
+            None,
+            &BTreeMap::new(),
+            &[],
+        )
+        .unwrap();
+    store
+}
+
+#[test]
+fn autonomous_schedule_ready_application_runs_between_bounded_executor_batches() {
+    let scratch = Scratch::new();
+    let store = deadline_chain(&scratch.0, 32);
+    let before = store.journal.last_seq;
+    let calls = Arc::new(AtomicUsize::new(0));
+    let (owner, handle) = scheduled_owner(store, CountingClock(Arc::clone(&calls)));
+    let session = handle.session().unwrap();
+    let replies = (0..8)
+        .map(|index| {
+            let mut command = super::command("instance_get", r#"{"instance_id":"chain"}"#);
+            command.rpc_id = fsm_core::json::Value::Num(index.to_string());
+            session.submit(command).unwrap()
+        })
+        .collect::<Vec<_>>();
+    let worker = std::thread::spawn(move || owner.run());
+    let outcomes = replies
+        .into_iter()
+        .map(|reply| reply.recv_timeout(Duration::from_secs(5)).unwrap())
+        .collect::<Vec<_>>();
+    handle.stop();
+    let exit = worker.join().unwrap();
+    assert!(exit.shutdown.writer_released);
+    assert!(outcomes.iter().all(|outcome| outcome.result.is_ok()));
+    // No new command is submitted while the owner runs, and its one-day
+    // interval cannot drive this progress; each bound offers the queued read.
+    for (index, outcome) in outcomes.iter().take(4).enumerate() {
+        assert_eq!(outcome.committed_seq, before + ((index + 1) * 8) as u64);
+    }
+    let reopened = Store::open(&scratch.0).unwrap();
+    assert_eq!(
+        reopened.state.instances["chain"].status,
+        fsm_core::machine::Status::Completed
+    );
+    assert_eq!(reopened.journal.last_seq, before + 32);
+    assert_eq!(
+        crate::journal_io::verify(&scratch.0).health,
+        crate::journal_io::JournalHealth::Ok
+    );
+}

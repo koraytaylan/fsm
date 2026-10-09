@@ -6,7 +6,7 @@ Task frontmatter is authoritative; the coordinator owns registration and complet
 |---|---|---|
 | [execution-host-ownership](tasks/8901-execution-host-ownership.md) | done | 26c682203df56c498132ab3881b48bd04cdbb46f |
 | [nonblocking-execution-completions](tasks/8902-nonblocking-execution-completions.md) | done | ee296852b5cdaad2d1f88781fe6a390248233240 |
-| [autonomous-host-scheduling](tasks/8903-autonomous-host-scheduling.md) | planned | — |
+| [autonomous-host-scheduling](tasks/8903-autonomous-host-scheduling.md) | in_progress | — |
 | [bounded-session-channels](tasks/8904-bounded-session-channels.md) | planned | — |
 | [autonomous-stdio-transport](tasks/9001-autonomous-stdio-transport.md) | planned | — |
 | [autonomous-http-transport](tasks/9002-autonomous-http-transport.md) | planned | — |

@@ -1733,3 +1733,12 @@ Verified warm completion delivery preserves the established closure-bound physic
 Watcher retry observations now include native attempted settlements alongside legacy attempt records, preserving original attempt numbers and journal timestamps across recovery; this corrects retry scheduling without changing public signatures, record formats, hash domains, error codes or immutable retry policy.
 
 Native preparation refused by worker capacity before helper dispatch stays queued for a later owner turn; it does not create an unknown allocation or publish an attempt outcome.
+
+Private native owner decisions now follow durable progress or retained native
+readiness for up to eight driver ticks using one logical timestamp, then offer
+an admitted application command before continuing immediately if work remains.
+An unchanged idle prefix or refusal ends the batch; the configured poll interval
+still bounds idle rechecks. This removes timer delays between eligible
+composition/deadline steps while preserving scheduler eligibility, pure core
+explicit polls, journal formats and public API. Full scheduling fairness,
+retry/compensation and transport acceptance remain plan 0020 obligations.
