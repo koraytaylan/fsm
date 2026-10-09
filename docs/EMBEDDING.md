@@ -1476,9 +1476,13 @@ effect pending and retains the prepared domain for cleanup without publishing a
 claim. Bound-owner service entry repeats pending-contract validation and matches
 the loaded handler fingerprint to its original claim before requesting execution;
 refusal keeps original ownership and entry permission, while timeout and shutdown
-still apply. Successful-analysis caching and acknowledged outcome recovery
-acceptance remain part of the unfinished shared admission task; transport-only
-refusal tests do not establish genuine native handler acceptance.
+still apply. Outcome delivery also checks its selected original payload/stamps
+against the current receiver before spending the event request key; an
+acknowledged effect need not remain pending, and recovery never starts its
+handler again. Cancellation and runtime enabled-event guards still suppress
+delivery. Successful-analysis caching and complete service/native acceptance
+remain part of the unfinished shared admission task; transport-only refusal
+tests do not establish genuine native handler acceptance.
 
 One operator-owned JSON file, read once at startup, before any store is opened.
 It is the security boundary of the whole design: it closes the set of commands

@@ -20,6 +20,8 @@ touches:
   - crates/fsm-execute/src/run/native_owners/contract_tests.rs
   - crates/fsm-execute/src/run/native_client/execution.rs
   - crates/fsm-execute/tests/contract_admission.rs
+  - crates/fsm-execute/tests/pipeline.rs
+  - crates/fsm-execute/tests/pipeline/recovery.rs
   - crates/fsm-execute/tests/fixtures/contract/
   - crates/fsm-execute/tests/fixtures/public_surface.txt
   - docs/SPEC.md

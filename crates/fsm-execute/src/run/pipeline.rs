@@ -738,6 +738,7 @@ impl Pipeline {
         advance: &Advance,
         expect_seq: Option<u64>,
     ) -> Result<SettleOutcome, ExecError> {
+        crate::contract::check_outcome(store, instance_id, advance)?;
         if !advance_is_enabled(store, instance_id, advance)? {
             return Ok(SettleOutcome::AckedNoAdvance);
         }

@@ -1,5 +1,11 @@
 # Releasing
 
+Executor outcome delivery now validates its selected original payload/stamps
+against the current receiver before sending a derived event request, including
+acknowledged recovery after migration; refusal preserves the request key and
+does not rerun a handler. Lifecycle suppression, runtime guards and original
+acknowledgement ordering remain in place, with no persisted-format change.
+
 Shared service bound-native entry now repeats current contract validation and
 requires the original claimed handler fingerprint before requesting execution;
 refusal preserves the original owner and entry permission without journal

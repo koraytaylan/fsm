@@ -1810,6 +1810,13 @@ retains original ownership and entry permission using existing contract errors;
 this execution-policy capability has a pre-1.0 minor consequence and changes
 no persisted formats or public Rust signatures.
 
+Executor outcome delivery now checks the selected original payload and stamps
+against the current receiver before sending its derived event request, including
+acknowledged recovery; invalid/unknown compatibility uses existing contract
+errors without consuming that key. Cancelled/completed lifecycle suppression
+and runtime guards remain applicable. This execution-policy change has a
+pre-1.0 minor consequence and changes no persisted format or public signature.
+
 Shared service native preparation now performs pending-contract refusal before queuing a helper, using existing exec/contract diagnostics and no persisted-format or public signature change; this execution-policy capability has a pre-1.0 minor consequence, with final claim/entry validation and native acceptance still pending.
 
 Warm native completion reconciliation now recognizes another host's accepted original event through the exact replayed acknowledgement and verified handoff retirement; this fixes retained-owner drain without changing public signatures, error codes, persisted formats or hash domains, and historical acknowledgements without handoffs retain their existing path.

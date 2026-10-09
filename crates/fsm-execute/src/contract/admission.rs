@@ -115,6 +115,30 @@ fn unknown_definition() -> ExecError {
     )
     .hint("restore the verified definition evidence before attempting admission")
 }
+
+/// Validate the selected recovered outcome without requiring a pending effect.
+pub(crate) fn check_outcome(
+    store: &Store,
+    instance_id: &str,
+    advance: &crate::config::Advance,
+) -> Result<(), ExecError> {
+    let instance = store.state.instances.get(instance_id).ok_or_else(stale)?;
+    // Lifecycle suppression wins over event admission for cancelled/completed work.
+    if instance.status != Status::Running {
+        return Ok(());
+    }
+    let receiver = store
+        .state
+        .instance_machines
+        .get(instance_id)
+        .and_then(|identity| store.state.machines.get(identity))
+        .ok_or_else(unknown_definition)?;
+    let (status, _) = outcomes::check(&receiver.compiled, advance);
+    if status != CheckStatus::Compatible {
+        return Err(refusal(status));
+    }
+    Ok(())
+}
 fn refusal(status: CheckStatus) -> ExecError {
     let code = if status == CheckStatus::Invalid {
         "exec/contract_invalid"

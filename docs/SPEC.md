@@ -1428,6 +1428,14 @@ permission or requesting execution. Contract refusal MUST retain the original
 claim, bound owner and unconsumed entry permission without journal mutation;
 timeout, cancellation and original-owner shutdown remain independently required.
 
+Executor outcome delivery, including already-acknowledged recovery, MUST check
+the selected original outcome against the current receiving definition before
+attempting its derived event key. Known invalid or unknown payload/stamp
+compatibility MUST remain visible through the existing contract diagnostics
+without journal mutation or handler execution. This check MUST NOT require the
+acknowledged effect to remain pending, reselect its original outcome, replace
+runtime enabled-event guards, or bypass cancelled/completed lifecycle suppression.
+
 ## CLI executor machine checks
 
 `fsm execute --check --handlers <file>` MAY select exactly one of

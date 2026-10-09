@@ -640,6 +640,9 @@ fn a_resumed_advance_lands_once_however_often_it_is_retried() {
     );
 }
 
+#[path = "pipeline/recovery.rs"]
+mod recovery;
+
 #[test]
 fn a_stale_expect_seq_is_retried_under_the_same_request_id() {
     let mut fixture = Fixture::awaiting_confirmation("pipe-seq");

@@ -7,6 +7,7 @@ mod report;
 
 #[cfg(target_os = "linux")]
 pub(crate) use admission::check_claimed;
+pub(crate) use admission::check_outcome;
 pub use admission::check_pending;
 pub use effects::analyze_effects;
 pub use outcomes::analyze_contract;
