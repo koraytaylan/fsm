@@ -74,37 +74,28 @@ owner from answering another eligible request.
 - **Done when:** real process and MCP fixtures pass the low-level `async_completion` and private CLI `execution_host` inventories without handler waits on the store owner, while existing executor recovery and public-surface gates pass under the stable host gate.
 
 
-Acceptance remains incomplete: `async_completion` now contains real held-process
-and held-MCP public-driver cases, but those cases have only compile/lint evidence.
-The private host observer passes both handler kinds on stable/MSRV at frozen
-`217e5e84`; scoped runtime verdict
-`568c9272b2fafe095aedb1b439b0bd33f41d0fb95b16ffe42e68d25f129250d7`.
-This proves read/mutation/control responsiveness before release through the real
-lifecycle adapter, not the remaining capacity, generation, backpressure,
-interrupted-settlement or full-gate inventory.
-The written tests above remain the acceptance inventory; existing worker and
-empty-handler checks cannot replace it. Historical implementation checkpoints
-are preserved in the task cache under SHA-256
-`0d89e2ea236fa45e3e3b02f31038b82d3b1ba2de6b998fbf0a1cc034e60b18ac`.
+Frozen `ee296852` passes all twelve native completion cases on stable and MSRV
+in [CI 37893915527](https://github.com/koraytaylan/fsm/actions/runs/37893915527).
+Independent retained-report review digest:
+`b382a31313cd4ab581ab5fe63a06be67e42ab6268b4d7a83cfc62745cff7ccde`.
+Each toolchain exercises process and MCP handlers through public held polling,
+repeated settlement, writer refusal with authentic successor-generation
+rejection, private owner read/mutation/control, exhausted reservation capacity,
+and inherited output pipes. The fixture waits for protected completion-record
+publication before recovery, preserving the original writer's unsettled state.
+The verdict binds frozen source, compiler, inventory, commands and retained logs;
+it does not independently compare the staged executable bytes.
 
-Frozen `9e8e89b5` retains all twelve stopped/acked/event crash cases across
-standalone/embedded and process/MCP, with five recovery source files unchanged
-from verified `66c785ba`; continuity review digest
-`06eb4326bbaff259756e6d9e230eb63d29f6e0def3f2c10d0d3bd77bd3518983`.
-This preserves prior recovery evidence, but does not verify the changed worker
-capacity path or the completion inventory added after that checkpoint.
-
-Review of frozen `465c248a..c4f57c15` confirms that successor helpers reuse
-an original reservation only after predecessor retirement, proof verification
-shares that reservation, and the retained run survives writer refusal until
-owner settlement. The twelve-case CI inventory includes authentic successor
-generation refusal and private-host control with an exited root whose original
-descendants retain output pipes. Its evidence verifier rejects missing cases
-and omitted or rebound observer artifacts; 27 mocked tests pass, alongside
-49 portable host, 25 public-surface/retry and 13 worker regression tests.
-All eight stable host gate stages pass at frozen `0bd1e14e`, with retained
-task-cache report digest
+Review confirms shared reservation ownership across helper phases and retention
+until settlement. Focused evidence comprises 27 artifact/evidence checks,
+49 portable host, 25 public-surface/retry and 13 worker regressions; pre-dispatch
+capacity refusal has a load-bearing 0/101/0 regression at `631e7496`.
+All eight stable host gate stages pass at frozen `0bd1e14e`, retained report
 `11d09f239210cfd4a4b7f71a7ba738902ed478da3ace92b5182684aa67dc5a4c`.
-This remains preliminary acceptance: the twelve native cases and remaining
-CI platform matrix are unexecuted; only the earlier private held-handler slice
-has stable/MSRV native runtime proof. The written inventory above is unchanged.
+Recovery continuity review
+`06eb4326bbaff259756e6d9e230eb63d29f6e0def3f2c10d0d3bd77bd3518983`
+preserves the original stopped/acked/event crash inventory from `66c785ba`.
+The current full integration checkpoint is still required before completion;
+the written acceptance inventory remains unchanged and no landing OID is assigned.
+Historical implementation evidence remains in the task cache under
+`0d89e2ea236fa45e3e3b02f31038b82d3b1ba2de6b998fbf0a1cc034e60b18ac`.
