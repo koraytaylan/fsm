@@ -9,6 +9,7 @@ mod expired_drain;
 mod failed_stop;
 mod fault_control;
 mod full_disk;
+mod stdio_eof;
 pub(super) use crash::configure_table;
 
 pub(super) fn restart_after_fault(
@@ -17,7 +18,10 @@ pub(super) fn restart_after_fault(
     original: Option<&mut Competitor>,
     failures: &str,
 ) -> Competitor {
-    if failures.starts_with("expired-drain") {
+    if failures == "active-stop-eof-embedded" {
+        assert!(original.is_none());
+        stdio_eof::restart_after_eof(directory, client)
+    } else if failures.starts_with("expired-drain") {
         expired_drain::restart_after_expiry(directory, client, original)
     } else if failures.starts_with("active-stop") {
         active_stop::restart_after_stop(directory, client, original, failures)
@@ -48,6 +52,7 @@ pub(super) fn holds_tree(argument: &str) -> bool {
             | "handler-failures=failed-stop-embedded"
             | "handler-failures=active-stop-abort"
             | "handler-failures=active-stop-abort-embedded"
+            | "handler-failures=active-stop-eof-embedded"
             | "handler-failures=active-stop-drain"
             | "handler-failures=active-stop-drain-embedded"
             | "handler-failures=active-stop-complete-drain"

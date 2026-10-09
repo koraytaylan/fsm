@@ -16,6 +16,9 @@ touches:
   - crates/fsm-cli/tests/autonomous_stdio.rs
   - crates/fsm-cli/tests/mcp_execute_workflow.rs
   - crates/fsm-cli/tests/workflow_stdio/
+  - crates/fsm-cli/tests/workflow_race/mod.rs
+  - crates/fsm-cli/tests/workflow_race/crash.rs
+  - crates/fsm-cli/tests/workflow_race/stdio_eof.rs
   - crates/fsm-execute/src/containment/workflow_native_tests.rs
   - crates/fsm-execute/tests/lifecycle_platform/workflow_probe.py
   - crates/fsm-execute/tests/lifecycle_platform/test_workflow_producer.py

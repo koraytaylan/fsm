@@ -217,6 +217,7 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
             | "failed-stop-embedded"
             | "active-stop-abort"
             | "active-stop-abort-embedded"
+            | "active-stop-eof-embedded"
             | "active-stop-drain"
             | "active-stop-drain-embedded"
             | "expired-drain"
@@ -488,6 +489,10 @@ pub(super) fn run() {
         cli.clone()
     };
     let cases = [
+        (
+            "workflow_race::stdio_eof::eof_stops_live_tree_and_recovers",
+            vec!["active-stop-eof-embedded"],
+        ),
         (
             "workflow_stdio::quiet_retry::quiet_retry_finishes_without_observation_requests",
             vec!["quiet-retry"],
