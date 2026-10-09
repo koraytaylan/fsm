@@ -12,6 +12,77 @@ use std::{
 // Independent SPEC boundary; changing a production limit must break this proof.
 const MAX_FRAME_BYTES: usize = 16 * 1024 * 1024;
 
+#[test]
+fn hosted_notifier_saturation_runs_close_hook_once_outside_the_queue_lock() {
+    let (notifier, output, observed, release) = held();
+    let (closed, received) = mpsc::channel();
+    let inspect = output.clone();
+    output.on_failure(move || {
+        assert!(inspect.is_broken());
+        release.send(()).unwrap();
+        closed.send(()).unwrap();
+    });
+    notifier.send(&Value::Null).unwrap();
+    observed.recv_timeout(Duration::from_secs(2)).unwrap();
+    for _ in 1..64 {
+        notifier.send(&Value::Null).unwrap();
+    }
+    assert_eq!(
+        notifier.send(&Value::Null).unwrap_err().kind(),
+        io::ErrorKind::WouldBlock
+    );
+    received.recv_timeout(Duration::from_secs(2)).unwrap();
+    assert_eq!(
+        notifier.send(&Value::Null).unwrap_err().kind(),
+        io::ErrorKind::BrokenPipe
+    );
+    assert!(received.try_recv().is_err());
+}
+
+struct FailedWriter;
+impl Write for FailedWriter {
+    fn write(&mut self, _: &[u8]) -> io::Result<usize> {
+        Err(io::Error::new(
+            io::ErrorKind::BrokenPipe,
+            "actual transport failure",
+        ))
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
+fn hosted_notifier_actual_write_failure_runs_registered_close_hook() {
+    let (notifier, output) = Notifier::hosted_queued(Box::new(FailedWriter)).unwrap();
+    let (closed, received) = mpsc::channel();
+    let inspect = output.clone();
+    output.on_failure(move || {
+        assert!(inspect.is_broken());
+        closed.send(()).unwrap();
+    });
+    notifier.send(&Value::Null).unwrap();
+    received.recv_timeout(Duration::from_secs(2)).unwrap();
+    assert!(output.is_broken());
+    assert!(!output.drained());
+}
+
+#[test]
+fn hosted_notifier_late_close_hook_registration_observes_actual_write_failure() {
+    let (notifier, output) = Notifier::hosted_queued(Box::new(FailedWriter)).unwrap();
+    notifier.send(&Value::Null).unwrap();
+    let watchdog = std::time::Instant::now() + Duration::from_secs(2);
+    while !output.is_broken() {
+        assert!(std::time::Instant::now() < watchdog);
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    let (closed, received) = mpsc::channel();
+    output.on_failure(move || closed.send(()).unwrap());
+    received.recv_timeout(Duration::from_secs(2)).unwrap();
+    output.on_failure(|| panic!("failure hook invoked twice"));
+    assert!(received.try_recv().is_err());
+}
+
 struct HeldWriter {
     entered: Option<mpsc::SyncSender<()>>,
     release: mpsc::Receiver<()>,

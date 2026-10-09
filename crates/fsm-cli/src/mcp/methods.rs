@@ -82,8 +82,12 @@ pub(in crate::mcp) fn handle_request_hosted<'a>(
 ) -> std::io::Result<()> {
     let refusal_id = id.clone();
     output.bind_committed_prefix(session.committed_prefix());
+    let closing = session.clone();
+    output.on_hosted_failure(move || closing.close());
     if let Some(feed) = feed_out {
         feed.bind_committed_prefix(session.committed_prefix());
+        let closing = session.clone();
+        feed.on_hosted_failure(move || closing.close());
     }
     let guarded_tool = method == "tools/call"
         && params

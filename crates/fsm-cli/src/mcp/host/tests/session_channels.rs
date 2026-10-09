@@ -24,6 +24,63 @@ use std::{
 };
 
 struct LogicalClock(Arc<AtomicI64>);
+
+#[test]
+fn session_channels_saturated_output_closes_only_its_original_session() {
+    let scratch = Scratch::new();
+    let (owner, handle) = super::Owner::new(super::seeded(&scratch.0), FixedClock::new(2000, 0));
+    let session = handle.session().unwrap();
+    let healthy = handle.session().unwrap();
+    let (entered, observed) = mpsc::channel();
+    let (release, resume) = mpsc::channel();
+    let (notifier, output) = Notifier::hosted_queued(Box::new(HeldOutput {
+        entered: Some(entered),
+        resume,
+    }))
+    .unwrap();
+    handle_request_hosted(
+        &notifier,
+        &session,
+        &scratch.0,
+        &mut FixedClock::new(2000, 0),
+        &mut true,
+        &mut Live::default(),
+        value("1"),
+        "ping",
+        None,
+        "saturated session",
+        None,
+        None,
+    )
+    .unwrap();
+    observed.recv_timeout(Duration::from_secs(2)).unwrap();
+    let retired = session
+        .submit(super::command("machine_list", "{}"))
+        .unwrap();
+    for _ in 1..64 {
+        notifier.send(&fsm_core::json::Value::Null).unwrap();
+    }
+    let overflow = notifier.send(&fsm_core::json::Value::Null).unwrap_err();
+    let closed = session.submit(super::command("machine_list", "{}")).err();
+    let worker = std::thread::spawn(move || owner.run());
+    let reply = healthy
+        .submit(super::command("machine_list", "{}"))
+        .unwrap()
+        .recv_timeout(Duration::from_secs(1));
+    handle.stop();
+    worker.join().unwrap();
+    release.send(()).unwrap();
+    assert_eq!(overflow.kind(), io::ErrorKind::WouldBlock);
+    assert_eq!(closed, Some(super::AdmissionError::Closed));
+    assert!(reply.unwrap().result.is_ok());
+    assert!(retired.recv_timeout(Duration::from_secs(1)).is_err());
+    assert!(output.is_broken());
+    assert_eq!(Store::open(&scratch.0).unwrap().journal.last_seq, 1);
+    assert_eq!(
+        crate::journal_io::verify(&scratch.0).health,
+        crate::journal_io::JournalHealth::Ok
+    );
+}
 impl Clock for LogicalClock {
     fn now_ms(&mut self) -> i64 {
         self.0.load(Ordering::Acquire)

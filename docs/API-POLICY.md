@@ -1821,5 +1821,14 @@ Ordinary hosted tool responses retain their originating output guard through
 response enqueueing even when no borrowed input adapter exists; read-only
 diagnostics and unanswered elicitation continue allowing committed feeds.
 
+A hosted output failure MUST invoke its one registered transport-retirement
+action exactly once, outside the egress mutex and without waiting for its
+writer. Late registration after failure invokes the action immediately.
+The fixed callback metadata is separate from retained frame allocation;
+internal registration captures only session/control handles and timeout.
+Hosted session adapters close and cancel their original generation, while
+stdio also requests original host shutdown without escalating a prior drain
+or extending its deadline. Graceful output close continues draining normally.
+
 This changes private hosted scheduling only; published error codes, journal
 formats, hash domains and public Rust signatures remain unchanged.

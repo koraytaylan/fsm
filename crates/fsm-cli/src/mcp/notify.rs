@@ -132,6 +132,12 @@ impl Notifier {
             .map(fsm_store::journal_io::CommittedPrefix::sequence)
     }
 
+    pub(crate) fn on_hosted_failure(&self, hook: impl FnOnce() + Send + 'static) {
+        if let OutputMode::Hosted(output) = &self.out {
+            output.on_failure(hook);
+        }
+    }
+
     /// Emit one complete message: synchronous write/flush or bounded queue admission.
     ///
     /// The lock scope **is** the correctness argument. A background thread

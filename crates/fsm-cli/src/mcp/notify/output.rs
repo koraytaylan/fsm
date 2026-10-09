@@ -35,6 +35,8 @@ struct State {
     charged_bytes: usize,
     closed: bool,
     broken: bool,
+    failure_hook: Option<Box<dyn FnOnce() + Send>>,
+    failure_hook_set: bool,
 }
 
 /// Bounded complete-frame output control; queue acceptance is not delivery.
@@ -93,6 +95,11 @@ impl ProtocolOutput {
                         state.charged_frames = 0;
                         state.charged_bytes = 0;
                         wake.notify_all();
+                        let hook = state.failure_hook.take();
+                        drop(state);
+                        if let Some(hook) = hook {
+                            hook();
+                        }
                         return;
                     }
                     wake.notify_all();
@@ -155,6 +162,27 @@ impl ProtocolOutput {
         state.closed = true;
         state.broken = true;
         wake.notify_all();
+        let hook = state.failure_hook.take();
+        drop(state);
+        if let Some(hook) = hook {
+            hook();
+        }
+    }
+
+    /// Register one bounded, nonblocking transport retirement action.
+    /// Invocation occurs once, outside the queue mutex, including late registration.
+    pub(crate) fn on_failure(&self, hook: impl FnOnce() + Send + 'static) {
+        let mut state = self.0.0.lock().unwrap_or_else(|error| error.into_inner());
+        if state.failure_hook_set {
+            return;
+        }
+        state.failure_hook_set = true;
+        if state.broken {
+            drop(state);
+            hook();
+        } else {
+            state.failure_hook = Some(Box::new(hook));
+        }
     }
 
     /// Close admission without waiting for a blocked writer.

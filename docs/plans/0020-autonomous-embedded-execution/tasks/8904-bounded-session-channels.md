@@ -72,7 +72,7 @@ host or allocate an unbounded backlog.
 
 Focused channel review:
 
-- Twenty-five focused `session_channels` cases pass, including original native
+- Twenty-six focused `session_channels` cases pass, including original native
   deadline progress and a second session response while actual output remains
   blocked, and replay through a replacement session after actual delivery
   failure without another journal append. Affected store/CLI test-target clippy and
@@ -97,7 +97,7 @@ Focused channel review:
   opening, and does not replace the worker outcome. Disabling only diagnostic
   owned-input routing fails both named lifetime cases at exit 101; restoring
   it passes all channel cases.
-- The three exact count/retained-byte/encoded-frame egress boundary cases and
+- The six egress boundary and failure-callback cases and
   all eighteen existing elicitation/cancellation integration cases pass.
 - Publication review found that a guard on one output stream could not
   establish another session's durable prefix, and an adapter without borrowed
@@ -113,5 +113,15 @@ Focused channel review:
   or separate streams each fail their named regression at exit 101;
   restoration passes. Both focused committed-prefix cases and all seven
   existing subscription integration cases pass.
-- Completion still requires the original transport-close hook inventory and
-  consolidated frozen review; no landing OID is assigned.
+- Hosted egress now invokes one nonblocking retirement action outside its
+  queue mutex, including actual write failure and registration after failure.
+  The production adapter closes only the original saturated session immediately,
+  while another session completes with the failed writer still blocked.
+  Neutralizing overflow retirement or actual write-failure retirement fails
+  its named regression at exit 101; restoration passes. Stdio registers its
+  original session and host shutdown action before request handling; all five
+  owned-stdio cases pass, including actual broken output with quiet input and
+  verified writer release. Physical HTTP connection retirement remains part
+  of task 9002's transport composition, not a claim of HTTP completion here.
+- Completion still requires consolidated frozen review of the original
+  inventory; no landing OID is assigned and full gates remain due at plan end.

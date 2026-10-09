@@ -113,6 +113,17 @@ pub(in crate::mcp) fn serve_with_adapter_start<C: Clock + Send + 'static, R: Buf
     let session = handle
         .session()
         .map_err(|error| io::Error::other(format!("host session admission failed: {error:?}")))?;
+    let closing = session.clone();
+    let output_stop = control.clone();
+    queued.on_failure(move || {
+        closing.close();
+        let mode = if output_stop.report().phase == ExecutorPhase::Running {
+            ShutdownMode::Abort
+        } else {
+            ShutdownMode::Drain
+        };
+        let _ = output_stop.stop(mode, SHUTDOWN_TIMEOUT_MS);
+    });
     let finished = Arc::new(AtomicBool::new(false));
     let worker_finished = Finished(Arc::clone(&finished));
     let worker = std::thread::Builder::new()

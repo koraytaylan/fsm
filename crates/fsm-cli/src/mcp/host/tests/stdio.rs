@@ -67,6 +67,51 @@ fn execution_host_owned_stdio_adapter_panic_retires_original_writer() {
 }
 
 #[test]
+fn execution_host_owned_stdio_write_failure_retires_original_writer_with_quiet_input() {
+    struct FailedOutput;
+    impl Write for FailedOutput {
+        fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::BrokenPipe,
+                "fixture transport disconnected",
+            ))
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let scratch = Scratch::new();
+    let driver = OwnedNativeExecutor::new(seeded(&scratch.0), HandlerTable::default()).unwrap();
+    let control = driver.control();
+    let (mut client, server) = UnixStream::pair().unwrap();
+    let (reported, received) = std::sync::mpsc::channel();
+    let worker = std::thread::spawn(move || {
+        reported
+            .send(hosted::serve(
+                driver,
+                FixedClock::new(1000, 0),
+                move || BufReader::new(server),
+                FailedOutput,
+                std::io::sink(),
+            ))
+            .unwrap();
+    });
+    let initialize = r#"{"jsonrpc":"2.0","id":1,"method":"initialize"}"#;
+    writeln!(client, "{initialize}").unwrap();
+    let report = received.recv_timeout(Duration::from_secs(3));
+    client.shutdown(Shutdown::Write).unwrap();
+    worker.join().unwrap();
+    let report = report.unwrap().unwrap();
+    assert_eq!(report.shutdown.phase, ExecutorPhase::Stopped);
+    assert!(report.shutdown.writer_released && report.shutdown.helpers_retired);
+    assert!(report.shutdown.inventory_complete && report.shutdown.admission_closed);
+    assert!(!report.output_drained);
+    assert!(report.worker.is_none());
+    assert_eq!(control.report().phase, ExecutorPhase::Stopped);
+    assert_eq!(Store::open(&scratch.0).unwrap().journal.last_seq, 1);
+}
+
+#[test]
 fn execution_host_owned_stdio_blocked_output_does_not_keep_the_writer() {
     use std::sync::mpsc;
     struct HeldOutput {
