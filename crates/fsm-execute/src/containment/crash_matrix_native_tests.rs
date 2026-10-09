@@ -280,6 +280,7 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
             }
         }
     }
+    contracts::prepare_observations(&resource, behavior);
     let resource_identity = identity(&fs::symlink_metadata(&resource).unwrap());
     // Leave room for the longest control label and its private socket suffix.
     let home = PathBuf::from(format!(

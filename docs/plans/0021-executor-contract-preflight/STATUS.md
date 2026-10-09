@@ -163,12 +163,16 @@ Checkpoint `5131b76f` then reaches the timeout claim but cannot bind its changed
 policy against the original protected catalogue. Root staging now approves the
 exact timeout and ack-only policies before provisioning; an independently
 specified full-handler/fingerprint comparison passes all eight kind/path branches.
+Checkpoint `0ffedd0e` then starts and stops the timeout handler on both toolchains,
+but DynamicUser cleanup unlinks its candidate marker. Root now owns the empty
+contention observation slot; entry requires actual nonempty PID bytes, and the
+original bytes/time remain available for refusal and retry comparisons.
 Cancellation, bound-entry and recovery observers share readable-empty Root PID
 slots and strict missing candidate/result markers; repaired completion releases
 the complete original tree. Thirteen focused admission cases, two real portable
 barrier cases, 27 mocked producer/verifier cases and admission-target clippy pass,
 with format/size/diff checks, and lifecycle-target clippy passes. Frozen verdict
-`80e24497d88f41bd1d5704c12bff795f843d29616b89a775124636d30a571d4c`
+`36d4ace596480159756d5ae77ab36a9ae4de667a2e777001a938715d4702c3d2`
 indexes the actual failures and corrections; the remaining physical inventory,
 native sensitivity and plan-end gates remain open.
 

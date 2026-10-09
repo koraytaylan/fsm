@@ -162,7 +162,15 @@ fn observe(borrowed: bool, scenario: Scenario) {
     let manifest = manifest();
     let store_path = PathBuf::from(manifest.get("store").unwrap().as_str().unwrap());
     let resource = PathBuf::from(manifest.get("resource").unwrap().as_str().unwrap());
-    assert!(!resource.join("root-candidate").exists());
+    if matches!(scenario, Scenario::Contention) {
+        assert!(
+            fs::read(resource.join("root-candidate"))
+                .unwrap()
+                .is_empty()
+        );
+    } else {
+        assert!(!resource.join("root-candidate").exists());
+    }
     assert!(!resource.join("root-release").exists());
     let mut table =
         HandlerTable::parse(&fs::read_to_string(store_path.join("handlers.json")).unwrap())
@@ -664,7 +672,7 @@ fn observe(borrowed: bool, scenario: Scenario) {
         assert_eq!(resolve(&writer, &effect_id).unwrap(), historical);
         drop(writer);
     }
-    while !resource.join("root-candidate").is_file() {
+    while !candidate_recorded(&resource) {
         let lines = tick(&mut watcher, &mut scheduler, &mut runner, &mut clock);
         assert!(
             Instant::now() < deadline,
@@ -778,6 +786,14 @@ fn observe(borrowed: bool, scenario: Scenario) {
         fsm_store::journal_io::verify(&store_path).health,
         fsm_store::journal_io::JournalHealth::Ok
     );
+}
+
+fn candidate_recorded(resource: &std::path::Path) -> bool {
+    match fs::read(resource.join("root-candidate")) {
+        Ok(bytes) => !bytes.is_empty(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        Err(error) => panic!("cannot read original candidate observation: {error}"),
+    }
 }
 
 fn assert_no_entry(resource: &std::path::Path) {

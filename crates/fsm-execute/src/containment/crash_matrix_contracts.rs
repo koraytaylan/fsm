@@ -75,3 +75,16 @@ fn protected_contract_policies_match_independent_handler_contracts() {
         }
     }
 }
+
+pub(super) fn prepare_observations(resource: &Path, behavior: &str) {
+    if matches!(
+        behavior,
+        "contract-contention-standalone" | "contract-contention-borrowed"
+    ) {
+        // DynamicUser RemoveIPC must not unlink the original result observation
+        // when timeout closes the first domain, before retry checks can read it.
+        let candidate = resource.join("root-candidate");
+        fs::write(&candidate, b"").unwrap();
+        fs::set_permissions(candidate, fs::Permissions::from_mode(0o666)).unwrap();
+    }
+}
