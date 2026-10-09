@@ -25,6 +25,12 @@ Cache frozen range `f4ebf73b..902d8219` passes five cache, 81 native unit,
 six contract/service and eight tick cases, focused lint/format/size checks and
 cache-hit/concrete-guard sensitivity; self-review digest
 `08a40e3110d451cc266b31b947fa54bb5b402fec2606dfcf908a5333843baec8`.
+Native acceptance harness range `d9a99c2c..6b58f658` wires standalone/borrowed
+process/MCP refusal and repair into disposable CI; six portable contract cases,
+25 mocked evidence cases and feature-enabled executor clippy pass, while both
+protected Rust cases remain ignored locally and all four genuine native axes
+remain unexecuted; self-review digest
+`8f2e9bfceaf0648827cee7b6693e5e2cdae9e2718a1f9dc7fcb33a2c0ed51f5c`.
 Task 9103 remains in progress: complete dispatch/service/native acceptance and
 plan-end gates remain outstanding; concrete reconstruction retains its documented
 journal-prefix replay cost.
