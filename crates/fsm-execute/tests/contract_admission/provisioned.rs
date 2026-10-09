@@ -561,6 +561,35 @@ fn observe(borrowed: bool, scenario: Scenario) {
         assert_eq!(runner.local_native_claims().next(), Some(&original_claim));
         let mut writer = Store::open(&store_path).unwrap();
         let historical = resolve(&writer, &effect_id).unwrap();
+        receiver::migrate_invoked_receiver(&mut writer, &mut clock, "original");
+        assert_eq!(resolve(&writer, &effect_id).unwrap(), historical);
+        let closure_records = writer.records.clone();
+        let closure_state = writer.state.clone();
+        drop(writer);
+        let mut refusals = 0;
+        while refusals < 3 {
+            let lines = tick(&mut watcher, &mut scheduler, &mut runner, &mut clock);
+            refusals += usize::from(
+                lines
+                    .iter()
+                    .any(|line| line == "error exec/contract_invalid"),
+            );
+            assert!(!resource.join("root-entered").exists());
+            assert!(!resource.join("root-candidate").exists());
+            assert_eq!(runner.local_native_claims().next(), Some(&original_claim));
+            let current = Store::open_read_only(&store_path).unwrap();
+            assert_eq!(current.records, closure_records);
+            assert!(fsm_store::snapshot::store_states_eq(
+                &closure_state,
+                &current.state
+            ));
+            assert!(
+                Instant::now() < deadline,
+                "new invoked closure reused stale approval: {lines:?}"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let mut writer = Store::open(&store_path).unwrap();
         migrate_receiver(
             &mut writer,
             &mut clock,

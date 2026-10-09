@@ -41,7 +41,11 @@ The provisioned inventory crosses both writer entry paths and process/MCP
 handlers for timeout cleanup under contention, manual repair, ack-only work,
 acknowledged recovery and bound-entry table/private MCP argument replacement followed by receiver
 migration and repair with historical pending identity and arguments preserved
-despite changed live context. Original ownership,
+despite changed live context. A newly added, resolved invoked closure with an
+incompatible late child outcome must also refuse the original bound claim;
+repair preserves its invoke slot and replaces the child reference compatibly.
+The executable Store fixture independently verifies this refusal and repair.
+Original ownership,
 unchanged refusal journals, marker absence and exact settlement/allocation
 counts are required before repair or writer release, as applicable. Thirteen
 focused admission and 27 mocked producer/verifier cases pass, with executor
@@ -53,8 +57,8 @@ until provisioned plan-end CI.
 Five focused bound-entry tests pass, including private MCP replacement and
 nested missing arguments; feature-enabled executor all-target clippy and
 format/size/diff checks pass. Scoped review
-`e6248708c6d2a38dd00c9546c84999288bcff2a7716d93bbccd7535b3695276a`
-indexes the executable migration fixture and private MCP probes;
+`c81fa4e98012027fee40e6c4822d424add7bb9133f0f104dbd35292eee64b44a`
+indexes the executable migration/closure fixture and preceding private MCP probes;
 the eighteen native Rust cases remain ignored locally.
 Native producer launch failure now preserves its original bounded diagnostic
 and unobserved axes, retiring only a verified clear installed identity;
