@@ -30,6 +30,14 @@ digest `eee78cc01606dac313ddc3f177301e7abff6d34d618fd3e2a48c084d4436daa0`.
 Task 9201's written focused inventory passes on stable Linux; it remains in
 progress until the plan-end portability and integration gates succeed.
 
+MCP independent preparation `0d1bb9d7..ea7e10dd` retains a private immutable
+host table shared by sessions, with isolation and lifecycle boundaries covered
+by two focused Linux cases; CLI all-target clippy and format/size/diff checks
+pass, with self-review digest
+`b5454bd282ef1ff575e1237ca23094b471fe5b5a0bdf05db21bef59dd00176e6`.
+No draft-check tool is advertised or dispatched yet; task 9202 remains planned
+and its admission dependency and complete acceptance inventory remain open.
+
 Manual Phase R binds the six-task bundle to validation base `15172d8298f271abfd0bd1d5b47617d1108ceefc` after plans 0022 and 0020 complete: closed frontmatter, repository-relative footprints and the acyclic local dependency graph pass, with uncreated deliverables explicitly inventoried; task-cache validation digest `4298d27510c4726206598590ca50efd51e0aeca49c5605aae9f004697820f1f7`. Task 9101 completes its focused inventory at `efcb4f9e`, with 67 stable effect/configuration/public-surface cases and focused lint/format/diff checks passing; self-review verdict `dfd37ee9a1867119e4c63a048ad58b1030b7db590fe118b95dcee1edff82f9a1`; task 9102 completes at `ed811ab6` with eleven focused outcome tests and self-review verdict `b9a671329f5a8177a34529118e6925015757c21b9a064f5d5371820bd71ac271`; task 9103 is in progress; prior independent preparation remains subject to current task acceptance, and admission/MCP/final acceptance remain incomplete. Full gates run at plan completion.
 
 Historical STATUS evidence is retained outside the repository in the task-cache
