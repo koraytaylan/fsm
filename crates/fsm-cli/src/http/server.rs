@@ -6,11 +6,11 @@
 //!
 //! Plan 0015 task 6901.
 
-use std::io::{BufReader, Write};
+use std::io::{BufReader, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// How many connections this server will hold at once.
 ///
@@ -234,22 +234,23 @@ fn refuse(mut socket: TcpStream) {
 fn serve_connection(socket: TcpStream, handler: &dyn Handler, stop: &AtomicBool) {
     // Set at accept, so a connection that stops talking costs one thread for
     // a bounded time and no more.
-    let _ = socket.set_read_timeout(Some(IO_TIMEOUT));
+    // Winsock shutdown does not reliably interrupt another thread's pending
+    // receive; short reads observe the original stop flag without renewing
+    // the ordinary idle-read timeout.
+    let _ = socket.set_read_timeout(Some(ACCEPT_POLL));
     let _ = socket.set_write_timeout(Some(IO_TIMEOUT));
     let _ = socket.set_nodelay(true);
     let Ok(write_half) = socket.try_clone() else {
         return;
     };
-    let mut input = BufReader::new(socket);
+    let mut input = BufReader::new(StoppingReader { socket, stop });
     let mut output = write_half;
     for _ in 0..MAX_REQUESTS_PER_CONNECTION {
         if stop.load(Ordering::Relaxed) {
             return;
         }
-        // Re-armed per request: an idle keep-alive connection is bounded by
-        // the same window as a silent new one, rather than living forever
-        // because it once said something.
-        let _ = input.get_ref().set_read_timeout(Some(IO_TIMEOUT));
+        // Each underlying read retains the same bounded idle window, including
+        // keep-alive requests, while observing server stop between short waits.
         let Ok(owned_output) = output.try_clone() else {
             return;
         };
@@ -261,6 +262,33 @@ fn serve_connection(socket: TcpStream, handler: &dyn Handler, stop: &AtomicBool)
         }
         if output.flush().is_err() {
             return;
+        }
+    }
+}
+
+struct StoppingReader<'a> {
+    socket: TcpStream,
+    stop: &'a AtomicBool,
+}
+
+impl Read for StoppingReader<'_> {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        if buffer.is_empty() {
+            return Ok(0);
+        }
+        let deadline = Instant::now() + IO_TIMEOUT;
+        loop {
+            if self.stop.load(Ordering::Relaxed) {
+                return Err(std::io::Error::from(std::io::ErrorKind::ConnectionAborted));
+            }
+            match self.socket.read(buffer) {
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                    ) && Instant::now() < deadline => {}
+                result => return result,
+            }
         }
     }
 }

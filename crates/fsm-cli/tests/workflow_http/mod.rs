@@ -25,8 +25,26 @@ impl Http {
         socket.write_all(b"\r\n").unwrap();
         socket.write_all(body).unwrap();
         socket.shutdown(Shutdown::Write).unwrap();
+        // The HTTP message ends at Content-Length, independently of a later
+        // platform-specific connection reset during socket retirement.
+        let mut input = BufReader::new(socket);
         let mut response = String::new();
-        socket.read_to_string(&mut response).unwrap();
+        let mut body_length = None;
+        loop {
+            let mut line = String::new();
+            assert_ne!(input.read_line(&mut line).unwrap(), 0);
+            assert!(response.len() + line.len() <= 64 * 1024);
+            response.push_str(&line);
+            if line == "\r\n" {
+                break;
+            }
+            if let Some(length) = line.to_ascii_lowercase().strip_prefix("content-length: ") {
+                body_length = Some(length.trim().parse::<usize>().unwrap());
+            }
+        }
+        let mut body = vec![0; body_length.expect("bounded HTTP response body")];
+        input.read_exact(&mut body).unwrap();
+        response.push_str(std::str::from_utf8(&body).unwrap());
         assert!(response.starts_with("HTTP/1.1 200"), "{response}");
         response
     }

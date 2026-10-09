@@ -33,7 +33,9 @@ wire discriminator, journal bytes, hashes, error codes or version numbers.
 
 HTTP server stop now wakes admitted socket I/O before joining connection
 workers, including silent and partial-request reads; completed connections
-close despite retained shutdown descriptors. This retirement correction changes
+close despite retained shutdown descriptors. Short socket waits also observe
+the original stop flag on Windows without renewing the ordinary idle-read
+deadline or discarding partial input. This retirement correction changes
 no public signatures, wire discriminators, journal bytes, hashes or error codes
 and establishes no native executor shutdown guarantee.
 

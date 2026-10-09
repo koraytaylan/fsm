@@ -3661,6 +3661,9 @@ HTTP server stop MUST shut down both halves of every retained admitted socket
 before joining its connection workers, so silent or partial requests do not
 consume the normal socket I/O timeout during retirement. A finished connection
 MUST end its socket even while the accept loop retains a shutdown descriptor.
+Reads MUST observe the original server stop flag between bounded socket waits,
+including on platforms where shutdown alone cannot interrupt a pending receive;
+these waits MUST NOT renew the ordinary idle-read timeout or discard partial input.
 This wakes socket I/O only; it does not prove interruptibility of application
 work or native executor closure.
 

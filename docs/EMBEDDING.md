@@ -1273,7 +1273,9 @@ stdio does; it does not silently substitute a manual writer for `--execute`.
 
 Stopping the HTTP server shuts down admitted sockets before joining their
 workers, waking silent and partial-request reads without waiting for the normal
-30-second I/O timeout; this transport cleanup does not prove native closure or
+30-second I/O timeout; bounded read waits also observe the original stop flag
+on Windows without renewing idle-read deadlines or discarding partial input.
+This transport cleanup does not prove native closure or
 interrupt application work outside socket I/O.
 
 HTTP uses stdio's bounded writer acquisition: when another writer holds a

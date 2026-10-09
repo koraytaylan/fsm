@@ -1,0 +1,42 @@
+name: focused-http
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: focused-http-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows-http:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        rust: [stable, "1.89"]
+    env:
+      CARGO_BUILD_JOBS: "1"
+      RUSTUP_TOOLCHAIN: ${{ matrix.rust }}
+      RUSTFLAGS: --deny warnings
+    steps:
+      - uses: actions/checkout@v7
+      - name: Prepare native task cache
+        shell: bash
+        run: |
+          task_cache="$HOME/.cache/fsm-focused-http-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -p "$task_cache"
+          task_cache="$(cygpath -w "$task_cache")"
+          printf 'TMPDIR=%s\nTMP=%s\nTEMP=%s\n' "$task_cache" "$task_cache" "$task_cache" >> "$GITHUB_ENV"
+      - run: rustup toolchain install ${{ matrix.rust }} --profile minimal --component clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: gate-windows-latest-${{ matrix.rust }}
+      - run: cargo test -p fsm-cli --lib http::endpoint::retirement_tests
+      - run: cargo test -p fsm-cli --lib mcp::host::tests::publication
+      - run: cargo test -p fsm-cli --test http_server
+      - run: cargo test -p fsm-cli --test mcp_execute_workflow workflow_http::http_fixture_reinitializes_after_delete_before_observing_history -- --exact
+      - run: cargo clippy -p fsm-cli --all-targets -- -D warnings

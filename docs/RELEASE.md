@@ -1892,7 +1892,9 @@ finishes; unanswered questions continue allowing already committed updates.
 
 HTTP server stop wakes admitted sockets before joining connection workers,
 preventing silent and partial requests from spending the normal 30-second I/O
-timeout during transport retirement; finished workers explicitly close their
+timeout during transport retirement; bounded read waits observe the original
+stop flag on Windows without renewing idle deadlines or discarding partial
+input, and finished workers explicitly close their
 connections despite retained shutdown descriptors. This correction does not
 establish native executor closure or interrupt application work outside socket
 I/O, and changes no journal or wire format.

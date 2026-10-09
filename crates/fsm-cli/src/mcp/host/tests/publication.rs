@@ -161,7 +161,7 @@ fn response_guard_case(transport: FeedTransport) {
 
 #[test]
 fn execution_host_session_channels_other_session_feed_never_publishes_uncommitted_bytes() {
-    use std::io::Write;
+    use std::io::{Seek, SeekFrom, Write};
     let scratch = Scratch::new();
     let store = seeded(&scratch.0);
     let before = store.journal.last_seq;
@@ -216,9 +216,10 @@ fn execution_host_session_channels_other_session_feed_never_publishes_uncommitte
         &previous_hash,
     );
     let mut file = std::fs::OpenOptions::new()
-        .append(true)
+        .write(true)
         .open(&segment)
         .unwrap();
+    file.seek(SeekFrom::End(0)).unwrap();
     file.write_all(&record.to_line()).unwrap();
     let visible = Store::open_read_only(&scratch.0).unwrap().journal.last_seq;
     let premature = feed.poll_once();
