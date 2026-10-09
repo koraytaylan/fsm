@@ -3465,9 +3465,8 @@ queued application commands. Never join a live owner after the deadline;
 retain the original worker or returned native driver and report uncertainty.
 Protocol/operator delivery facts MUST remain separate from native writer
 release; unknown diagnostic loss is None, not a fabricated zero count.
-This private composition is not selected by the production process entry yet;
-interactive/progress forwarding, complete egress and fsm.executor/2 discovery
-remain required before that selection.
+Production stdio selects this composition with interactive/progress forwarding,
+bounded egress and fsm.executor/2 discovery under the production contract.
 
 The private hosted adapter's admitted-response wait also observes original
 session close, failed protocol output and native lifecycle stop at finite
@@ -3577,8 +3576,9 @@ remains explicit until native, endpoint and output retirement are proven.
 HTTP, contention/degraded fallback and borrowed helpers keep their existing
 contracts. This stdio capability and wire discriminator change has a pre-1.0
 minor-version consequence, with no core semantics, journal bytes, hash domains,
-public Rust signatures, dependency or MSRV changes. Production acceptance and
-complete bounded egress ordering remain pending in plans 20–23.
+public Rust signatures, dependency or MSRV changes. Focused production stdio
+and bounded egress acceptance is recorded in plan 0020; full plan integration
+gates remain due before completion.
 
 HTTP startup MUST use the same bounded writer acquisition and original
 contention observation as stdio. A healthy contended store MUST remain

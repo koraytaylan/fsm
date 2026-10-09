@@ -824,7 +824,7 @@ can correct the payload and resend under the same key.
 
 A model that wants to know when an instance advances has two options, and
 until this existed only one of them worked: call `instance_get` in a loop, or
-subscribe and be told. Autonomous embedded stdio and external executors
+subscribe and be told. Autonomous embedded stdio/HTTP and external executors
 progress independently of observation requests; inspect `fsm://executor` for
 the active contract, since legacy `client_requests` helpers still require ticks.
 
@@ -2955,8 +2955,9 @@ copies are dropped. Known deferred cancellation suppresses that frame without
 creating future cancellation metadata for unknown IDs. Application admission
 and the raw input backlog remain separate accounting units. Borrowed helpers
 retain their blocking behavior; retirement does not undo committed work or
-prove writer release. Long diagnostics, publication ordering, production
-activation and full/platform/native acceptance remain unfinished.
+prove writer release. Production transports use the separately bounded
+diagnostic and publication paths; focused transport/native acceptance is
+recorded in plan 0020, with full integration gates still due.
 
 Private hosted stdio now catches protocol-adapter unwinds after owner startup,
 retires the original session and requests original-control shutdown while

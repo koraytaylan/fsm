@@ -1666,8 +1666,9 @@ copies are dropped. Known deferred cancellation suppresses that frame without
 creating future cancellation metadata for unknown IDs. Application admission
 and the raw input backlog remain separate accounting units. Borrowed helpers
 retain their blocking behavior; retirement does not undo committed work or
-prove writer release. Long diagnostics, publication ordering, production
-activation and full/platform/native acceptance remain unfinished.
+prove writer release. Production transports use the separately bounded
+diagnostic and publication paths; focused transport/native acceptance is
+recorded in plan 0020, with full integration gates still due.
 
 Private hosted stdio now catches protocol-adapter unwinds after owner startup,
 retires the original session and requests original-control shutdown while
@@ -1687,8 +1688,9 @@ remains explicit until native, endpoint and output retirement are proven.
 HTTP, contention/degraded fallback and borrowed helpers keep their existing
 contracts. This stdio capability and wire discriminator change has a pre-1.0
 minor-version consequence, with no core semantics, journal bytes, hash domains,
-public Rust signatures, dependency or MSRV changes. Production acceptance and
-complete bounded egress ordering remain pending in plans 20–23.
+public Rust signatures, dependency or MSRV changes. Focused production stdio
+and bounded egress acceptance is recorded in plan 0020; full plan integration
+gates remain due before completion.
 
 Linux embedded stdio accepts `serve --execute --poll-interval-ms N`, default
 250 ms, within 1..=86400000 milliseconds; malformed values and incompatible
