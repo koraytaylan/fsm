@@ -19,35 +19,8 @@ fn autonomous_schedule_large_outbox_cannot_starve_another_native_instance() {
     );
     let path = PathBuf::from(held_handlers::field(&manifest, "store"));
     let resource = PathBuf::from(held_handlers::field(&manifest, "resource"));
-    let mut store = Store::open(&path).unwrap();
-    let mut clock = FixedClock::new(2000, 0);
-    let emits = (0..32)
-        .map(|_| r#"{"effect":"busy","args":{}}"#)
-        .collect::<Vec<_>>()
-        .join(",");
-    let busy = held_handlers::HELD_MACHINE
-        .replace("held_completion", "busy_outbox")
-        .replace(r#""name":"notify""#, r#""name":"busy""#)
-        .replace(r#"{"effect":"notify","args":{}}"#, &emits);
-    store
-        .define_machine_on(&mut clock, value(&busy), false, false)
-        .unwrap();
-    store
-        .define_machine_on(&mut clock, value(held_handlers::HELD_MACHINE), false, false)
-        .unwrap();
-    for (machine, instance) in [("busy_outbox", "a-busy"), ("held_completion", "z-quiet")] {
-        store
-            .create_instance_ctx_on(
-                &mut clock,
-                machine,
-                instance,
-                instance,
-                None,
-                &std::collections::BTreeMap::new(),
-                &[],
-            )
-            .unwrap();
-    }
+    let store = seeded_large_outbox(&path);
+    let clock = FixedClock::new(2000, 0);
     let handlers =
         HandlerTable::parse(&fs::read_to_string(path.join("handlers.json")).unwrap()).unwrap();
     assert_eq!(handlers.max_inflight, 2);
@@ -132,6 +105,73 @@ fn autonomous_schedule_large_outbox_cannot_starve_another_native_instance() {
     assert!(!resource.join("busy/root-release").exists());
     assert_eq!(
         crate::journal_io::verify(&path).health,
+        crate::journal_io::JournalHealth::Ok
+    );
+}
+
+fn seeded_large_outbox(path: &std::path::Path) -> Store {
+    let mut store = Store::open(path).unwrap();
+    let mut clock = FixedClock::new(2000, 0);
+    let emits = (0..8)
+        .map(|_| r#"{"effect":"busy","args":{}}"#)
+        .collect::<Vec<_>>()
+        .join(",");
+    let busy = held_handlers::HELD_MACHINE
+        .replace("held_completion", "busy_outbox")
+        .replace(r#""name":"notify""#, r#""name":"busy""#)
+        .replace(r#"{"effect":"notify","args":{}}"#, &emits)
+        .replace(r#""events":["#, r#""events":[{"name":"more","fields":[]},"#)
+        .replace(
+            r#""transitions":["#,
+            r#""transitions":[{"from":"running","on":"more","to":"running"},"#,
+        );
+    store
+        .define_machine_on(&mut clock, value(&busy), false, false)
+        .unwrap();
+    store
+        .define_machine_on(&mut clock, value(held_handlers::HELD_MACHINE), false, false)
+        .unwrap();
+    for (machine, instance) in [("busy_outbox", "a-busy"), ("held_completion", "z-quiet")] {
+        store
+            .create_instance_ctx_on(
+                &mut clock,
+                machine,
+                instance,
+                instance,
+                None,
+                &std::collections::BTreeMap::new(),
+                &[],
+            )
+            .unwrap();
+    }
+    for index in 0..3 {
+        store
+            .send_event_stamp_on(
+                &mut clock,
+                "a-busy",
+                "more",
+                &mut value("{}"),
+                &format!("busy-more-{index}"),
+                None,
+                &[],
+            )
+            .unwrap();
+    }
+    assert_eq!(store.state.instances["a-busy"].pending.len(), 32);
+    store
+}
+
+#[test]
+fn autonomous_schedule_large_outbox_fixture_preserves_all_effects_on_reopen() {
+    let scratch = super::Scratch::new();
+    let store = seeded_large_outbox(&scratch.0);
+    assert_eq!(store.state.instances["z-quiet"].pending.len(), 1);
+    drop(store);
+    let reopened = Store::open(&scratch.0).unwrap();
+    assert_eq!(reopened.state.instances["a-busy"].pending.len(), 32);
+    assert_eq!(reopened.state.instances["z-quiet"].pending.len(), 1);
+    assert_eq!(
+        crate::journal_io::verify(&scratch.0).health,
         crate::journal_io::JournalHealth::Ok
     );
 }
