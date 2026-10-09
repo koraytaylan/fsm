@@ -21,6 +21,9 @@ mod workflow_race;
 #[path = "workflow_stdio/mod.rs"]
 mod workflow_stdio;
 
+#[path = "workflow_http/mod.rs"]
+mod workflow_http;
+
 #[path = "workflow_race/classification.rs"]
 mod workflow_classification;
 use workflow_classification::{interrupted_scenario, transition};
@@ -271,6 +274,7 @@ struct Client {
     reader: Option<JoinHandle<()>>,
     request: u64,
     errors: PathBuf,
+    http: Option<workflow_http::Http>,
 }
 
 #[derive(Clone, Copy)]
@@ -279,6 +283,7 @@ struct Client {
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 enum ExecutionMode {
     Embedded,
+    Http,
     Standalone,
     Borrowed,
     BorrowedReadOnly,
@@ -286,6 +291,9 @@ enum ExecutionMode {
 
 impl Client {
     fn start_mode(fixture: &Directory, mode: ExecutionMode) -> Self {
+        if matches!(mode, ExecutionMode::Http) {
+            return workflow_http::start(fixture);
+        }
         let directory = &fixture.0;
         let errors = directory.join("stderr");
         let borrowed = matches!(
@@ -313,7 +321,7 @@ impl Client {
         } else {
             command.arg("--data-dir").arg(fixture.store()).arg("serve");
         }
-        if matches!(mode, ExecutionMode::Embedded) {
+        if matches!(mode, ExecutionMode::Embedded | ExecutionMode::Http) {
             command
                 .args(["--execute", "--handlers"])
                 .arg(directory.join("handlers.json"));
@@ -353,6 +361,7 @@ impl Client {
             reader: Some(reader),
             request: 0,
             errors,
+            http: None,
         };
         let initialized = client.request(
             "initialize",
@@ -379,6 +388,12 @@ impl Client {
             ("method", string(method)),
             ("params", parameters),
         ]);
+        if let Some(http) = &mut self.http {
+            let response = http.post(&request);
+            assert_eq!(response.get("id"), Some(&identifier));
+            assert!(response.get("error").is_none(), "{response:?}");
+            return response.get("result").unwrap().clone();
+        }
         self.input
             .as_mut()
             .unwrap()
@@ -416,62 +431,6 @@ impl Client {
             "{response:?}"
         );
         response.get("structuredContent").unwrap().clone()
-    }
-
-    fn discover_handlers(&mut self) -> BTreeMap<String, Value> {
-        let resources = self.request("resources/list", object([]));
-        assert!(
-            resources
-                .get("resources")
-                .unwrap()
-                .as_arr()
-                .unwrap()
-                .iter()
-                .any(|resource| resource.get("uri").and_then(Value::as_str)
-                    == Some("fsm://executor"))
-        );
-        let response = self.request(
-            "resources/read",
-            object([("uri", string("fsm://executor"))]),
-        );
-        let content = &response.get("contents").unwrap().as_arr().unwrap()[0];
-        let capabilities = value(&text(content, "text"));
-        assert_eq!(text(&capabilities, "mode"), "embedded");
-        assert_eq!(
-            capabilities.get("executes_effects"),
-            Some(&Value::Bool(true))
-        );
-        let autonomous = cfg!(target_os = "linux") && matches!(self.mode, ExecutionMode::Embedded);
-        assert_eq!(
-            text(&capabilities, "format"),
-            if autonomous {
-                "fsm.executor/2"
-            } else {
-                "fsm.executor/1"
-            }
-        );
-        assert_eq!(
-            text(&capabilities, "progress"),
-            if autonomous {
-                "autonomous"
-            } else {
-                "client_requests"
-            }
-        );
-        let handlers = capabilities.get("handlers").unwrap().as_arr().unwrap();
-        assert_eq!(handlers.len(), OPERATIONS.len());
-        handlers
-            .iter()
-            .map(|handler| {
-                assert_eq!(text(handler, "kind"), "process");
-                assert_eq!(
-                    handler.get("required_args"),
-                    Some(&value(r#"["resource","run"]"#))
-                );
-                assert!(handler.get("argv").is_none());
-                (text(handler, "effect"), handler.clone())
-            })
-            .collect()
     }
 }
 
@@ -611,13 +570,16 @@ fn run_scenario_mode(
     mode: ExecutionMode,
 ) {
     #[cfg(not(target_os = "linux"))]
-    assert!(matches!(mode, ExecutionMode::Embedded));
+    assert!(matches!(
+        mode,
+        ExecutionMode::Embedded | ExecutionMode::Http
+    ));
     let directory = Directory::new();
     fs::write(directory.resource().join("phase"), "active").unwrap();
     write_handlers(&directory.0, &directory.resource(), failures);
     let mut client = Client::start_mode(
         &directory,
-        if matches!(mode, ExecutionMode::Borrowed) {
+        if matches!(mode, ExecutionMode::Borrowed | ExecutionMode::Http) {
             mode
         } else {
             ExecutionMode::Embedded
@@ -693,6 +655,9 @@ fn run_scenario_mode(
             value(r#"{"instance_id":"inst-run","request_id":"begin","event":{"name":"begin"}}"#),
         );
     }
+    if let Some(http) = &mut client.http {
+        http.delete_session();
+    }
     #[cfg(target_os = "linux")]
     let mut competitor =
         (failures == "race").then(|| workflow_race::contend(&directory, &mut client));
@@ -710,7 +675,9 @@ fn run_scenario_mode(
     loop {
         // A read-only observer cannot tick the host or advance its logical
         // clock: the real Linux embedded client remains open and quiet.
-        let instance = if cfg!(target_os = "linux") && matches!(mode, ExecutionMode::Embedded) {
+        let instance = if cfg!(target_os = "linux")
+            && matches!(mode, ExecutionMode::Embedded | ExecutionMode::Http)
+        {
             fsm_store::store::Store::open_read_only(&directory.store())
                 .unwrap()
                 .instance_view("inst-run", None, None)
@@ -805,7 +772,7 @@ fn run_scenario_mode(
     if terminal == "rejected" {
         assert!(!directory.resource().join("work").exists());
     }
-    if cfg!(target_os = "linux") && matches!(mode, ExecutionMode::Embedded) {
+    if cfg!(target_os = "linux") && matches!(mode, ExecutionMode::Embedded | ExecutionMode::Http) {
         client.finish();
         let reopened = fsm_store::store::Store::open(&directory.store()).unwrap();
         assert_eq!(reopened.state.execution.unresolved().count(), 0);

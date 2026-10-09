@@ -7,6 +7,11 @@ depends_on:
   - autonomous-stdio-transport
 gated: false
 touches:
+  - crates/fsm-cli/tests/mcp_execute_workflow.rs
+  - crates/fsm-cli/tests/workflow_http/mod.rs
+  - crates/fsm-cli/tests/workflow_stdio/mod.rs
+  - crates/fsm-execute/src/containment/workflow_native_tests.rs
+  - crates/fsm-execute/tests/lifecycle_platform/workflow_probe.py
   - crates/fsm-cli/src/http/mod.rs
   - crates/fsm-cli/src/http/startup.rs
   - crates/fsm-cli/src/mcp/serve.rs
@@ -188,3 +193,12 @@ Focused startup acceptance:
   concurrent count-saturation verdict. Focused CLI clippy passes; genuine
   native workflows and the remaining exact/concurrent admission acceptance
   still prevent task completion.
+- The provisioned native workflow runner now registers one HTTP group containing
+  original success, quiet retry and compensating-failure scenarios. It reuses
+  actual discovered contracts, handler fixtures and full journal/call-order/
+  resource assertions, deletes the only HTTP session after submission, observes
+  through read-only storage and retires through original local drain control.
+  Fixture and root-runner compilation, CLI all-target clippy and ten mocked
+  evidence-producer checks pass; these checks do not establish native acceptance.
+  The focused provisioned group must pass before its workflows can count toward
+  task completion; no installed handler has been executed locally.

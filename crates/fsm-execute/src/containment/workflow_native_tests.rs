@@ -491,6 +491,10 @@ pub(super) fn run() {
     };
     let cases = [
         (
+            "workflow_http::native_http_success_retry_and_compensation_with_zero_sessions",
+            vec!["", "quiet-retry", "perform_work"],
+        ),
+        (
             "workflow_race::stdio_eof::broken_output_stops_live_tree_with_open_input_and_recovers",
             vec!["active-stop-output-embedded"],
         ),

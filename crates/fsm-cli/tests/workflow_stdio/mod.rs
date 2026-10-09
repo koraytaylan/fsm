@@ -1,13 +1,21 @@
 //! Original stdio EOF retirement and protocol validation for native workflows.
 
-use super::{Client, bounded_executor_errors};
-use std::time::{Duration, Instant};
+use super::{
+    Client, ExecutionMode, OPERATIONS, Value, bounded_executor_errors, object, string, text, value,
+};
+use std::{
+    collections::BTreeMap,
+    time::{Duration, Instant},
+};
 
 mod quiet_retry;
 pub(super) use quiet_retry::{configure_table, failed_operation, unacknowledged_attempts};
 
 impl Client {
     pub(super) fn finish(&mut self) {
+        if self.http.is_some() {
+            return super::workflow_http::finish(self);
+        }
         // EOF must retire the original owner; killing the server would conceal
         // a writer or native worker that survives successful settlement.
         drop(self.input.take());
@@ -32,5 +40,64 @@ impl Client {
         for frame in self.responses.try_iter() {
             frame.expect("remaining stdout must be valid JSON-RPC");
         }
+    }
+}
+
+impl Client {
+    pub(super) fn discover_handlers(&mut self) -> BTreeMap<String, Value> {
+        let resources = self.request("resources/list", object([]));
+        assert!(
+            resources
+                .get("resources")
+                .unwrap()
+                .as_arr()
+                .unwrap()
+                .iter()
+                .any(|resource| resource.get("uri").and_then(Value::as_str)
+                    == Some("fsm://executor"))
+        );
+        let response = self.request(
+            "resources/read",
+            object([("uri", string("fsm://executor"))]),
+        );
+        let content = &response.get("contents").unwrap().as_arr().unwrap()[0];
+        let capabilities = value(&text(content, "text"));
+        assert_eq!(text(&capabilities, "mode"), "embedded");
+        assert_eq!(
+            capabilities.get("executes_effects"),
+            Some(&Value::Bool(true))
+        );
+        let autonomous = cfg!(target_os = "linux")
+            && matches!(self.mode, ExecutionMode::Embedded | ExecutionMode::Http);
+        assert_eq!(
+            text(&capabilities, "format"),
+            if autonomous {
+                "fsm.executor/2"
+            } else {
+                "fsm.executor/1"
+            }
+        );
+        assert_eq!(
+            text(&capabilities, "progress"),
+            if autonomous {
+                "autonomous"
+            } else {
+                "client_requests"
+            }
+        );
+        let handlers = capabilities.get("handlers").unwrap().as_arr().unwrap();
+        assert_eq!(handlers.len(), OPERATIONS.len());
+        handlers
+            .iter()
+            .map(|handler| {
+                assert_eq!(text(handler, "kind"), "process");
+                assert_eq!(
+                    handler.get("required_args"),
+                    Some(&value(r#"["resource","run"]"#))
+                );
+                assert!(handler.get("argv").is_none());
+                (text(handler, "effect"), handler.clone())
+            })
+            .collect()
     }
 }
