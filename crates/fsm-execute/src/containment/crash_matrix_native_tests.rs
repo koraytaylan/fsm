@@ -149,6 +149,7 @@ fn provisioned_private_scheduling_owner_matrix() {
         "schedule-retry",
         "schedule-compensation",
         "schedule-recovery",
+        "schedule-construction",
     ] {
         for kind in ["process", "mcp"] {
             scenario(
@@ -309,6 +310,8 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
         .arg(staging.join(artifact))
         .args(["--exact", if behavior == "schedule-success" {
             "mcp::host::tests::held_handlers::autonomous_schedule_real_handler_success_without_another_command"
+        } else if behavior == "schedule-construction" {
+            "mcp::host::tests::scheduling_construction::autonomous_schedule_restricted_modes_start_no_genuine_fixture"
         } else if behavior == "schedule-recovery" {
             "mcp::host::tests::scheduling_recovery::autonomous_schedule_reopened_acknowledgement_advances_without_rpc"
         } else if behavior == "schedule-compensation" {
@@ -506,6 +509,7 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                             | "schedule-retry"
                             | "schedule-compensation"
                             | "schedule-recovery"
+                            | "schedule-construction"
                     ) {
                         "hold-result"
                     } else {
@@ -530,6 +534,7 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                         | "private-output"
                         | "schedule-success"
                         | "schedule-recovery"
+                        | "schedule-construction"
                 ) {
                     "30000"
                 } else {
@@ -610,6 +615,11 @@ fn verify(fixture: &Fixture, behavior: &str) {
     assert_eq!(verification.records, store.records.len() as u64);
     assert_eq!(store.state.execution.unresolved().count(), 0);
     assert_eq!(store.state.execution_handoffs.outstanding().count(), 0);
+    if behavior == "schedule-construction" {
+        let counter = read_value(&fixture.directory.join("counter.json"), true).unwrap();
+        assert_eq!(number(&counter, "last_allocation").unwrap(), 0);
+        assert!(!fixture.directory.join("allocation-1.json").exists());
+    }
     for kind in [
         RecordKind::ExecutionClaimed,
         RecordKind::ExecutionStopped,
@@ -621,7 +631,9 @@ fn verify(fixture: &Fixture, behavior: &str) {
                 .iter()
                 .filter(|record| record.kind == kind)
                 .count(),
-            if behavior == "repeated-noisy" {
+            if behavior == "schedule-construction" {
+                0
+            } else if behavior == "repeated-noisy" {
                 12
             } else if matches!(
                 behavior,

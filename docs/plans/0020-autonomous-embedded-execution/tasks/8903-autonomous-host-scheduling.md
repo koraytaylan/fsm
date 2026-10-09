@@ -169,3 +169,13 @@ native preparation deliberately parks the scheduler timeout at `i64::MAX`,
 because the authority times actual handler entry independently of host logical
 time. This verified recovery slice assigns no landing OID and makes no
 independent staged-byte comparison claim.
+
+
+The separate scheduling inventory now stages process/MCP construction refusal
+through production mode selection: writer-only, explicit read-only, contended
+embedded and degraded sessions must disclose no executor, leave the original
+ready effect and journal unchanged, and start no genuine fixture. Root separately
+requires the original allocation counter to remain zero with no allocation
+record. The observer and coordinator compile, and focused host regressions plus
+producer/verifier faults pass; runtime verification is pending disposable CI.
+The timeout, fairness and full integration inventory remains unchanged.
