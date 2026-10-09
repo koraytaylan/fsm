@@ -86,3 +86,10 @@ The written tests above remain the acceptance inventory; existing worker and
 empty-handler checks cannot replace it. Historical implementation checkpoints
 are preserved in the task cache under SHA-256
 `0d89e2ea236fa45e3e3b02f31038b82d3b1ba2de6b998fbf0a1cc034e60b18ac`.
+
+Frozen `9e8e89b5` retains all twelve stopped/acked/event crash cases across
+standalone/embedded and process/MCP, with five recovery source files unchanged
+from verified `66c785ba`; continuity review digest
+`06eb4326bbaff259756e6d9e230eb63d29f6e0def3f2c10d0d3bd77bd3518983`.
+This preserves prior recovery evidence, but does not verify the changed worker
+capacity path or the newly wired six-case completion inventory at this checkpoint.
