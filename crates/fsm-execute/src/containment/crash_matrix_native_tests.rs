@@ -120,6 +120,44 @@ fn provisioned_private_completion_owner_matrix() {
     fs::remove_dir_all(staging).unwrap();
 }
 
+#[test]
+#[ignore = "requires disposable native CI and exact staged private scheduling artifacts"]
+fn provisioned_private_scheduling_owner_matrix() {
+    assert_eq!(
+        std::env::var("FSM_NATIVE_FIXTURE_DISPOSABLE").as_deref(),
+        Ok("1")
+    );
+    assert_eq!(fs::metadata("/proc/self").unwrap().uid(), 0);
+    let seed = format!("{}-{:?}", std::process::id(), std::time::SystemTime::now());
+    let nonce = fsm_core::sha256::to_hex(&fsm_core::sha256::sha256(seed.as_bytes()));
+    let staging = PathBuf::from(format!("/usr/libexec/fsm-crash-{}", &nonce[..24]));
+    fs::DirBuilder::new().mode(0o755).create(&staging).unwrap();
+    fs::set_permissions(&staging, fs::Permissions::from_mode(0o755)).unwrap();
+    for (name, variable) in [
+        ("host-test", "HOST"),
+        ("fixture", "FIXTURE"),
+        ("fsm", "CLI"),
+    ] {
+        super::workflow_cases::stage_artifact(
+            &staging.join(name),
+            &format!("FSM_CRASH_{variable}_ARTIFACT"),
+            &format!("FSM_CRASH_{variable}_SHA256"),
+        );
+    }
+    for kind in ["process", "mcp"] {
+        scenario(
+            &staging,
+            &nonce[..24],
+            Scenario {
+                host: "private",
+                kind,
+                behavior: "schedule-success",
+            },
+        );
+    }
+    fs::remove_dir_all(staging).unwrap();
+}
+
 fn scenario(staging: &Path, nonce: &str, case: Scenario) {
     let Scenario {
         host,
@@ -261,7 +299,9 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
     let mut command = Command::new("/usr/bin/python3");
     command.args(["-c", "import os,sys;os.setgroups([]);os.setgid(65534);os.setuid(65534);os.execv(sys.argv[1],sys.argv[1:])"])
         .arg(staging.join(artifact))
-        .args(["--exact", if behavior == "private-output" {
+        .args(["--exact", if behavior == "schedule-success" {
+            "mcp::host::tests::held_handlers::autonomous_schedule_real_handler_success_without_another_command"
+        } else if behavior == "private-output" {
             "mcp::host::tests::held_handlers::execution_host_inherited_output_pipes_allow_read_mutation_and_stop"
         } else if private {
             "mcp::host::tests::held_handlers::execution_host_real_held_handler_allows_read_mutation_and_stop_without_release"
@@ -448,6 +488,7 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                             | "boundary-deferred"
                             | "capacity-held"
                             | "private-output"
+                            | "schedule-success"
                     ) {
                         "hold-result"
                     } else {
@@ -470,6 +511,7 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                         | "boundary-deferred"
                         | "capacity-held"
                         | "private-output"
+                        | "schedule-success"
                 ) {
                     "30000"
                 } else {
@@ -557,6 +599,7 @@ fn verify(fixture: &Fixture, behavior: &str) {
                     | "boundary-deferred"
                     | "capacity-held"
                     | "private-output"
+                    | "schedule-success"
             ) {
                 1
             } else {

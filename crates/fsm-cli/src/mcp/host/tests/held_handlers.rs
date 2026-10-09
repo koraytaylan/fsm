@@ -233,3 +233,100 @@ fn manifest() -> Value {
     );
     fsm_core::json::parse(&encoded, &fsm_core::json::JsonLimits::DEFAULT).unwrap()
 }
+
+#[test]
+#[ignore = "requires disposable native CI and a protected genuine process/MCP handler"]
+fn autonomous_schedule_real_handler_success_without_another_command() {
+    let manifest = manifest();
+    assert_eq!(field(&manifest, "behavior"), "schedule-success");
+    assert!(matches!(field(&manifest, "kind"), "process" | "mcp"));
+    let store_path = PathBuf::from(field(&manifest, "store"));
+    let resource = PathBuf::from(field(&manifest, "resource"));
+    assert!(!resource.join("root-release").exists());
+    let mut store = Store::open(&store_path).unwrap();
+    let mut clock = FixedClock::new(2000, 0);
+    store
+        .define_machine_on(&mut clock, value(HELD_MACHINE), false, false)
+        .unwrap();
+    store
+        .create_instance_ctx_on(
+            &mut clock,
+            "held_completion",
+            "held",
+            "create-held",
+            None,
+            &std::collections::BTreeMap::new(),
+            &[],
+        )
+        .unwrap();
+    let handlers =
+        HandlerTable::parse(&fs::read_to_string(store_path.join("handlers.json")).unwrap())
+            .unwrap();
+    let (owner, handle) = acceptance_owner::with_handlers(store, clock, handlers);
+    // No session is constructed: observation cannot dispatch a request or tick.
+    let worker = std::thread::spawn(move || owner.run());
+    let deadline = Instant::now() + Duration::from_secs(12);
+    while !resource.join("root-candidate").is_file() {
+        assert!(!worker.is_finished());
+        assert!(
+            Instant::now() < deadline,
+            "real autonomous handler did not enter"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let held = Store::open_read_only(&store_path).unwrap();
+    assert_eq!(held.state.execution.unresolved().count(), 1);
+    assert_eq!(held.state.instances["held"].pending.len(), 1);
+    drop(held);
+    for role in ["grandchild", "child", "root"] {
+        fs::write(resource.join(format!("{role}-release")), b"release").unwrap();
+    }
+    let deadline = Instant::now() + Duration::from_secs(12);
+    loop {
+        let observed = Store::open_read_only(&store_path).unwrap();
+        if observed.state.instances["held"].status == fsm_core::machine::Status::Completed {
+            assert_eq!(observed.state.execution.unresolved().count(), 0);
+            assert!(observed.state.instances["held"].pending.is_empty());
+            break;
+        }
+        assert!(!worker.is_finished());
+        assert!(
+            Instant::now() < deadline,
+            "completion required another client command"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    handle.stop();
+    let deadline = Instant::now() + Duration::from_secs(12);
+    while !worker.is_finished() {
+        assert!(
+            Instant::now() < deadline,
+            "original lifecycle shutdown did not finish"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    worker.join().unwrap();
+    let verified = crate::journal_io::verify(&store_path);
+    assert_eq!(verified.health, crate::journal_io::JournalHealth::Ok);
+    let reopened = Store::open(&store_path).unwrap();
+    assert_eq!(verified.records, reopened.records.len() as u64);
+    assert_eq!(
+        reopened.state.instances["held"].status,
+        fsm_core::machine::Status::Completed
+    );
+    assert_eq!(reopened.state.execution.unresolved().count(), 0);
+    for kind in [
+        fsm_core::record::RecordKind::ExecutionClaimed,
+        fsm_core::record::RecordKind::ExecutionStopped,
+        fsm_core::record::RecordKind::ExecutionSettled,
+    ] {
+        assert_eq!(
+            reopened
+                .records
+                .iter()
+                .filter(|record| record.kind == kind)
+                .count(),
+            1
+        );
+    }
+}

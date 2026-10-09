@@ -8,6 +8,9 @@ depends_on:
 gated: false
 touches:
   - crates/fsm-cli/src/mcp/host/
+  - crates/fsm-execute/src/containment/crash_matrix_native_tests.rs
+  - crates/fsm-execute/tests/lifecycle_platform/
+  - .github/workflows/ci.yml
   - crates/fsm-cli/src/cli/execute.rs
   - crates/fsm-cli/src/args.rs
   - crates/fsm-cli/src/cli/mod.rs
@@ -67,7 +70,7 @@ Bounded follow-up decisions now drive the original lifecycle driver through
 at most eight ticks with one logical sample, continue immediately after durable
 progress or retained readiness, and offer admitted commands between batches.
 Five `autonomous_schedule` cases and 54 executable private-host regressions pass;
-two genuine native handler cases remain ignored locally. Workspace all-target
+genuine handler acceptance remains confined to disposable native CI. Workspace all-target
 fixture-enabled clippy, formatting, size and diff checks pass. The production
 turn bound has retained 0/101/0 sensitivity evidence, task-cache digest
 `412c26375075bb38f96e117f029c868f1aef6f1cd731e881ad2d6a8a76ecb04e`.
@@ -77,3 +80,16 @@ timeout/backoff boundaries, compensation, completion-queue fairness, interrupted
 acknowledgement, idle wait-clock and construction inventories still require
 explicit acceptance, followed by the frozen integration gate. No landing OID
 is assigned and the written inventory is unchanged.
+
+
+Frozen `110e4c21` preserves the original twelve-case completion regression
+inventory on stable and MSRV in
+[CI 37913138357](https://github.com/koraytaylan/fsm/actions/runs/37913138357),
+independent retained-report digest
+`f92e22f22985a77c94ce0253f3eac66f54e411642f89b19b10de6fa963693790`.
+A separate two-case scheduling inventory now stages the genuine process/MCP
+success observer, with no session or further command after creation; its
+protected coordinator, producer and scoped verifier compile, and 42 mocked
+artifact/evidence checks pass. This new scheduling slice still needs runtime
+execution; it neither changes 8902's inventory nor completes the remaining
+8903 acceptance requirements above.

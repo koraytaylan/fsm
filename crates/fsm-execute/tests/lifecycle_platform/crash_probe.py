@@ -26,6 +26,9 @@ PRIVATE_OWNER_CASES = (('private', 'process', 'private-held'),
                        ('private', 'mcp', 'private-output'))
 
 
+PRIVATE_SCHEDULING_CASES = (('private', 'process', 'schedule-success'),
+                            ('private', 'mcp', 'schedule-success'))
+
 def staging_paths():
     return set(Path('/usr/libexec').glob('fsm-crash-*'))
 
@@ -34,10 +37,15 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--toolchain', choices=('stable', '1.89.0'), required=True)
     parser.add_argument('--report', type=Path, required=True)
-    parser.add_argument('--private-owner', action='store_true',
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument('--private-owner', action='store_true',
                         help='exercise the public and private held-handler cases')
+    modes.add_argument('--private-scheduling', action='store_true',
+                       help='exercise the separate private scheduling inventory')
     args = parser.parse_args()
     private = getattr(args, 'private_owner', False)
+    scheduling = getattr(args, 'private_scheduling', False)
+    observer = private or scheduling
     assert __debug__ and os.environ.get('GITHUB_ACTIONS') == 'true'
     assert os.environ.get('RUNNER_OS') == 'Linux'
     repo = Path(__file__).resolve().parents[4]
@@ -46,9 +54,10 @@ def main():
     fixture = authority.build_authority(repo, args.toolchain, 'test')
     executable = authority.build_authority(repo, args.toolchain, 'build')
     artifacts = build_crash_artifacts(repo, args.toolchain)
-    if private:
+    if observer:
         artifacts.pop('TEST')
         artifacts['HOST'] = build_host_test(repo, args.toolchain)
+    if private:
         artifacts['BOUNDARY'] = build_boundary_test(repo, args.toolchain)
         artifacts['OWNER'] = build_owner_test(repo, args.toolchain)
     assert authority.authority_state_is_clear()
@@ -66,6 +75,9 @@ def main():
     if private:
         report.update(schema='fsm.native-completion-owner/1',
                       scope='public-and-private-held-handlers', task_complete=False)
+    if scheduling:
+        report.update(schema='fsm.native-scheduling-owner/1',
+                      scope='private-owner-scheduling', task_complete=False)
     installed = json.loads(subprocess.check_output(
         [*installer, 'install', '--source', str(executable), '--sha256', expected], timeout=10))
     try:
@@ -77,13 +89,14 @@ def main():
         for name, path in artifacts.items():
             command.extend(['FSM_CRASH_' + name + '_ARTIFACT=' + str(path),
                             'FSM_CRASH_' + name + '_SHA256=' + report['artifacts'][name]['sha256']])
-        if private:
+        if observer:
             command.append('GITHUB_ACTIONS=true')
         command.extend([str(fixture), '--exact',
-                        ('authority::allocator::native_tests::crash_matrix::provisioned_private_completion_owner_matrix'
+                        ('authority::allocator::native_tests::crash_matrix::provisioned_private_scheduling_owner_matrix'
+                         if scheduling else 'authority::allocator::native_tests::crash_matrix::provisioned_private_completion_owner_matrix'
                          if private else 'authority::allocator::native_tests::crash_matrix::provisioned_lifecycle_candidate_matrix'),
                         '--ignored', '--nocapture', '--color', 'never'])
-        timeout = 1200 if private else 3900
+        timeout = 300 if scheduling else 1200 if private else 3900
         try:
             result = subprocess.run(command, cwd=repo, capture_output=True, timeout=timeout)
             report['timed_out'] = False
@@ -104,6 +117,11 @@ def main():
                                      passed=result.stdout.splitlines().count(
                                          f'FSM_NATIVE_CRASH_CASE candidate-result {host} {kind} {behavior}'.encode()) == 1)
                                  for host, kind, behavior in PRIVATE_OWNER_CASES])
+        if scheduling:
+            report.update(cases=[dict(host=host, kind=kind, behavior=behavior,
+                                     passed=result.stdout.splitlines().count(
+                                         f'FSM_NATIVE_CRASH_CASE candidate-result {host} {kind} {behavior}'.encode()) == 1)
+                                 for host, kind, behavior in PRIVATE_SCHEDULING_CASES])
         report['passed'] = (result.returncode == 0
                             and b'1 passed; 0 failed; 0 ignored;' in result.stdout
                             and all(row['passed'] for row in report['cases']))

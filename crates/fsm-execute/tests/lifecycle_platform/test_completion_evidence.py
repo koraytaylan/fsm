@@ -24,41 +24,46 @@ COMMIT = 'a' * 40
 RUSTC = 'fixture compiler'
 
 
+def exercise_owner(alter_report=None, alter_log=None, *, profile=verifier.COMPLETION_PROFILE,
+                   inventory=INVENTORY, call_verify=verifier.verify):
+    artifacts = {name: dict(path='/fixture/' + name, sha256='b' * 64)
+                 for name in profile['artifacts']}
+    command = ['sudo', '-n', 'env', 'FSM_NATIVE_FIXTURE_DISPOSABLE=1',
+               'FSM_NATIVE_FIXTURE_SHA256=' + 'c' * 64, 'GITHUB_ACTIONS=true']
+    for name, artifact in artifacts.items():
+        command += ['FSM_CRASH_' + name + '_ARTIFACT=' + artifact['path'],
+                    'FSM_CRASH_' + name + '_SHA256=' + artifact['sha256']]
+    command += ['/fixture/coordinator', '--exact', profile['coordinator'],
+                '--ignored', '--nocapture', '--color', 'never']
+    lines = [f'FSM_NATIVE_CRASH_CASE candidate-result {host} {kind} {behavior}'.encode()
+             for host, kind, behavior in inventory]
+    lines += [('test ' + profile['coordinator'] + ' ... ok').encode(),
+              b'1 passed; 0 failed; 0 ignored;']
+    if alter_log:
+        alter_log(lines)
+    log = b'\n'.join(lines) + b'\n'
+    report = dict(schema=profile['schema'], source_commit=COMMIT,
+                  source_dirty=False, rustc=RUSTC, scope=profile['scope'],
+                  gate_released=False, task_complete=False, passed=True,
+                  timed_out=False, exit_code=0, authority_sha256='c' * 64,
+                  fixture_sha256='d' * 64, cli_strip='debuginfo', artifacts=artifacts,
+                  command=command, log_sha256=hashlib.sha256(log).hexdigest(),
+                  cases=[dict(host=host, kind=kind, behavior=behavior, passed=True)
+                         for host, kind, behavior in inventory])
+    if alter_report:
+        alter_report(report)
+    with tempfile.TemporaryDirectory(dir=os.environ['TMPDIR']) as scratch:
+        directory = Path(scratch)
+        (directory / (profile['basename'] + '.json')).write_text(json.dumps(report))
+        (directory / (profile['basename'] + '.log')).write_bytes(log)
+        with (patch.object(verifier.subprocess, 'check_output', return_value='commit\n'),
+              patch.object(verifier, 'literal', return_value=inventory)):
+            return call_verify(Path('/fixture/repo'), directory, COMMIT, RUSTC)
+
+
 class CompletionEvidence(unittest.TestCase):
     def exercise(self, alter_report=None, alter_log=None):
-        artifacts = {name: dict(path='/fixture/' + name, sha256='b' * 64)
-                     for name in ('HOST', 'BOUNDARY', 'OWNER', 'FIXTURE', 'CLI')}
-        command = ['sudo', '-n', 'env', 'FSM_NATIVE_FIXTURE_DISPOSABLE=1',
-                   'FSM_NATIVE_FIXTURE_SHA256=' + 'c' * 64, 'GITHUB_ACTIONS=true']
-        for name, artifact in artifacts.items():
-            command += ['FSM_CRASH_' + name + '_ARTIFACT=' + artifact['path'],
-                        'FSM_CRASH_' + name + '_SHA256=' + artifact['sha256']]
-        command += ['/fixture/coordinator', '--exact', verifier.COORDINATOR,
-                    '--ignored', '--nocapture', '--color', 'never']
-        lines = [f'FSM_NATIVE_CRASH_CASE candidate-result {host} {kind} {behavior}'.encode()
-                 for host, kind, behavior in INVENTORY]
-        lines += [('test ' + verifier.COORDINATOR + ' ... ok').encode(),
-                  b'1 passed; 0 failed; 0 ignored;']
-        if alter_log:
-            alter_log(lines)
-        log = b'\n'.join(lines) + b'\n'
-        report = dict(schema='fsm.native-completion-owner/1', source_commit=COMMIT,
-                      source_dirty=False, rustc=RUSTC, scope='public-and-private-held-handlers',
-                      gate_released=False, task_complete=False, passed=True,
-                      timed_out=False, exit_code=0, authority_sha256='c' * 64,
-                      fixture_sha256='d' * 64, cli_strip='debuginfo', artifacts=artifacts,
-                      command=command, log_sha256=hashlib.sha256(log).hexdigest(),
-                      cases=[dict(host=host, kind=kind, behavior=behavior, passed=True)
-                             for host, kind, behavior in INVENTORY])
-        if alter_report:
-            alter_report(report)
-        with tempfile.TemporaryDirectory(dir=os.environ['TMPDIR']) as scratch:
-            directory = Path(scratch)
-            (directory / 'completion.json').write_text(json.dumps(report))
-            (directory / 'completion.log').write_bytes(log)
-            with (patch.object(verifier.subprocess, 'check_output', return_value='commit\n'),
-                  patch.object(verifier, 'literal', return_value=INVENTORY)):
-                return verifier.verify(Path('/fixture/repo'), directory, COMMIT, RUSTC)
+        return exercise_owner(alter_report, alter_log)
 
     def test_exact_private_slice_cannot_complete_the_task_or_verify_binary_bytes(self):
         verdict = self.exercise()
