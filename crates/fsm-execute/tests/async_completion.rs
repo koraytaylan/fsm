@@ -171,6 +171,30 @@ mod native {
                 fs::write(resource.join(format!("{role}-release")), b"release").unwrap();
             }
             if matches!(mode, CompletionMode::DeferredWriter) {
+                let records = driver.store_mut().unwrap().records.clone();
+                let completion = recover_completion(&original, &original_hash);
+                let mut fields = original.to_value().as_obj().unwrap().clone();
+                let mut domain = fields.get("domain").unwrap().as_obj().unwrap().clone();
+                let generation = domain["generation"]
+                    .as_num()
+                    .unwrap()
+                    .parse::<u64>()
+                    .unwrap();
+                domain.insert(
+                    "generation".into(),
+                    Value::Num((generation + 1).to_string()),
+                );
+                fields.insert("domain".into(), Value::Obj(domain));
+                let successor =
+                    fsm_core::record::execution::Claim::from_value(&Value::Obj(fields)).unwrap();
+                assert_eq!(
+                    NativeExecution::from_completion(&successor, &original_hash, completion)
+                        .err()
+                        .unwrap()
+                        .code,
+                    "exec/inflight_deferred"
+                );
+                assert_eq!(driver.store_mut().unwrap().records, records);
                 let mut retained = recover_original(&original, &original_hash);
                 let mut reader = Store::open_read_only(&store_path).unwrap();
                 let records = reader.records.clone();
@@ -295,6 +319,18 @@ mod native {
         original: &fsm_core::record::execution::Claim,
         original_hash: &str,
     ) -> NativeExecution {
+        NativeExecution::from_completion(
+            original,
+            original_hash,
+            recover_completion(original, original_hash),
+        )
+        .unwrap()
+    }
+
+    fn recover_completion(
+        original: &fsm_core::record::execution::Claim,
+        original_hash: &str,
+    ) -> fsm_execute::run::native_client::NativeCompletion {
         let mut recovered =
             NativeRun::recover(original, original_hash, Duration::from_secs(10)).unwrap();
         let deadline = Instant::now() + Duration::from_secs(12);
@@ -309,7 +345,7 @@ mod native {
             std::thread::sleep(Duration::from_millis(5));
         };
         assert!(recovered.reap().unwrap());
-        NativeExecution::from_completion(original, original_hash, completion).unwrap()
+        completion
     }
 
     fn field<'a>(manifest: &'a Value, name: &str) -> &'a str {
