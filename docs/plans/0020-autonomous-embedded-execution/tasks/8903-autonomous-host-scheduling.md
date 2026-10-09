@@ -140,6 +140,13 @@ a non-retried authority timeout must acknowledge its original outcome, emit a
 different restore effect, bind that handler's original fingerprint, and reach
 the `restored` terminal leaf without another request. The observer uses bounded
 wait rendezvous and the existing protected fixture; both original completion
-and crash inventories remain unchanged. Local executable host regressions and
-producer/verifier faults pass; genuine runtime acceptance is pending disposable
-CI and the remaining written inventory is unchanged.
+and crash inventories remain unchanged. Frozen `5779f6e7` passes all six scheduling cases on stable and MSRV in
+[CI 37918559352](https://github.com/koraytaylan/fsm/actions/runs/37918559352),
+independent retained-report digest
+`f6d7a1e4067726679798378b6966676526e7c45575728873a41e8b9ef988693e`.
+The genuine timeout is acknowledged, a distinct restore handler completes, and
+the final leaf is `restored`; local executable host regressions, producer/verifier
+faults and fixture-enabled all-target clippy also pass. This scoped verdict
+leaves logical timeout, completion fairness, interrupted acknowledgement,
+construction and full integration acceptance open; no landing OID is assigned
+and executable bytes were not independently compared.
