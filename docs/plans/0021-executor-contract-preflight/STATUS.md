@@ -30,11 +30,13 @@ digest `eee78cc01606dac313ddc3f177301e7abff6d34d618fd3e2a48c084d4436daa0`.
 Task 9201's written focused inventory passes on stable Linux; it remains in
 progress until the plan-end portability and integration gates succeed.
 
-MCP independent preparation `0d1bb9d7..ea7e10dd` retains a private immutable
-host table shared by sessions, with isolation and lifecycle boundaries covered
-by two focused Linux cases; CLI all-target clippy and format/size/diff checks
-pass, with self-review digest
-`b5454bd282ef1ff575e1237ca23094b471fe5b5a0bdf05db21bef59dd00176e6`.
+MCP independent preparation retains a private immutable host table shared by
+sessions at `ea7e10dd`, with two focused isolation/lifecycle cases and review
+digest `b5454bd282ef1ff575e1237ca23094b471fe5b5a0bdf05db21bef59dd00176e6`.
+Draft analysis range `8816d6bf..a3467196` passes eight focused stable Linux
+cases, including unavailable/poisoned authority and read-only stored selectors
+under a held writer, plus CLI all-target clippy and format/size/diff checks;
+review digest `e8d4310366d3e45f135a4ec022207c6b55f96ac0688f8c145f863196867d83ca`.
 No draft-check tool is advertised or dispatched yet; task 9202 remains planned
 and its admission dependency and complete acceptance inventory remain open.
 
