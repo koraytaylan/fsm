@@ -471,7 +471,7 @@ fn autonomous_schedule_ready_completions_yield_to_admitted_application_within_ei
     let (owner, handle) = NativeOwner::new(
         OwnedNativeExecutor::new(store, handlers).unwrap(),
         clock,
-        DiagnosticOutput::start(std::io::sink()).unwrap(),
+        DiagnosticOutput::start(std::io::stderr()).unwrap(),
         Duration::from_millis(1),
         10000,
     )
@@ -480,13 +480,28 @@ fn autonomous_schedule_ready_completions_yield_to_admitted_application_within_ei
     gate.boundaries
         .recv_timeout(Duration::from_secs(3))
         .unwrap();
-    gate.until(&handle, || {
-        (0..9).all(|index| {
-            resource
-                .join(format!("run-{index}/root-candidate"))
-                .is_file()
-        })
-    });
+    let entry_watchdog = Instant::now() + Duration::from_secs(20);
+    while !(0..9).all(|index| {
+        resource
+            .join(format!("run-{index}/root-candidate"))
+            .is_file()
+    }) {
+        let observed = Store::open_read_only(&path).unwrap();
+        assert!(
+            Instant::now() < entry_watchdog,
+            "native queue entry stalled: claims={}, unresolved={}, entered={:?}",
+            claim_count(&observed),
+            observed.state.execution.unresolved().count(),
+            (0..9)
+                .filter(|index| resource
+                    .join(format!("run-{index}/root-candidate"))
+                    .is_file())
+                .collect::<Vec<_>>()
+        );
+        drop(observed);
+        gate.advance(&handle);
+        std::thread::sleep(Duration::from_millis(5));
+    }
     let before = Store::open_read_only(&path).unwrap();
     assert_eq!(claim_count(&before), 9);
     assert_eq!(before.state.execution.unresolved().count(), 9);
