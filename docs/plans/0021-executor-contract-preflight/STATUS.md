@@ -13,34 +13,15 @@ Task frontmatter is authoritative; the coordinator owns registration and complet
 
 Progress: 2/6 tasks completed.
 
-Intermediate frozen range `bc22f34a..f8a68f58`: pre-claim, bound-entry and
-current-receiver outcome guards pass focused checks and guard sensitivity;
-the final recovery change passes 38 contract/pipeline/tick cases and executor
-all-target clippy. Self-review verdict digest
-`ebcc884667aacaf44ad2a7643a914a3ce314146ac515f91c67ac9a18e9cdbb90`.
-Writer-routing frozen range `77615ea7..03b575c8` passes 27 focused cases,
-writer-intent sensitivity and executor all-target clippy; self-review digest
-`fd2b712d8553fe3a0e3b2588ba26c061e84a215a15dd20ae816e841b2e0c9e86`.
-Cache frozen range `f4ebf73b..902d8219` passes five cache, 81 native unit,
-six contract/service and eight tick cases, focused lint/format/size checks and
-cache-hit/concrete-guard sensitivity; self-review digest
-`08a40e3110d451cc266b31b947fa54bb5b402fec2606dfcf908a5333843baec8`.
-Native acceptance harness range `d9a99c2c..6b58f658` wires standalone/borrowed
-process/MCP refusal and repair into disposable CI; six portable contract cases,
-25 mocked evidence cases and feature-enabled executor clippy pass, while both
-protected Rust cases remain ignored locally and all four genuine native axes
-remain unexecuted; self-review digest
-`8f2e9bfceaf0648827cee7b6693e5e2cdae9e2718a1f9dc7fcb33a2c0ed51f5c`.
-Fairness range `8b0ce89f..4321a8bb` reproduces and fixes one-slot starvation
-through both service entries; eight contract/service, eight tick, five cache and
-25 mocked evidence cases pass with focused clippy/format/size and selection-guard
-sensitivity; self-review digest
-`4152752c2dd57d2a9dce99cb3ae057125cfdfc8f6fe69bdb726b57952e898afa`.
-The expanded native inventory has eight unexecuted axes and four protected Rust
-cases ignored locally; runtime acceptance remains due at plan end.
-Task 9103 remains in progress: complete dispatch/service/native acceptance and
-plan-end gates remain outstanding; concrete reconstruction retains its documented
-journal-prefix replay cost.
+Admission latest focused range `b373a453..4cac61bb` passes nine contract/service
+cases, 25 mocked producer/verifier cases, feature-enabled executor clippy and
+format/size checks, including unknown-refusal guard sensitivity; self-review
+digest `c9f789207e48c7c0714449a06e13a8d070c6322abf7cf5c31f3b2a4f5e025962`.
+This cache verdict indexes preceding guard, writer, cache and fairness reviews
+and the archived detailed STATUS; those reviews retain their original scopes.
+The current native inventory has twelve unexecuted process/MCP axes and six
+protected Rust cases ignored locally; complete task 9103 acceptance and plan-end
+gates remain outstanding, with journal-prefix reconstruction cost documented.
 
 Manual Phase R binds the six-task bundle to validation base `15172d8298f271abfd0bd1d5b47617d1108ceefc` after plans 0022 and 0020 complete: closed frontmatter, repository-relative footprints and the acyclic local dependency graph pass, with uncreated deliverables explicitly inventoried; task-cache validation digest `4298d27510c4726206598590ca50efd51e0aeca49c5605aae9f004697820f1f7`. Task 9101 completes its focused inventory at `efcb4f9e`, with 67 stable effect/configuration/public-surface cases and focused lint/format/diff checks passing; self-review verdict `dfd37ee9a1867119e4c63a048ad58b1030b7db590fe118b95dcee1edff82f9a1`; task 9102 completes at `ed811ab6` with eleven focused outcome tests and self-review verdict `b9a671329f5a8177a34529118e6925015757c21b9a064f5d5371820bd71ac271`; task 9103 is in progress; prior independent preparation remains subject to current task acceptance, and admission/MCP/final acceptance remain incomplete. Full gates run at plan completion.
 
