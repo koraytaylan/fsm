@@ -98,8 +98,8 @@ Focused acceptance review:
   claims and closure proofs are checked for eight runs, one attempted failure,
   seven acknowledgements and matching second-attempt identity. The portable
   subprocess fixture passes; CLI/provisioner test-target clippy and eight
-  mocked producer retirement tests pass. Genuine native execution of this
-  new case remains unexecuted, not a passed skip.
+  mocked producer retirement tests pass. Genuine native execution passes at
+  the frozen focused checkpoint below.
 - Manual focused CI accepts one exact native workflow case, forwarding the
   original runner filter and retaining its source-bound report and log;
   ten mocked producer checks pass, including bounded single-case execution
@@ -109,7 +109,15 @@ Focused acceptance review:
   `nonzero_exit`, and the durable stopped-outcome assertions match that class.
   The portable fixture now parses the actual configured table and verifies
   retry eligibility before executing its first-failure/second-success check.
-- Success, transient retry, compensation, interrupted advance and a held real
-  process/MCP handler with responsive reads remain to be matched to this
-  original inventory; no landing OID or full-gate claim is assigned, and full
-  gates remain due at plan completion.
+- Frozen focused checkpoint `8863f28188af825f087a79d3fea71994c3ed175b`:
+  five original native cases, six scenarios pass for quiet success, transient
+  retry, compensation, a held real process tree with responsive reads, and
+  interrupted embedded recovery without overlapping trees. Reports bind each
+  original artifact to that source commit; log/transcript digests verify and
+  no retained authority or staged fixture remains. This is a focused
+  self-review, not an independent review or complete task verdict.
+  Cache verdict `9001-native-checkpoint-8863f281.json`, SHA-256
+  `9b5ac3a70b06cf7e6c801236c115270175cae27771c9a96a4b7d69d9486cad9a`.
+- EOF during a live handler and verified restart recovery still need their
+  original acceptance proof; final inventory review remains open, no landing
+  OID is assigned, and full gates remain due at plan completion.
