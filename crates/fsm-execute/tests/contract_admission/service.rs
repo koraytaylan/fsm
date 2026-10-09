@@ -165,6 +165,68 @@ fn acknowledged_service_recovery_preserves_refused_key_then_advances_once_withou
 struct Directory(PathBuf);
 
 #[test]
+fn explicit_manual_work_stays_pending_through_both_service_entries() {
+    for borrowed in [false, true] {
+        let directory = Directory::new();
+        let (store, effect, mut table) = durable_fixture(&directory);
+        table.handlers.remove("work");
+        table.manual_effects.insert("work".into());
+        let state = store.state.clone();
+        let records = store.records.clone();
+        drop(store);
+        let mut watcher = Watcher::with_handlers(directory.0.clone(), &table);
+        let mut scheduler = Scheduler::new(table);
+        let mut runner = Runner::new_native().unwrap();
+        let mut clock = FixedClock::new(2000, 1);
+        for _ in 0..3 {
+            let lines = if borrowed {
+                let mut writer = Store::open(&directory.0).unwrap();
+                tick_with(
+                    &mut watcher,
+                    &mut scheduler,
+                    &mut runner,
+                    &mut Pipeline,
+                    &mut writer,
+                    &mut clock,
+                    2000,
+                )
+            } else {
+                let outcome = tick_reporting(
+                    &mut watcher,
+                    &mut scheduler,
+                    &mut runner,
+                    &mut Pipeline,
+                    &directory.0,
+                    &mut clock,
+                    2000,
+                );
+                assert!(!outcome.writer_unavailable);
+                outcome.lines
+            };
+            assert!(
+                !lines
+                    .iter()
+                    .any(|line| line.starts_with("error exec/contract_")
+                        || line.starts_with("native-preparing")
+                        || line.starts_with("native-claimed")
+                        || line.starts_with("native-launched")),
+                "{lines:?}"
+            );
+            let snapshot = Store::open_read_only(&directory.0).unwrap();
+            assert_eq!(snapshot.records, records);
+            assert!(fsm_store::snapshot::store_states_eq(
+                &state,
+                &snapshot.state
+            ));
+            assert!(snapshot.state.instances["case-1"].pending.contains(&effect));
+            assert!(scheduler.inflight_effect(&effect).is_none());
+            assert!(runner.local_native_claims().next().is_none());
+            assert!(runner.finished_effects().is_empty());
+        }
+    }
+}
+
+#[test]
 fn migrated_receiver_invalidates_warm_service_evidence_without_replacing_historical_arguments() {
     for borrowed in [false, true] {
         let directory = Directory::new();
