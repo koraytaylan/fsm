@@ -2,7 +2,21 @@
 
 use fsm_core::json::{JsonLimits, Value, parse};
 
+thread_local! {
+    static AFTER_WRITE: std::cell::RefCell<Option<Box<dyn FnOnce()>>> = const { std::cell::RefCell::new(None) };
+}
+
+pub(super) fn after_write(action: impl FnOnce() + 'static) {
+    AFTER_WRITE.with(|slot| *slot.borrow_mut() = Some(Box::new(action)));
+}
+
 pub(super) fn wait(line: &[u8], phase: &str) {
+    if phase == "after-write" {
+        let action = AFTER_WRITE.with(|slot| slot.borrow_mut().take());
+        if let Some(action) = action {
+            action();
+        }
+    }
     let Some(directory) = std::env::var_os("FSM_PRIVATE_APPEND_BARRIER_DIRECTORY") else {
         return;
     };

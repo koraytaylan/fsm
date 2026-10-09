@@ -160,7 +160,10 @@ impl StoreAccess<'_> {
                 } else {
                     session.submit(command)
                 };
-                receive_input(session, output, admission, context.io)
+                let result = receive_input(session, output, admission, context.io);
+                #[cfg(test)]
+                session.pause_response();
+                result
             }
         }
     }

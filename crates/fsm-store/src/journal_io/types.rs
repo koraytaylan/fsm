@@ -1,6 +1,10 @@
 use std::fs::File;
 use std::io::{ErrorKind, Write};
 use std::path::PathBuf;
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
 
 use fsm_core::record::{Record, RecordError};
 
@@ -52,6 +56,23 @@ impl Drop for WriterLock {
     }
 }
 
+/// Read-only observation of one original writer's completed append prefix.
+/// Clones retain the final prefix after that writer retires; they grant no lease.
+#[derive(Clone)]
+pub struct CommittedPrefix(Arc<AtomicU64>);
+impl CommittedPrefix {
+    pub(super) fn new(sequence: u64) -> Self {
+        Self(Arc::new(AtomicU64::new(sequence)))
+    }
+    /// Verified opening prefix, advanced after this writer's successful appends.
+    pub fn sequence(&self) -> u64 {
+        self.0.load(Ordering::Acquire)
+    }
+    pub(super) fn advance(&self, sequence: u64) {
+        self.0.store(sequence, Ordering::Release);
+    }
+}
+
 pub struct Journal {
     pub dir: PathBuf,
     pub(super) seg: Seg,
@@ -60,6 +81,7 @@ pub struct Journal {
     pub seg_bytes: u64,
     pub seg_records: u32,
     pub last_seq: u64,
+    pub(super) committed: CommittedPrefix,
     pub last_hash: String,
     pub poisoned: bool,
     pub(super) _lock: Option<WriterLock>,

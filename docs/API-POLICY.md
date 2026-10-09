@@ -1809,5 +1809,17 @@ Adapter failure, including unwinding from an injected clock, cancels the
 original session/request controls before releasing the clock rendezvous;
 successful completion does not cancel other controls sharing that identity.
 
+Hosted change feeds MUST cap their record interval at the original writer's
+completed append prefix, shared by every session and retained after writer
+retirement; complete bytes visible to a read-only opener do not establish
+durability. The writer advances this observation only after successful append
+and fsync, while each originating session retains its response-order guard.
+The additive `Journal::committed_prefix` and read-only `CommittedPrefix::sequence`
+API observes the original writer; a read-only journal returns no such observer.
+This observation changes no journal bytes, hashes, error codes or versions.
+Ordinary hosted tool responses retain their originating output guard through
+response enqueueing even when no borrowed input adapter exists; read-only
+diagnostics and unanswered elicitation continue allowing committed feeds.
+
 This changes private hosted scheduling only; published error codes, journal
 formats, hash domains and public Rust signatures remain unchanged.

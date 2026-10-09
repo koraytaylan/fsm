@@ -135,6 +135,9 @@ impl Feed {
         if self.out.publication_pending() {
             return 0;
         }
+        // A different output stream's publication guard cannot establish
+        // durability; only the original writer advances this shared ceiling.
+        let committed = self.out.committed_sequence();
         let Ok(store) = Store::open_read_only(&self.data_dir) else {
             // A directory that cannot be opened read-only is one a writer is
             // rebuilding; the next poll finds it.
@@ -146,11 +149,13 @@ impl Feed {
             return 0;
         }
         // The whole common case: one comparison, then out.
-        if store.journal.last_seq <= self.watermark {
+        let to_seq = committed.map_or(store.journal.last_seq, |sequence| {
+            sequence.min(store.journal.last_seq)
+        });
+        if to_seq <= self.watermark {
             return 0;
         }
         self.walks += 1;
-        let to_seq = store.journal.last_seq;
         // A copy, so a `resources/subscribe` arriving mid-poll is never
         // blocked behind this walk and these writes.
         let watching = self.watched.snapshot();
@@ -159,7 +164,11 @@ impl Feed {
         // hand, and a second read would be slower and able to disagree with
         // the first.
         let mut listing_changed = false;
-        for record in store.records.iter().filter(|r| r.seq > self.watermark) {
+        for record in store
+            .records
+            .iter()
+            .filter(|r| r.seq > self.watermark && r.seq <= to_seq)
+        {
             listing_changed |= super::subscribe::changes_the_listing(record.kind);
             // The exhaustive per-kind mapping, not a probe for a field named
             // `instance_id`: composition records name a parent and a child,

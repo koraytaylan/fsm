@@ -81,6 +81,28 @@ pub(in crate::mcp) fn handle_request_hosted<'a>(
     feed_out: Option<&Notifier>,
 ) -> std::io::Result<()> {
     let refusal_id = id.clone();
+    output.bind_committed_prefix(session.committed_prefix());
+    if let Some(feed) = feed_out {
+        feed.bind_committed_prefix(session.committed_prefix());
+    }
+    let guarded_tool = method == "tools/call"
+        && params
+            .as_ref()
+            .and_then(|parameters| parameters.get("name"))
+            .and_then(Value::as_str)
+            .is_some_and(|name| {
+                name != "instance_elicit" && !tools::PROGRESS_TOOLS.contains(&name)
+            });
+    let _publication = if guarded_tool {
+        output.publication_guard()
+    } else {
+        None
+    };
+    let _feed_publication = if guarded_tool {
+        feed_out.and_then(Notifier::publication_guard)
+    } else {
+        None
+    };
     match handle_request_with_access(
         output,
         StoreAccess::Hosted {

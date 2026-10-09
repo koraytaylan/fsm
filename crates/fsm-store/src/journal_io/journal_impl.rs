@@ -24,6 +24,7 @@ impl Journal {
             seg_bytes: 0,
             seg_records: 1,
             last_seq: 0,
+            committed: super::CommittedPrefix::new(0),
             last_hash: rec.hash.clone(),
             poisoned: false,
             _lock: None,
@@ -33,6 +34,12 @@ impl Journal {
 
     pub fn is_memory(&self) -> bool {
         self.mem_records.is_some()
+    }
+
+    /// Observe this original writer's completed prefix, without acquiring its lock.
+    /// Read-only journals cannot establish another writer's durability and return None.
+    pub fn committed_prefix(&self) -> Option<super::CommittedPrefix> {
+        (!self.is_read_only()).then(|| self.committed.clone())
     }
 
     /// Return whether this journal was opened for inspection only.
@@ -89,6 +96,7 @@ impl Journal {
         self.seg_records += 1;
         self.last_seq = rec.seq;
         self.last_hash = rec.hash.clone();
+        self.committed.advance(rec.seq);
         if let Some(recs) = &mut self.mem_records {
             recs.push(rec.clone());
         }

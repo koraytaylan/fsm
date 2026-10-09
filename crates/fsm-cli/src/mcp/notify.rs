@@ -35,6 +35,7 @@ use super::jsonrpc::notification;
 pub struct Notifier {
     out: OutputMode,
     publication: Arc<AtomicU64>,
+    committed: Arc<Mutex<Option<fsm_store::journal_io::CommittedPrefix>>>,
     /// Set once a write fails, so a caller can stop rather than retrying into
     /// a stream that is gone.
     broken: Arc<Mutex<bool>>,
@@ -45,6 +46,7 @@ impl Notifier {
         Self {
             out: OutputMode::Direct(Arc::new(Mutex::new(out))),
             publication: Arc::new(AtomicU64::new(0)),
+            committed: Arc::new(Mutex::new(None)),
             broken: Arc::new(Mutex::new(false)),
         }
     }
@@ -61,6 +63,7 @@ impl Notifier {
             Self {
                 out: OutputMode::Queued(control.clone()),
                 publication: Arc::new(AtomicU64::new(0)),
+                committed: Arc::new(Mutex::new(None)),
                 broken: Arc::new(Mutex::new(false)),
             },
             control,
@@ -72,6 +75,7 @@ impl Notifier {
         Self {
             out: self.out.clone(),
             publication: Arc::clone(&self.publication),
+            committed: Arc::clone(&self.committed),
             broken: Arc::clone(&self.broken),
         }
     }
@@ -91,6 +95,7 @@ impl Notifier {
             Self {
                 out: OutputMode::Hosted(control.clone()),
                 publication: Arc::new(AtomicU64::new(0)),
+                committed: Arc::new(Mutex::new(None)),
                 broken: Arc::new(Mutex::new(false)),
             },
             control,
@@ -107,6 +112,24 @@ impl Notifier {
 
     pub(crate) fn publication_pending(&self) -> bool {
         self.publication.load(Ordering::Acquire) != 0
+    }
+
+    pub(crate) fn bind_committed_prefix(
+        &self,
+        prefix: Option<fsm_store::journal_io::CommittedPrefix>,
+    ) {
+        *self
+            .committed
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = prefix;
+    }
+
+    pub(crate) fn committed_sequence(&self) -> Option<u64> {
+        self.committed
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .as_ref()
+            .map(fsm_store::journal_io::CommittedPrefix::sequence)
     }
 
     /// Emit one complete message: synchronous write/flush or bounded queue admission.

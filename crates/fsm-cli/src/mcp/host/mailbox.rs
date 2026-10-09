@@ -29,6 +29,8 @@ pub(super) struct SessionState {
     open: AtomicBool,
     #[cfg(test)]
     pub(super) diagnostic_hold: Mutex<Option<(mpsc::Sender<CancelFlag>, mpsc::Receiver<()>)>>,
+    #[cfg(test)]
+    pub(super) response_hold: Mutex<Option<(mpsc::Sender<()>, mpsc::Receiver<()>)>>,
 }
 
 impl SessionState {
@@ -69,6 +71,7 @@ struct RequestControl {
 
 #[derive(Default)]
 pub(super) struct Mailbox {
+    pub(super) committed: Option<fsm_store::journal_io::CommittedPrefix>,
     state: Mutex<State>,
     ready: Condvar,
 }
@@ -143,6 +146,14 @@ impl Drop for Reservation {
 }
 
 impl Mailbox {
+    pub(super) fn with_committed_prefix(
+        committed: Option<fsm_store::journal_io::CommittedPrefix>,
+    ) -> Self {
+        Self {
+            committed,
+            ..Default::default()
+        }
+    }
     pub(super) fn is_stopped(&self) -> bool {
         self.state.lock().unwrap_or_else(|p| p.into_inner()).stopped
     }
@@ -161,6 +172,8 @@ impl Mailbox {
             open: AtomicBool::new(true),
             #[cfg(test)]
             diagnostic_hold: Mutex::new(None),
+            #[cfg(test)]
+            response_hold: Mutex::new(None),
         }))
     }
 

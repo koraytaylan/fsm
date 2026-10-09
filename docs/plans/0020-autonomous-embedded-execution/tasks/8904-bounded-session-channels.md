@@ -72,10 +72,10 @@ host or allocate an unbounded backlog.
 
 Focused channel review:
 
-- Twenty-two focused `session_channels` cases pass, including original native
+- Twenty-five focused `session_channels` cases pass, including original native
   deadline progress and a second session response while actual output remains
   blocked, and replay through a replacement session after actual delivery
-  failure without another journal append. Affected CLI test-target clippy and
+  failure without another journal append. Affected store/CLI test-target clippy and
   diff checks pass; expensive integration gates remain due at plan completion.
 - Long progress tools now select session-owned read-only workers rather than
   writer dispatch, retaining original admission and cancellation controls.
@@ -96,8 +96,22 @@ Focused channel review:
   returns. The barrier is session-scoped and test-only, before read-only store
   opening, and does not replace the worker outcome. Disabling only diagnostic
   owned-input routing fails both named lifetime cases at exit 101; restoring
-  it passes all twenty-two channel cases.
+  it passes all channel cases.
 - The three exact count/retained-byte/encoded-frame egress boundary cases and
   all eighteen existing elicitation/cancellation integration cases pass.
-  Completion still requires the original publication-order inventory to be
-  reviewed against actual durability boundaries; no landing OID is assigned.
+- Publication review found that a guard on one output stream could not
+  establish another session's durable prefix, and an adapter without borrowed
+  input lacked the originating response guard. Hosted feeds now share the
+  original writer's read-only committed-prefix observer and retain response
+  ordering across durable and later commits. A real append is paused between
+  write and fsync to prove the observer stays unchanged; read-only journals
+  cannot create that observer, failed appends cannot advance it, and it survives
+  writer retirement. The hosted feed rejects valid visible but uncommitted
+  fixture bytes, while another session may publish an already durable commit
+  during the originating response wait. Premature observer advancement,
+  disabling the feed ceiling, and disabling either response guard for shared
+  or separate streams each fail their named regression at exit 101;
+  restoration passes. Both focused committed-prefix cases and all seven
+  existing subscription integration cases pass.
+- Completion still requires the original transport-close hook inventory and
+  consolidated frozen review; no landing OID is assigned.

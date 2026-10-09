@@ -68,6 +68,21 @@ pub(super) struct Session {
 }
 
 impl Session {
+    #[cfg(test)]
+    pub(in crate::mcp) fn pause_response(&self) {
+        let hold = self.original.response_hold.lock().unwrap().take();
+        if let Some((entered, release)) = hold {
+            entered.send(()).unwrap();
+            release
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .expect("response acceptance barrier release missing");
+        }
+    }
+    pub(in crate::mcp) fn committed_prefix(
+        &self,
+    ) -> Option<fsm_store::journal_io::CommittedPrefix> {
+        self.mailbox.committed.clone()
+    }
     pub(in crate::mcp) fn reserve_diagnostic(
         &self,
         command: Command,
@@ -190,7 +205,9 @@ pub(super) struct Owner<C> {
 
 impl<C: Clock> Owner<C> {
     pub(super) fn new(store: Store, clock: C) -> (Self, Handle) {
-        let mailbox = Arc::new(Mailbox::default());
+        let mailbox = Arc::new(Mailbox::with_committed_prefix(
+            store.journal.committed_prefix(),
+        ));
         let handle = Handle {
             mailbox: Arc::clone(&mailbox),
             #[cfg(target_os = "linux")]

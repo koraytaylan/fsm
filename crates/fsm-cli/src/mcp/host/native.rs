@@ -82,7 +82,11 @@ impl<C: Clock> NativeOwner<C> {
             ));
         }
         driver.enable_worker_polling();
-        let mailbox = Arc::new(Mailbox::default());
+        let mailbox = Arc::new(Mailbox::with_committed_prefix(
+            driver
+                .store_mut()
+                .and_then(|store| store.journal.committed_prefix()),
+        ));
         let handle = Handle {
             mailbox: Arc::clone(&mailbox),
             native_stop: Some((driver.control(), shutdown_timeout_ms)),
@@ -108,6 +112,7 @@ impl<C: Clock> NativeOwner<C> {
         mut self,
         output: &crate::mcp::notify::Notifier,
     ) -> Self {
+        output.bind_committed_prefix(self.mailbox.committed.clone());
         self.publication = output.hosted_handle();
         self
     }

@@ -14,6 +14,63 @@ use super::paths::acquire_lock;
 /// showed up first on a fast macOS release build.
 static TMP_N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
+#[test]
+fn journal_committed_prefix_advances_after_sync_and_survives_writer_retirement() {
+    let scratch = tmp();
+    let mut store = crate::store::Store::open(&scratch).unwrap();
+    let prefix = store.journal.committed_prefix().unwrap();
+    let (entered, observed) = std::sync::mpsc::channel();
+    let (release, resume) = std::sync::mpsc::channel();
+    let worker = std::thread::spawn(move || {
+        super::append_barrier::after_write(move || {
+            entered.send(()).unwrap();
+            resume
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .unwrap();
+        });
+        store.define_machine_on(&mut crate::clock::FixedClock::new(1000, 0),
+            parse(br#"{"format":"fsm.machine/1","name":"committed_case","states":[{"name":"waiting"}],"initial":"waiting","context":[],"events":[],"transitions":[]}"#,
+                &JsonLimits::DEFAULT).unwrap(), false, false).unwrap();
+        store
+    });
+    observed
+        .recv_timeout(std::time::Duration::from_secs(3))
+        .unwrap();
+    let visible = crate::store::Store::open_read_only(&scratch).unwrap();
+    let visible_seq = visible.journal.last_seq;
+    let before_sync = prefix.sequence();
+    let read_only_prefix = visible.journal.committed_prefix();
+    drop(visible);
+    release.send(()).unwrap();
+    let store = worker.join().unwrap();
+    assert_eq!(
+        visible_seq, 1,
+        "complete bytes are readable before durability"
+    );
+    assert_eq!(before_sync, 0);
+    assert!(read_only_prefix.is_none());
+    assert_eq!(prefix.sequence(), store.journal.last_seq);
+    assert_eq!(prefix.sequence(), 1);
+    drop(store);
+    assert_eq!(prefix.sequence(), 1);
+    assert_eq!(verify(&scratch).health, JournalHealth::Ok);
+}
+
+#[test]
+fn journal_committed_prefix_does_not_advance_after_failed_append() {
+    let mut journal = Journal::memory();
+    let prefix = journal.committed_prefix().unwrap();
+    journal.seg = super::types::Seg::ReadOnly;
+    assert!(
+        journal
+            .append_at(RecordKind::InstanceCreated, Value::Null, 1000)
+            .is_err()
+    );
+    assert!(journal.poisoned);
+    assert_eq!(journal.last_seq, 0);
+    assert_eq!(prefix.sequence(), 0);
+}
+
 /// A scratch directory that removes itself. A suite that leaks one per run
 /// exhausts a long-lived machine's tmpfs inodes long before it exhausts its
 /// bytes, and the failure looks like a broken toolchain rather than a leaky
