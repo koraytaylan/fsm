@@ -885,8 +885,6 @@ fn verify(fixture: &Fixture, behavior: &str) {
                     | "contract-unknown-borrowed"
                     | "contract-argument-standalone"
                     | "contract-argument-borrowed"
-                    | "contract-contention-standalone"
-                    | "contract-contention-borrowed"
                     | "contract-manual-standalone"
                     | "contract-manual-borrowed"
                     | "contract-ack-only-standalone"

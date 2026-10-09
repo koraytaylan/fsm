@@ -6,6 +6,8 @@ use super::*;
 mod cancellation;
 #[path = "provisioned/receiver.rs"]
 mod receiver;
+#[path = "provisioned/retry.rs"]
+mod retry;
 use fsm_execute::{
     config::Advance,
     run::{Pipeline, Runner},
@@ -196,7 +198,9 @@ fn observe(borrowed: bool, scenario: Scenario) {
         table.max_inflight = 2;
         let notify = table.handlers.get_mut("notify").unwrap();
         notify.timeout_ms = 5000;
-        notify.retry.attempts = 1;
+        notify.retry.attempts = 2;
+        notify.retry.backoff_ms = 0;
+        notify.retry.max_backoff_ms = 0;
         notify.on_failed = notify.on_ok.clone();
     }
     if matches!(
@@ -466,7 +470,12 @@ fn observe(borrowed: bool, scenario: Scenario) {
         );
         return;
     }
-    let deadline = Instant::now() + Duration::from_secs(20);
+    let deadline = Instant::now()
+        + Duration::from_secs(if matches!(scenario, Scenario::Contention) {
+            30
+        } else {
+            20
+        });
     if matches!(scenario, Scenario::BoundCancel) {
         cancellation::observe(
             &store_path,
@@ -693,9 +702,20 @@ fn observe(borrowed: bool, scenario: Scenario) {
             &mut runner,
             &mut clock,
         );
-    } else {
-        fs::write(resource.join("root-release"), b"release").unwrap();
+        retry::observe(
+            &store_path,
+            &resource,
+            retry::State {
+                table: &mut table,
+                watcher: &mut watcher,
+                scheduler: &mut scheduler,
+                runner: &mut runner,
+                clock: &mut clock,
+            },
+            tick,
+        );
     }
+    fs::write(resource.join("root-release"), b"release").unwrap();
     loop {
         let lines = tick(&mut watcher, &mut scheduler, &mut runner, &mut clock);
         let current = Store::open_read_only(&store_path).unwrap();

@@ -49,6 +49,10 @@ Bound cancellation now requires actual contained startup, authenticated closure
 while a competing writer remains held, absent entry permission and markers,
 then exactly one original settlement with no ack, outcome, retry or derived keys;
 later observations must leave the cancelled generation retired.
+The timeout-under-contention axes now require first-attempt settlement, repeated
+refusal of a changed late outcome before and after executor restart, unchanged
+historical work and failed-attempt timestamp, then repaired second-attempt entry
+and completion; Root requires two original claim/stop/settlement proofs.
 Original ownership,
 unchanged refusal journals, marker absence and exact settlement/allocation
 counts are required before repair or writer release, as applicable. Thirteen
@@ -61,8 +65,8 @@ until provisioned plan-end CI.
 Five focused bound-entry tests pass, including private MCP replacement and
 nested missing arguments; feature-enabled executor all-target clippy and
 format/size/diff checks pass. Scoped review
-`12a64723a4a441c20985d5cedeafe9858b022a2c4650213bb676a47b59d9a089`
-indexes cancellation, the executable migration/closure fixture and preceding private MCP probes;
+`01ca03befff1c4e05c0a63c9affe33cb819aaa94e14b6244a73b75e19abb30dc`
+indexes retry/restart, cancellation, the executable migration/closure fixture and preceding private MCP probes;
 the twenty native Rust cases remain ignored locally.
 Native producer launch failure now preserves its original bounded diagnostic
 and unobserved axes, retiring only a verified clear installed identity;
