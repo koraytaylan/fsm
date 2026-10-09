@@ -272,3 +272,100 @@ fn incompatible_work_cannot_repeatedly_take_the_only_native_selection_slot() {
         }
     }
 }
+
+#[test]
+fn unknown_timestamp_outcome_refuses_both_service_entries_without_mutation() {
+    for borrowed in [false, true] {
+        let directory = Directory::new();
+        let (source, original, mut table) = fixture();
+        let Value::Obj(mut document) = source.state.machines[&original.emitting_machine_id]
+            .compiled
+            .spec
+            .to_value()
+        else {
+            unreachable!()
+        };
+        document.insert(
+            "enums".into(),
+            parse(br#"{"StampRange":["0","2000"]}"#, &JsonLimits::DEFAULT).unwrap(),
+        );
+        let Value::Arr(events) = document.get_mut("events").unwrap() else {
+            unreachable!()
+        };
+        events.push(
+            parse(
+                br#"{"name":"stamped","fields":[{"name":"at","ty":{"enum":"StampRange"}}]}"#,
+                &JsonLimits::DEFAULT,
+            )
+            .unwrap(),
+        );
+        table.handlers.get_mut("restore").unwrap().on_ok = Some(Advance {
+            event: "stamped".into(),
+            payload: Value::Obj(BTreeMap::new()),
+            stamps: vec!["at".into()],
+        });
+        let mut clock = FixedClock::new(2000, 1);
+        let mut store = Store::open(&directory.0).unwrap();
+        store
+            .define_machine_on(&mut clock, Value::Obj(document), false, false)
+            .unwrap();
+        store
+            .create_instance_ctx_on(
+                &mut clock,
+                "admission",
+                "case-1",
+                "create",
+                None,
+                &BTreeMap::new(),
+                &[],
+            )
+            .unwrap();
+        let state = store.state.clone();
+        let records = store.records.clone();
+        drop(store);
+        let mut watcher = Watcher::with_handlers(directory.0.clone(), &table);
+        let mut scheduler = Scheduler::new(table);
+        let mut runner = Runner::new_native().unwrap();
+        for _ in 0..3 {
+            let lines = if borrowed {
+                let mut writer = Store::open(&directory.0).unwrap();
+                tick_with(
+                    &mut watcher,
+                    &mut scheduler,
+                    &mut runner,
+                    &mut Pipeline,
+                    &mut writer,
+                    &mut clock,
+                    2000,
+                )
+            } else {
+                tick_reporting(
+                    &mut watcher,
+                    &mut scheduler,
+                    &mut runner,
+                    &mut Pipeline,
+                    &directory.0,
+                    &mut clock,
+                    2000,
+                )
+                .lines
+            };
+            assert!(
+                lines
+                    .iter()
+                    .any(|line| line == "error exec/contract_unknown"),
+                "{lines:?}"
+            );
+            assert!(
+                !lines.iter().any(|line| line.starts_with("native-preparing")
+                    || line.starts_with("native-claimed")
+                    || line.starts_with("native-launched")),
+                "{lines:?}"
+            );
+            let current = Store::open_read_only(&directory.0).unwrap();
+            assert_eq!(current.records, records);
+            assert!(fsm_store::snapshot::store_states_eq(&state, &current.state));
+            assert!(runner.local_native_claims().next().is_none());
+        }
+    }
+}

@@ -199,6 +199,8 @@ fn provisioned_contract_admission_matrix() {
         "contract-borrowed",
         "contract-fair-standalone",
         "contract-fair-borrowed",
+        "contract-unknown-standalone",
+        "contract-unknown-borrowed",
     ] {
         for kind in ["process", "mcp"] {
             scenario(
@@ -373,7 +375,11 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
     let mut command = Command::new("/usr/bin/python3");
     command.args(["-c", "import os,sys;os.setgroups([]);os.setgid(65534);os.setuid(65534);os.execv(sys.argv[1],sys.argv[1:])"])
         .arg(staging.join(artifact))
-        .args(["--exact", if behavior == "contract-fair-standalone" {
+        .args(["--exact", if behavior == "contract-unknown-standalone" {
+            "provisioned::standalone_native_unknown_outcome_preserves_work_until_repair"
+        } else if behavior == "contract-unknown-borrowed" {
+            "provisioned::borrowed_native_unknown_outcome_preserves_work_until_repair"
+        } else if behavior == "contract-fair-standalone" {
             "provisioned::standalone_native_incompatible_machine_cannot_starve_compatible_work"
         } else if behavior == "contract-fair-borrowed" {
             "provisioned::borrowed_native_incompatible_machine_cannot_starve_compatible_work"
@@ -586,6 +592,8 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                             | "contract-borrowed"
                             | "contract-fair-standalone"
                             | "contract-fair-borrowed"
+                            | "contract-unknown-standalone"
+                            | "contract-unknown-borrowed"
                             | "schedule-success"
                             | "schedule-retry"
                             | "schedule-compensation"
@@ -619,6 +627,8 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                         | "contract-borrowed"
                         | "contract-fair-standalone"
                         | "contract-fair-borrowed"
+                        | "contract-unknown-standalone"
+                        | "contract-unknown-borrowed"
                         | "schedule-success"
                         | "schedule-recovery"
                         | "schedule-construction"
@@ -793,6 +803,8 @@ fn verify(fixture: &Fixture, behavior: &str) {
                     | "contract-borrowed"
                     | "contract-fair-standalone"
                     | "contract-fair-borrowed"
+                    | "contract-unknown-standalone"
+                    | "contract-unknown-borrowed"
                     | "schedule-success"
                     | "schedule-recovery"
             ) {

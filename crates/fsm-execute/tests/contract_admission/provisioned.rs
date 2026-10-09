@@ -40,9 +40,22 @@ fn borrowed_native_incompatible_machine_cannot_starve_compatible_work() {
     observe(true, Scenario::Fairness);
 }
 
+#[test]
+#[ignore = "requires disposable native CI and exact staged process/MCP fixture"]
+fn standalone_native_unknown_outcome_preserves_work_until_repair() {
+    observe(false, Scenario::UnknownRepair);
+}
+
+#[test]
+#[ignore = "requires disposable native CI and exact staged process/MCP fixture"]
+fn borrowed_native_unknown_outcome_preserves_work_until_repair() {
+    observe(true, Scenario::UnknownRepair);
+}
+
 #[derive(Clone, Copy)]
 enum Scenario {
     Repair,
+    UnknownRepair,
     Fairness,
 }
 
@@ -64,6 +77,13 @@ fn observe(borrowed: bool, scenario: Scenario) {
         payload: Value::Obj(BTreeMap::new()),
         stamps: Vec::new(),
     });
+    if matches!(scenario, Scenario::UnknownRepair) {
+        restore.on_ok = Some(Advance {
+            event: "stamped".into(),
+            payload: Value::Obj(BTreeMap::new()),
+            stamps: vec!["at".into()],
+        });
+    }
     table.handlers.insert("restore".into(), restore);
     let mut clock = FixedClock::new(2000, 0);
     let mut store = Store::open(&store_path).unwrap();
@@ -73,7 +93,8 @@ fn observe(borrowed: bool, scenario: Scenario) {
             parse(
                 br#"{
       "format":"fsm.machine/1","name":"native-admission","context":[],
-      "events":[{"name":"done","fields":[]}],
+      "enums":{"StampRange":["0","2000"]},
+      "events":[{"name":"done","fields":[]},{"name":"stamped","fields":[{"name":"at","ty":{"enum":"StampRange"}}]}],
       "effects":[{"name":"notify","fields":[]},{"name":"restore","fields":[]}],
       "states":[{"name":"running","entry":{"emit":[{"effect":"notify"}]}},
                 {"name":"compensating","entry":{"emit":[{"effect":"restore"}]}},
@@ -134,14 +155,14 @@ fn observe(borrowed: bool, scenario: Scenario) {
             outcome.lines
         }
     };
+    let diagnostic = if matches!(scenario, Scenario::UnknownRepair) {
+        "error exec/contract_unknown"
+    } else {
+        "error exec/contract_invalid"
+    };
     for _ in 0..3 {
         let lines = tick(&mut watcher, &mut scheduler, &mut runner, &mut clock);
-        assert!(
-            lines
-                .iter()
-                .any(|line| line == "error exec/contract_invalid"),
-            "{lines:?}"
-        );
+        assert!(lines.iter().any(|line| line == diagnostic), "{lines:?}");
         assert!(
             !resource.join("root-candidate").exists(),
             "incompatible later step started the first real handler"
@@ -152,7 +173,7 @@ fn observe(borrowed: bool, scenario: Scenario) {
         assert!(scheduler.inflight_effect(&effect_id).is_none());
     }
     let completed_instance = match scenario {
-        Scenario::Repair => {
+        Scenario::Repair | Scenario::UnknownRepair => {
             table.handlers.get_mut("restore").unwrap().on_ok = None;
             scheduler = Scheduler::new(table.clone());
             watcher = Watcher::with_handlers(store_path.clone(), &table);

@@ -134,7 +134,7 @@ class Retirement(unittest.TestCase):
                     boundary_build.assert_not_called()
                     contract_build.assert_called_once()
                     self.assertEqual(set(evidence['artifacts']), {'CONTRACT', 'FIXTURE', 'CLI'})
-                    self.assertEqual(len(evidence['cases']), 8)
+                    self.assertEqual(len(evidence['cases']), 12)
                     self.assertEqual(evidence['scope'], 'native-contract-refusal-repair')
                     self.assertFalse(evidence['task_complete'])
                     self.assertEqual(evidence['command'][-5],
