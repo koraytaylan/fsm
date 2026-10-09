@@ -110,11 +110,14 @@ its historical pending operation. A subsequently loaded incompatible late
 outcome must defeat the saved good report without side effects, until restoring
 the original table lets that same work proceed. The executed Store fixture
 also completes all four corrected outcome transitions. Eight focused Rust cases
-and 22 mocked artifact/producer cases pass, with
+and 27 mocked artifact/producer cases pass, with
 feature-enabled CLI/executor all-target clippy and format/size/diff checks;
 the genuine native case remains ignored locally and unexecuted. Scoped review
-`e25f3f75036a7ab0992db63b46ff62fbc99eb1182f825a584789557e2380b061`
-indexes the preceding MCP verdict; tasks 9202/9203 and plan-end acceptance remain open.
+`cf1fda5d8bc40bee707a11760def30fd1ff3fb407c56f83ab0f9a8db2abac467`
+indexes the preceding MCP verdict and producer failure review: coordinator launch
+errors persist failed/unobserved evidence and their original diagnostic, while
+matched removal failure retains authority identity and cannot leave a passing
+report; tasks 9202/9203 and plan-end acceptance remain open.
 
 Cross-surface acceptance preparation adds independently specified staged
 precondition/work/recovery fixtures and full reports. Five focused tests pass

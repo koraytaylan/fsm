@@ -18,7 +18,7 @@ loader.exec_module(probe)
 
 
 class Retirement(unittest.TestCase):
-    def exercise(self, name, clear=True, stages=False, timeout=False, missing=False, initial=True, export_error=False, selected=None):
+    def exercise(self, name, clear=True, stages=False, timeout=False, missing=False, initial=True, export_error=False, selected=None, launch_error=False, removal_error=False):
         directory = CACHE / 'workflow-producer-mocked-checks'
         directory.mkdir(exist_ok=True)
         artifact = directory / 'mock-artifact'
@@ -48,6 +48,8 @@ class Retirement(unittest.TestCase):
         result = subprocess.CompletedProcess([], 0, output, b'')
         native = (subprocess.TimeoutExpired(['mock-native'], 300, output=output, stderr=b'partial')
                   if timeout else result)
+        if launch_error:
+            native = OSError('native workflow launch failed')
         with (
             patch.object(probe.argparse.ArgumentParser, 'parse_args', return_value=SimpleNamespace(toolchain='stable', report=report, upgrade_source=None, case=selected)),
             patch.object(probe.authority, 'build_authority', return_value=artifact),
@@ -58,7 +60,7 @@ class Retirement(unittest.TestCase):
             patch.object(probe.workflow_failure_export, 'export', return_value=[],
                          side_effect=OSError('original diagnostic unavailable') if export_error else None) as exported,
             patch.object(probe.subprocess, 'check_output', side_effect=check_output) as checked,
-            patch.object(probe.subprocess, 'run', side_effect=[native, subprocess.CompletedProcess([], 0)]) as run,
+            patch.object(probe.subprocess, 'run', side_effect=[native, OSError('matched removal failed') if removal_error else subprocess.CompletedProcess([], 0)]) as run,
         ):
             if not initial:
                 with self.assertRaises(AssertionError):
@@ -70,10 +72,18 @@ class Retirement(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, 'retain exact') as raised:
                     probe.main()
                 self.assertEqual(run.call_count, 1)
-                if timeout:
+                if timeout or launch_error:
                     self.assertIs(raised.exception.__cause__, native)
             else:
-                self.assertEqual(probe.main(), 1 if timeout or missing else 0)
+                if removal_error:
+                    with self.assertRaisesRegex(OSError, 'matched removal failed'):
+                        probe.main()
+                elif launch_error:
+                    with self.assertRaisesRegex(OSError, 'native workflow launch failed') as raised:
+                        probe.main()
+                    self.assertIs(raised.exception, native)
+                else:
+                    self.assertEqual(probe.main(), 1 if timeout or missing else 0)
                 self.assertEqual(run.call_count, 2)
                 self.assertIn('remove', run.call_args.args[0])
             evidence = json.loads(report.read_text())
@@ -92,8 +102,14 @@ class Retirement(unittest.TestCase):
             command = run.call_args_list[0].args[0]
             self.assertIn('FSM_NATIVE_CONTRACT_MCP_TEST_ARTIFACT=' + str(artifact), command)
             self.assertIn('FSM_NATIVE_CONTRACT_MCP_TEST_SHA256=' + probe.digest(artifact), command)
-            self.assertEqual(evidence['passed'], clear and not stages and not timeout and not missing)
-            self.assertEqual(evidence['exit_code'], None if timeout else 0)
+            self.assertEqual(evidence['passed'], clear and not stages and not timeout and not missing and not launch_error and not removal_error)
+            self.assertEqual(evidence['exit_code'], None if timeout or launch_error else 0)
+            self.assertEqual(evidence['command'], run.call_args_list[0].args[0])
+            if launch_error:
+                self.assertEqual(evidence['error'], 'native workflow launch failed')
+                self.assertFalse(evidence['timed_out'])
+                self.assertFalse(any(row['passed'] for row in evidence['cases']))
+                self.assertFalse(report.with_suffix('.log').exists())
             if timeout:
                 self.assertTrue(evidence['timed_out'])
                 self.assertEqual(report.with_suffix('.log').read_bytes(), output + b'partial')
@@ -106,6 +122,9 @@ class Retirement(unittest.TestCase):
                     self.assertEqual(evidence['failure_exports'], [])
             else:
                 exported.assert_not_called()
+                if removal_error:
+                    self.assertEqual(evidence['retained_authority'], installed)
+                    self.assertEqual(evidence['retirement_error'], 'matched removal failed')
 
     def test_clear_success_removes_only_installed_identity(self):
         self.exercise('clear-success')
@@ -136,6 +155,21 @@ class Retirement(unittest.TestCase):
 
     def test_export_failure_cannot_remove_retained_authority_or_mask_native_timeout(self):
         self.exercise('export-failure', clear=False, stages=True, timeout=True, export_error=True)
+
+    def test_clear_launch_failure_records_unobserved_cases_and_preserves_original_error(self):
+        self.exercise('clear-launch-error', launch_error=True, selected=probe.CASES[0][0])
+
+    def test_uncertain_launch_failure_retains_authority_and_original_cause(self):
+        self.exercise('retained-launch-error', clear=False, launch_error=True)
+
+    def test_launch_failure_export_error_cannot_remove_staged_authority(self):
+        self.exercise('staged-launch-error', stages=True, launch_error=True, export_error=True)
+
+    def test_successful_observation_cannot_pass_after_authority_removal_failure(self):
+        self.exercise('removal-error', removal_error=True)
+
+    def test_launch_and_removal_failure_preserve_both_diagnostics(self):
+        self.exercise('launch-removal-error', launch_error=True, removal_error=True)
 
 
 if __name__ == '__main__':

@@ -132,6 +132,9 @@ def main():
     if contract_mcp:
         report['contract_mcp_sha256'] = digest(contract_mcp)
     timeout_error = None
+    failure_error = None
+    report.update(exit_code=None, timed_out=False,
+                  cases=[dict(case=case, scenarios=count, passed=False) for case, count in cases])
     try:
         command = ['sudo', '-n', 'env', 'TMPDIR=' + os.environ['TMPDIR'],
                    'FSM_NATIVE_FIXTURE_DEVICE=' + str(installed['device']),
@@ -155,6 +158,7 @@ def main():
                             'FSM_NATIVE_CONTRACT_MCP_TEST_SHA256=' + report['contract_mcp_sha256']]
         if args.case:
             command[3:3] = ['FSM_NATIVE_WORKFLOW_FILTER=' + args.case]
+        report['command'] = command
         try:
             result = subprocess.run(command, cwd=repo, capture_output=True,
                                     timeout=60 + sum(30 * count + 20 for _, count in cases))
@@ -205,6 +209,10 @@ def main():
             assert not subprocess.check_output(['git', 'status', '--porcelain'], cwd=baseline)
         assert subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=repo, text=True).strip() == commit
         assert not subprocess.check_output(['git', 'status', '--porcelain', '--untracked-files=no'], cwd=repo)
+    except BaseException as error:
+        failure_error = error
+        report.update(passed=False, error=str(error)[:512])
+        raise
     finally:
         stages = staging_paths() - prior_stages
         clear = authority.authority_state_is_clear()
@@ -220,10 +228,19 @@ def main():
             except (OSError, ValueError, subprocess.SubprocessError) as error:
                 report['failure_export_error'] = str(error)[:512]
             args.report.write_text(json.dumps(report, indent=2) + '\n')
-            raise RuntimeError('retain exact native authority and staged workflow fixture') from timeout_error
-        subprocess.run([*installer, 'remove', '--device', str(installed['device']),
-                        '--inode', str(installed['inode']), '--sha256', expected], check=True, timeout=10)
-    args.report.write_text(json.dumps(report, indent=2) + '\n')
+            raise RuntimeError('retain exact native authority and staged workflow fixture') from failure_error or timeout_error
+        try:
+            subprocess.run([*installer, 'remove', '--device', str(installed['device']),
+                            '--inode', str(installed['inode']), '--sha256', expected], check=True, timeout=10)
+        except BaseException as error:
+            report.update(passed=False, retained_authority=installed,
+                          retirement_error=str(error)[:512],
+                          retirement_reason='matched installed authority removal failed')
+            raise
+        finally:
+            # Launch errors bypass the normal return path, but must still leave
+            # failed evidence with every unobserved case marked false.
+            args.report.write_text(json.dumps(report, indent=2) + '\n')
     print(json.dumps(dict(report=str(args.report), passed=report['passed'], scenarios=sum(count for _, count in cases), gate_released=False)))
     return 0 if report['passed'] else 1
 
