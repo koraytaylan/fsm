@@ -2143,7 +2143,9 @@ the protected operator broker, even if the live catalogue is unavailable.
 Hosts must still check their original claim/hash with NativeCompletion and
 acquire a healthy writer for stop/settlement; missing or torn records remain
 uncertain, and recovery neither repairs evidence nor launches a replacement.
-Automatic service recovery and original outcome-event replay are not yet wired.
+Automatic service recovery and original outcome-event replay use the shared
+original-owner reconciliation and authenticated handoff paths; retrieval alone
+does not authorize settlement or event delivery.
 
 A replacement host can now use Pipeline::recover_native with a durable read-only
 store and its exact current owned claim; NativeRun::recover also accepts a
@@ -2328,9 +2330,11 @@ produce legacy synthetic acknowledgement and never allocate a replacement.
 An observed genuine claim after an uncertain append transfers to retained
 original ownership. Existing ready native owners take precedence over further
 claim publication, and readonly snapshots are dropped before the standalone
-writer opens. This selected host path is not yet provisioned-runtime accepted;
-default CLI/MCP/service host selection, shutdown, reconciliation and cold
-post-ack recovery remain unfinished, with production acceptance flags false.
+writer opens. Production CLI/MCP/service hosts select this native path; owned
+shutdown, original-run reconciliation and cold acknowledgement-handoff recovery
+retain their respective identity, authority and writer checks. Plan 0022 records
+its frozen native acceptance; plan 0020 requires its own transport integration
+gate.
 
 
 The additive pure `fsm_core::record::execution::AcknowledgedHandoff` value
@@ -2349,12 +2353,11 @@ This pure value authenticates neither acknowledgement, native closure nor
 accepted event delivery, and does not replace the execution layer's checked
 full handler parser. Store integration MUST compare its material against the
 actual claim hash/stopped outcome and publish it atomically with acknowledgement,
-then retire it only through a matching actually accepted event. Current
-ExecutionState, journal VERSION 11, state-root/4, snapshots and sealed bases
-do not yet retain this value; their formats and historical hash bytes remain
-unchanged in this additive value-only change. Cold recovery and production
-acceptance remain incomplete, and decoding a candidate grants no execution or
-event permission.
+then retire it only through a matching actually accepted event. The initial
+value-only change left ExecutionState, journal VERSION 11, state-root/4,
+snapshots and sealed bases unchanged; subsequent persisted handoff integration
+and cold recovery use the separately specified original-contract checks.
+Decoding a candidate grants no execution or event permission.
 
 
 `AcknowledgedHandoff::matches_acknowledgement` MUST compare the complete
@@ -2638,8 +2641,8 @@ It uses bounded diagnostic delivery, independent admitted observation and the
 original shutdown deadline for endpoint retirement; unavailable or unsupported
 native execution refuses without a legacy fallback. Final success requires
 authenticated empty shutdown, endpoint removal and complete diagnostic delivery.
-This source integration remains pending production acceptance; embedded MCP
-and the low-level service host have not yet changed selection.
+Production embedded MCP and the low-level service host also select native
+execution; their distinct owned and borrowed lifecycle contracts apply.
 
 Production standalone final errors preserve the initiating code, message and
 hint, nesting its original details under `initiating_details` and attaching
