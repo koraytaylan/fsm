@@ -75,5 +75,38 @@ class PublicBoundaryArtifact(unittest.TestCase):
             self.select([artifact(name='async_completion', kind=['test'])], 101)
 
 
+class PrivateOwnerArtifact(unittest.TestCase):
+    def select(self, rows, exit_code=0):
+        output = b'\n'.join(json.dumps(row).encode() for row in rows)
+        result = subprocess.CompletedProcess([], exit_code, output, b'')
+        with patch.object(cli_artifact.subprocess, 'run', return_value=result) as run:
+            selected = cli_artifact.build_owner_test(Path('/fixture/repo'), 'stable')
+        command = run.call_args.args[0]
+        self.assertEqual(command[command.index('-p') + 1], 'fsm-execute')
+        self.assertIn('--lib', command)
+        self.assertIn('--no-run', command)
+        self.assertEqual(command[command.index('--features') + 1], 'lifecycle-test-fixture')
+        return selected
+
+    def test_selects_execution_library_test_without_accepting_host_or_authority(self):
+        self.assertEqual(self.select([artifact(),
+                                      artifact(name='fsm-containment-authority', kind=['bin']),
+                                      artifact(name='fsm_execute')]),
+                         Path('/fixture/host-test'))
+
+    def test_refuses_missing_duplicate_wrong_kind_profile_and_target(self):
+        candidate = artifact(name='fsm_execute')
+        for rows in [[], [artifact()], [candidate, candidate],
+                     [artifact(name='fsm_execute', kind=['test'])],
+                     [artifact(name='fsm_execute', test=False)],
+                     [artifact(name='fsm_execute', executable=None)]]:
+            with self.subTest(rows=rows), self.assertRaises(AssertionError):
+                self.select(rows)
+
+    def test_failed_build_cannot_select_capacity_observer(self):
+        with self.assertRaisesRegex(RuntimeError, 'Completion observer build failed'):
+            self.select([artifact(name='fsm_execute')], 101)
+
+
 if __name__ == '__main__':
     unittest.main()

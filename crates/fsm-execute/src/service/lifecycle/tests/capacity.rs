@@ -105,6 +105,16 @@ fn completion_capacity_keeps_effect_pending_until_original_reservations_release(
             .len(),
         1
     );
+    let claimed_records = driver.store_mut().unwrap().records.clone();
+    for _ in 0..3 {
+        let started = Instant::now();
+        let _ = driver.poll(&mut clock, 2000);
+        assert!(started.elapsed() < Duration::from_secs(2));
+        assert_eq!(driver.store_mut().unwrap().records, claimed_records);
+        assert!((1..=128).contains(&budget.reserved()));
+        assert!(budget.charged_bytes() <= 2 * 1024 * 1024 * 1024);
+        assert!(!resource.join("root-release").exists());
+    }
     let control = driver.control();
     let request = control.stop(ShutdownMode::Abort, 10000).unwrap();
     let deadline = Instant::now() + Duration::from_secs(12);
