@@ -151,6 +151,7 @@ fn provisioned_private_scheduling_owner_matrix() {
         "schedule-recovery",
         "schedule-construction",
         "schedule-fairness",
+        "schedule-queues",
     ] {
         for kind in ["process", "mcp"] {
             scenario(
@@ -198,8 +199,8 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
             }
         }
     }
-    if behavior == "repeated-noisy" {
-        for index in 0..12 {
+    if matches!(behavior, "repeated-noisy" | "schedule-queues") {
+        for index in 0..if behavior == "schedule-queues" { 9 } else { 12 } {
             let directory = resource.join(format!("run-{index}"));
             fs::DirBuilder::new()
                 .mode(0o777)
@@ -326,6 +327,8 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
         .arg(staging.join(artifact))
         .args(["--exact", if behavior == "schedule-success" {
             "mcp::host::tests::held_handlers::autonomous_schedule_real_handler_success_without_another_command"
+        } else if behavior == "schedule-queues" {
+            "mcp::host::tests::scheduling_handlers::autonomous_schedule_ready_completions_yield_to_admitted_application_within_eight_turns"
         } else if behavior == "schedule-fairness" {
             "mcp::host::tests::scheduling_fairness::autonomous_schedule_large_outbox_cannot_starve_another_native_instance"
         } else if behavior == "schedule-construction" {
@@ -529,6 +532,7 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                             | "schedule-recovery"
                             | "schedule-construction"
                             | "schedule-fairness"
+                            | "schedule-queues"
                     ) {
                         "hold-result"
                     } else {
@@ -555,6 +559,7 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                         | "schedule-recovery"
                         | "schedule-construction"
                         | "schedule-fairness"
+                        | "schedule-queues"
                 ) {
                     "30000"
                 } else {
@@ -631,7 +636,25 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
         argv[2] = Value::Str(resource.join("busy").to_str().unwrap().into());
         handlers.push(Value::Obj(busy));
     }
-    handlers.push(Value::Obj(handler));
+    if behavior == "schedule-queues" {
+        for index in 0..9 {
+            let mut queued = handler.clone();
+            queued.insert("effect".into(), Value::Str(format!("notify-{index}")));
+            let Value::Arr(argv) = queued.get_mut("argv").unwrap() else {
+                unreachable!()
+            };
+            argv[2] = Value::Str(
+                resource
+                    .join(format!("run-{index}"))
+                    .to_str()
+                    .unwrap()
+                    .into(),
+            );
+            handlers.push(Value::Obj(queued));
+        }
+    } else {
+        handlers.push(Value::Obj(handler));
+    }
     let mut result = object([
         ("format", Value::Str("fsm.handlers/1".into())),
         ("handlers", Value::Arr(handlers)),
@@ -641,6 +664,13 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
             unreachable!()
         };
         fields.insert("max_inflight".into(), Value::Num("2".into()));
+        fields.insert("max_inflight_per_instance".into(), Value::Num("1".into()));
+    }
+    if behavior == "schedule-queues" {
+        let Value::Obj(fields) = &mut result else {
+            unreachable!()
+        };
+        fields.insert("max_inflight".into(), Value::Num("9".into()));
         fields.insert("max_inflight_per_instance".into(), Value::Num("1".into()));
     }
     result
@@ -678,6 +708,8 @@ fn verify(fixture: &Fixture, behavior: &str) {
                 .count(),
             if behavior == "schedule-construction" {
                 0
+            } else if behavior == "schedule-queues" {
+                9
             } else if behavior == "repeated-noisy" {
                 12
             } else if matches!(

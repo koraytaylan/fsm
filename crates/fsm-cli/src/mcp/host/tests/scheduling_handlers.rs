@@ -430,3 +430,175 @@ fn autonomous_schedule_real_compensation_completes_without_another_command() {
         crate::journal_io::JournalHealth::Ok
     );
 }
+
+#[test]
+#[ignore = "requires disposable native CI and nine genuine independently held completions"]
+fn autonomous_schedule_ready_completions_yield_to_admitted_application_within_eight_turns() {
+    let manifest = held_handlers::manifest();
+    assert_eq!(
+        held_handlers::field(&manifest, "behavior"),
+        "schedule-queues"
+    );
+    let path = PathBuf::from(held_handlers::field(&manifest, "store"));
+    let resource = PathBuf::from(held_handlers::field(&manifest, "resource"));
+    let mut store = Store::open(&path).unwrap();
+    let mut clock = FixedClock::new(2000, 0);
+    for index in 0..9 {
+        let name = format!("queue-{index}");
+        let definition = held_handlers::HELD_MACHINE
+            .replace("held_completion", &name)
+            .replace("notify", &format!("notify-{index}"));
+        store
+            .define_machine_on(&mut clock, value(&definition), false, false)
+            .unwrap();
+        store
+            .create_instance_ctx_on(
+                &mut clock,
+                &name,
+                &name,
+                &name,
+                None,
+                &std::collections::BTreeMap::new(),
+                &[],
+            )
+            .unwrap();
+    }
+    let handlers =
+        HandlerTable::parse(&fs::read_to_string(path.join("handlers.json")).unwrap()).unwrap();
+    assert_eq!(handlers.max_inflight, 9);
+    assert_eq!(handlers.max_inflight_per_instance, 1);
+    let (gate, wait_clock) = WaitGate::new();
+    let (owner, handle) = NativeOwner::new(
+        OwnedNativeExecutor::new(store, handlers).unwrap(),
+        clock,
+        DiagnosticOutput::start(std::io::sink()).unwrap(),
+        Duration::from_millis(1),
+        10000,
+    )
+    .unwrap();
+    let worker = std::thread::spawn(move || owner.with_wait_clock(wait_clock).run());
+    gate.boundaries
+        .recv_timeout(Duration::from_secs(3))
+        .unwrap();
+    gate.until(&handle, || {
+        (0..9).all(|index| {
+            resource
+                .join(format!("run-{index}/root-candidate"))
+                .is_file()
+        })
+    });
+    let before = Store::open_read_only(&path).unwrap();
+    assert_eq!(claim_count(&before), 9);
+    assert_eq!(before.state.execution.unresolved().count(), 9);
+    assert!(
+        !before
+            .records
+            .iter()
+            .any(|record| record.kind == RecordKind::ExecutionSettled)
+    );
+    let prefix = before.journal.last_seq;
+    drop(before);
+    let sessions = (0..4)
+        .map(|_| handle.session().unwrap())
+        .collect::<Vec<_>>();
+    let mut replies = std::collections::VecDeque::new();
+    for index in 0..32 {
+        replies.push_back(
+            sessions[index % 4]
+                .submit(super::command(
+                    "instance_get",
+                    r#"{"instance_id":"queue-0"}"#,
+                ))
+                .unwrap(),
+        );
+    }
+    // Every original native tree is released; no outcome or closure is invented.
+    for index in 0..9 {
+        for role in ["grandchild", "child", "root"] {
+            fs::write(
+                resource.join(format!("run-{index}/{role}-release")),
+                b"release",
+            )
+            .unwrap();
+        }
+    }
+    let watchdog = Instant::now() + Duration::from_secs(20);
+    let mut previous = prefix;
+    let mut served = 0;
+    let completed_while_ready;
+    loop {
+        assert!(
+            Instant::now() < watchdog,
+            "completion queue stalled behind ready application requests"
+        );
+        gate.advance(&handle);
+        let outcome = replies
+            .pop_front()
+            .unwrap()
+            .recv_timeout(Duration::from_secs(3))
+            .unwrap();
+        assert!(outcome.result.is_ok());
+        let observed = Store::open_read_only(&path).unwrap();
+        let settled = observed
+            .records
+            .iter()
+            .filter(|record| {
+                record.kind == RecordKind::ExecutionSettled
+                    && record.seq > previous
+                    && record.seq <= outcome.committed_seq
+            })
+            .count();
+        assert!(
+            settled <= 8,
+            "more than eight completions preceded an admitted application response"
+        );
+        previous = outcome.committed_seq;
+        replies.push_back(
+            sessions[served % 4]
+                .submit(super::command(
+                    "instance_get",
+                    r#"{"instance_id":"queue-0"}"#,
+                ))
+                .unwrap(),
+        );
+        served += 1;
+        if observed
+            .state
+            .instances
+            .values()
+            .all(|instance| instance.status == Status::Completed)
+        {
+            assert_eq!(claim_count(&observed), 9);
+            assert_eq!(
+                observed
+                    .records
+                    .iter()
+                    .filter(|record| record.kind == RecordKind::ExecutionSettled)
+                    .count(),
+                9
+            );
+            assert_eq!(observed.state.execution.unresolved().count(), 0);
+            completed_while_ready = replies.len() == 32;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(served > 0 && completed_while_ready);
+    handle.stop();
+    drop(gate);
+    let exit = worker.join().unwrap();
+    assert!(exit.failure.is_none());
+    assert_eq!(
+        exit.shutdown.phase,
+        fsm_execute::service::ExecutorPhase::Stopped
+    );
+    assert!(
+        exit.shutdown.writer_released
+            && exit.shutdown.inventory_complete
+            && exit.shutdown.helpers_retired
+    );
+    assert_eq!(
+        crate::journal_io::verify(&path).health,
+        crate::journal_io::JournalHealth::Ok
+    );
+}
