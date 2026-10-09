@@ -21,7 +21,7 @@ manual work, refuse changed receiver contracts after migration and preserve
 acknowledged recovery keys until repair. Prior guard sensitivity and scoped
 reviews retain their original ranges, indexed by frozen verdict
 `636348f8b670a0efa300617801dc592875fd261b9d4086e6d0f51f0a2d5e1163`.
-Twenty-eight provisioned process/MCP axes remain unexecuted and fourteen protected Rust
+Thirty-two provisioned process/MCP axes remain unexecuted and sixteen protected Rust
 cases remain ignored locally; unprovisioned routing proves no native side-effect
 acceptance. Complete task 9103 inventory and plan-end gates remain outstanding;
 full-prefix reconstruction cost stays documented.
@@ -44,6 +44,11 @@ or marker, and the retained original owner subsequently settles once.
 Manual-to-handler repair and intentional no-outcome execution are also crossed
 with both writer entry paths and handler kinds; ack-only execution requires
 one acknowledgement, no applied event and no further journal changes.
+Acknowledged-recovery axes retain an invalid outcome until repair, then require
+one outcome event and stable derived keys with zero handler markers, execution
+claims or native allocations through both writer entries and handler kinds;
+focused review digest
+`bd3be6c4d389d3f27b7c437bbd6798ea133e454d2058b0b03244168e08b8b857`.
 Focused admission cases (12) and mocked producer/verifier cases (25) pass;
 executor feature-enabled all-target clippy and format/size/diff checks pass.
 Content-addressed focused review:

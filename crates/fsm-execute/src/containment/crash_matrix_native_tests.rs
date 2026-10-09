@@ -209,6 +209,8 @@ fn provisioned_contract_admission_matrix() {
         "contract-manual-borrowed",
         "contract-ack-only-standalone",
         "contract-ack-only-borrowed",
+        "contract-recovery-standalone",
+        "contract-recovery-borrowed",
     ] {
         for kind in ["process", "mcp"] {
             scenario(
@@ -383,7 +385,11 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
     let mut command = Command::new("/usr/bin/python3");
     command.args(["-c", "import os,sys;os.setgroups([]);os.setgid(65534);os.setuid(65534);os.execv(sys.argv[1],sys.argv[1:])"])
         .arg(staging.join(artifact))
-        .args(["--exact", if behavior == "contract-manual-standalone" {
+        .args(["--exact", if behavior == "contract-recovery-standalone" {
+            "provisioned::standalone_native_acknowledged_recovery_repairs_without_handler_restart"
+        } else if behavior == "contract-recovery-borrowed" {
+            "provisioned::borrowed_native_acknowledged_recovery_repairs_without_handler_restart"
+        } else if behavior == "contract-manual-standalone" {
             "provisioned::standalone_native_manual_work_stays_pending_until_handler_is_supplied"
         } else if behavior == "contract-manual-borrowed" {
             "provisioned::borrowed_native_manual_work_stays_pending_until_handler_is_supplied"
@@ -626,6 +632,8 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                             | "contract-manual-borrowed"
                             | "contract-ack-only-standalone"
                             | "contract-ack-only-borrowed"
+                            | "contract-recovery-standalone"
+                            | "contract-recovery-borrowed"
                             | "schedule-success"
                             | "schedule-retry"
                             | "schedule-compensation"
@@ -669,6 +677,8 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                         | "contract-manual-borrowed"
                         | "contract-ack-only-standalone"
                         | "contract-ack-only-borrowed"
+                        | "contract-recovery-standalone"
+                        | "contract-recovery-borrowed"
                         | "schedule-success"
                         | "schedule-recovery"
                         | "schedule-construction"
@@ -804,7 +814,10 @@ fn verify(fixture: &Fixture, behavior: &str) {
     assert_eq!(verification.records, store.records.len() as u64);
     assert_eq!(store.state.execution.unresolved().count(), 0);
     assert_eq!(store.state.execution_handoffs.outstanding().count(), 0);
-    if behavior == "schedule-construction" {
+    if matches!(
+        behavior,
+        "schedule-construction" | "contract-recovery-standalone" | "contract-recovery-borrowed"
+    ) {
         let counter = read_value(&fixture.directory.join("counter.json"), true).unwrap();
         assert_eq!(number(&counter, "last_allocation").unwrap(), 0);
         assert!(!fixture.directory.join("allocation-1.json").exists());
@@ -820,7 +833,12 @@ fn verify(fixture: &Fixture, behavior: &str) {
                 .iter()
                 .filter(|record| record.kind == kind)
                 .count(),
-            if behavior == "schedule-construction" {
+            if matches!(
+                behavior,
+                "schedule-construction"
+                    | "contract-recovery-standalone"
+                    | "contract-recovery-borrowed"
+            ) {
                 0
             } else if behavior == "schedule-queues" {
                 9

@@ -61,6 +61,7 @@ enum Scenario {
     Contention,
     ManualRepair,
     AckOnly,
+    Recovery,
 }
 
 #[test]
@@ -111,6 +112,18 @@ fn borrowed_native_no_outcome_handler_acks_without_synthetic_event() {
     observe(true, Scenario::AckOnly);
 }
 
+#[test]
+#[ignore = "requires disposable native CI and exact staged process/MCP fixture"]
+fn standalone_native_acknowledged_recovery_repairs_without_handler_restart() {
+    observe(false, Scenario::Recovery);
+}
+
+#[test]
+#[ignore = "requires disposable native CI and exact staged process/MCP fixture"]
+fn borrowed_native_acknowledged_recovery_repairs_without_handler_restart() {
+    observe(true, Scenario::Recovery);
+}
+
 fn observe(borrowed: bool, scenario: Scenario) {
     let manifest = manifest();
     let store_path = PathBuf::from(manifest.get("store").unwrap().as_str().unwrap());
@@ -154,7 +167,10 @@ fn observe(borrowed: bool, scenario: Scenario) {
         notify.retry.attempts = 1;
         notify.on_failed = notify.on_ok.clone();
     }
-    if matches!(scenario, Scenario::ManualRepair | Scenario::AckOnly) {
+    if matches!(
+        scenario,
+        Scenario::ManualRepair | Scenario::AckOnly | Scenario::Recovery
+    ) {
         restore.on_ok = None;
     }
     if matches!(scenario, Scenario::ManualRepair) {
@@ -166,6 +182,13 @@ fn observe(borrowed: bool, scenario: Scenario) {
         notify.on_ok = None;
         notify.on_failed = None;
         notify.retry.attempts = 1;
+    }
+    if matches!(scenario, Scenario::Recovery) {
+        table.handlers.get_mut("notify").unwrap().on_ok = Some(Advance {
+            event: "undeclared".into(),
+            payload: Value::Obj(BTreeMap::new()),
+            stamps: Vec::new(),
+        });
     }
     table.handlers.insert("restore".into(), restore);
     let mut clock = FixedClock::new(2000, 0);
@@ -202,9 +225,21 @@ fn observe(borrowed: bool, scenario: Scenario) {
             &[],
         )
         .unwrap();
+    let effect_id = store.state.instances["original"].pending[0].clone();
+    if matches!(scenario, Scenario::Recovery) {
+        store
+            .ack_effect_outcome_on(
+                &mut clock,
+                "original",
+                &effect_id,
+                &fsm_execute::rid::ack_rid(&effect_id),
+                "ok",
+                None,
+            )
+            .unwrap();
+    }
     let records = store.records.clone();
     let state = store.state.clone();
-    let effect_id = store.state.instances["original"].pending[0].clone();
     drop(store);
     let mut watcher = Watcher::with_handlers(store_path.clone(), &table);
     let mut scheduler = Scheduler::new(table.clone());
@@ -268,6 +303,12 @@ fn observe(borrowed: bool, scenario: Scenario) {
     }
     let completed_instance = match scenario {
         Scenario::Contention | Scenario::AckOnly => "original",
+        Scenario::Recovery => {
+            table.handlers.insert("notify".into(), original_notify);
+            scheduler = Scheduler::new(table.clone());
+            watcher = Watcher::with_handlers(store_path.clone(), &table);
+            "original"
+        }
         Scenario::ManualRepair => {
             assert!(table.manual_effects.remove("notify"));
             table.handlers.insert("notify".into(), original_notify);
@@ -330,6 +371,59 @@ fn observe(borrowed: bool, scenario: Scenario) {
             "z-compatible"
         }
     };
+    if matches!(scenario, Scenario::Recovery) {
+        let derived = fsm_execute::rid::event_rid(&effect_id, "done");
+        assert!(!state.dedup.contains_key(&derived));
+        tick(&mut watcher, &mut scheduler, &mut runner, &mut clock);
+        let current = Store::open_read_only(&store_path).unwrap();
+        assert_eq!(
+            current.state.instances["original"].status,
+            fsm_core::machine::Status::Completed
+        );
+        assert!(current.state.dedup.contains_key(&derived));
+        for (kind, expected) in [
+            (fsm_core::record::RecordKind::EffectAcked, 1),
+            (fsm_core::record::RecordKind::EventApplied, 1),
+            (fsm_core::record::RecordKind::ExecutionClaimed, 0),
+        ] {
+            assert_eq!(
+                current
+                    .records
+                    .iter()
+                    .filter(|record| record.kind == kind)
+                    .count(),
+                expected
+            );
+        }
+        let recovered = current.records.clone();
+        drop(current);
+        for _ in 0..3 {
+            tick(&mut watcher, &mut scheduler, &mut runner, &mut clock);
+            assert_eq!(
+                Store::open_read_only(&store_path).unwrap().records,
+                recovered
+            );
+            assert!(scheduler.inflight_effect(&effect_id).is_none());
+            assert!(runner.local_native_claims().next().is_none());
+            for marker in [
+                "root-entered",
+                "root-candidate",
+                "root-published",
+                "child-entered",
+                "grandchild-entered",
+            ] {
+                assert!(
+                    !resource.join(marker).exists(),
+                    "acknowledged recovery restarted a handler"
+                );
+            }
+        }
+        assert_eq!(
+            fsm_store::journal_io::verify(&store_path).health,
+            fsm_store::journal_io::JournalHealth::Ok
+        );
+        return;
+    }
     let deadline = Instant::now() + Duration::from_secs(20);
     while !resource.join("root-candidate").is_file() {
         let lines = tick(&mut watcher, &mut scheduler, &mut runner, &mut clock);
