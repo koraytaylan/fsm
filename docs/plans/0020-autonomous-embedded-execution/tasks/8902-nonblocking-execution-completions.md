@@ -10,11 +10,14 @@ touches:
   - crates/fsm-execute/src/service.rs
   - crates/fsm-execute/src/run.rs
   - crates/fsm-execute/src/run/
+  - crates/fsm-execute/src/containment/crash_matrix_native_tests.rs
+  - crates/fsm-execute/tests/lifecycle_platform/
   - crates/fsm-execute/src/lib.rs
   - crates/fsm-execute/tests/async_completion.rs
   - crates/fsm-execute/tests/public_surface.rs
   - crates/fsm-execute/tests/fixtures/public_surface.txt
   - crates/fsm-cli/src/mcp/host/
+  - .github/workflows/ci.yml
   - docs/SPEC.md
   - docs/API-POLICY.md
   - docs/EMBEDDING.md
@@ -72,8 +75,9 @@ owner from answering another eligible request.
 
 
 Acceptance remains incomplete: the required `async_completion` target is
-absent, and the private host ownership fixtures use an empty handler table,
-so they do not prove responsiveness while real process/MCP handlers are held.
+absent, and the private host real held-handler observer and protected coordinator
+have no passing disposable-CI runtime evidence yet. Existing ownership fixtures
+with an empty handler table do not establish held process/MCP responsiveness.
 The written tests above remain the acceptance inventory; existing worker and
 empty-handler checks cannot replace it. Historical implementation checkpoints
 are preserved in the task cache under SHA-256

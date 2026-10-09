@@ -8,9 +8,12 @@ import subprocess
 import sys
 
 import authority_probe as authority
-from cli_artifact import build_crash_artifacts
+from cli_artifact import build_crash_artifacts, build_host_test
 from workflow_probe import digest
 import workflow_failure_export
+
+PRIVATE_OWNER_CASES = (('private', 'process', 'private-held'),
+                       ('private', 'mcp', 'private-held'))
 
 
 def staging_paths():
@@ -21,7 +24,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--toolchain', choices=('stable', '1.89.0'), required=True)
     parser.add_argument('--report', type=Path, required=True)
+    parser.add_argument('--private-owner', action='store_true',
+                        help='exercise only the private host held-handler cases')
     args = parser.parse_args()
+    private = getattr(args, 'private_owner', False)
     assert __debug__ and os.environ.get('GITHUB_ACTIONS') == 'true'
     assert os.environ.get('RUNNER_OS') == 'Linux'
     repo = Path(__file__).resolve().parents[4]
@@ -30,6 +36,9 @@ def main():
     fixture = authority.build_authority(repo, args.toolchain, 'test')
     executable = authority.build_authority(repo, args.toolchain, 'build')
     artifacts = build_crash_artifacts(repo, args.toolchain)
+    if private:
+        artifacts.pop('TEST')
+        artifacts['HOST'] = build_host_test(repo, args.toolchain)
     assert authority.authority_state_is_clear()
     prior_stages = staging_paths()
     installer = ['sudo', '-n', sys.executable, str(Path(__file__).with_name('authority_install.py'))]
@@ -42,6 +51,9 @@ def main():
                   artifacts={name: dict(path=str(path), sha256=digest(path))
                              for name, path in artifacts.items()},
                   rustc=subprocess.check_output(['rustc', '+' + args.toolchain, '--version'], text=True).strip())
+    if private:
+        report.update(schema='fsm.native-completion-owner/1',
+                      scope='private-owner-held-handlers', task_complete=False)
     installed = json.loads(subprocess.check_output(
         [*installer, 'install', '--source', str(executable), '--sha256', expected], timeout=10))
     try:
@@ -53,11 +65,15 @@ def main():
         for name, path in artifacts.items():
             command.extend(['FSM_CRASH_' + name + '_ARTIFACT=' + str(path),
                             'FSM_CRASH_' + name + '_SHA256=' + report['artifacts'][name]['sha256']])
+        if private:
+            command.append('GITHUB_ACTIONS=true')
         command.extend([str(fixture), '--exact',
-                        'authority::allocator::native_tests::crash_matrix::provisioned_lifecycle_candidate_matrix',
+                        ('authority::allocator::native_tests::crash_matrix::provisioned_private_completion_owner_matrix'
+                         if private else 'authority::allocator::native_tests::crash_matrix::provisioned_lifecycle_candidate_matrix'),
                         '--ignored', '--nocapture', '--color', 'never'])
+        timeout = 200 if private else 3900
         try:
-            result = subprocess.run(command, cwd=repo, capture_output=True, timeout=3900)
+            result = subprocess.run(command, cwd=repo, capture_output=True, timeout=timeout)
             report['timed_out'] = False
         except subprocess.TimeoutExpired as error:
             result = subprocess.CompletedProcess(command, None, error.stdout or b'', error.stderr or b'')
@@ -71,6 +87,11 @@ def main():
             f'FSM_NATIVE_CRASH_CASE candidate-result {host} {kind} {behavior}'.encode()) == 1)
             for host in ('standalone', 'embedded') for kind in ('process', 'mcp')
             for behavior in ('hold-result', 'signal-int', 'signal-term', 'torn-tail', 'noisy-result', 'collected-timeout', 'collected-result', 'supervisor-death', 'closed-result', 'stopped-result', 'acked-result', 'event-result', 'claimed-result', 'authorization', 'repeated-noisy')]
+        if private:
+            report.update(cases=[dict(host=host, kind=kind, behavior=behavior,
+                                     passed=result.stdout.splitlines().count(
+                                         f'FSM_NATIVE_CRASH_CASE candidate-result {host} {kind} {behavior}'.encode()) == 1)
+                                 for host, kind, behavior in PRIVATE_OWNER_CASES])
         report['passed'] = (result.returncode == 0
                             and b'1 passed; 0 failed; 0 ignored;' in result.stdout
                             and all(row['passed'] for row in report['cases']))
