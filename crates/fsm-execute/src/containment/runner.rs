@@ -216,7 +216,7 @@ pub(super) fn execute_cancellable(
         // The owned child is systemd-run, not the invocation-matched handler;
         // its retirement cannot authenticate the handler's exit status.
         owned.child.try_wait().map_err(io)?;
-        if Instant::now() >= deadline {
+        if process_exit::handler_deadline_expired(deadline, Instant::now()) {
             exec_status.refuse_partial()?;
             break Candidate::Timeout;
         }

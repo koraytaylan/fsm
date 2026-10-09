@@ -34,7 +34,11 @@ pub(super) fn observe(
 }
 
 pub(super) fn deadline_expired(error: &str, deadline: Instant, observed: Instant) -> bool {
-    error == manager::DEADLINE_ERROR && observed >= deadline
+    error == manager::DEADLINE_ERROR && handler_deadline_expired(deadline, observed)
+}
+
+pub(super) fn handler_deadline_expired(deadline: Instant, observed: Instant) -> bool {
+    observed >= deadline
 }
 
 fn decode(
@@ -82,6 +86,25 @@ fn decode(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn actual_handler_timeout_is_due_at_the_exact_monotonic_boundary() {
+        let deadline = Instant::now() + std::time::Duration::from_secs(1);
+        let tick = std::time::Duration::from_nanos(1);
+        assert!(!handler_deadline_expired(deadline, deadline - tick));
+        assert!(handler_deadline_expired(deadline, deadline));
+        assert!(handler_deadline_expired(deadline, deadline + tick));
+        assert!(!deadline_expired(
+            manager::DEADLINE_ERROR,
+            deadline,
+            deadline - tick
+        ));
+        assert!(deadline_expired(
+            manager::DEADLINE_ERROR,
+            deadline,
+            deadline
+        ));
+    }
 
     #[test]
     fn only_expired_handler_deadline_can_classify_a_query_deadline_as_timeout() {
