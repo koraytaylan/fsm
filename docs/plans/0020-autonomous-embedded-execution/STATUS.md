@@ -33,7 +33,10 @@ and retention until settlement; 27 mocked artifact/evidence tests, 49 portable
 private-host tests, 25 public-surface/retry tests and 13 worker regressions pass.
 Focused all-target clippy, formatting, size and diff checks pass.
 Pre-dispatch capacity refusal stays queued (`631e7496`, load-bearing 0/101/0
-regression). The twelve native cases and current full matrix remain unexecuted,
+regression). All eight stable host gate stages pass at frozen `0bd1e14e`;
+retained task-cache report digest
+`11d09f239210cfd4a4b7f71a7ba738902ed478da3ace92b5182684aa67dc5a4c`.
+The twelve native cases and remaining CI platform matrix remain unexecuted,
 so 8902 retains no landing OID and the original acceptance inventory stays open.
 
 Historical STATUS evidence is retained outside the repository in the task-cache

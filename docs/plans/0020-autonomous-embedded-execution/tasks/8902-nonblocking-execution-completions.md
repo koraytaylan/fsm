@@ -102,6 +102,9 @@ generation refusal and private-host control with an exited root whose original
 descendants retain output pipes. Its evidence verifier rejects missing cases
 and omitted or rebound observer artifacts; 27 mocked tests pass, alongside
 49 portable host, 25 public-surface/retry and 13 worker regression tests.
-This is preliminary source/fixture review: the twelve native cases and full
-current matrix are unexecuted; only the earlier private held-handler slice has
-stable/MSRV runtime proof. The written inventory above is unchanged.
+All eight stable host gate stages pass at frozen `0bd1e14e`, with retained
+task-cache report digest
+`11d09f239210cfd4a4b7f71a7ba738902ed478da3ace92b5182684aa67dc5a4c`.
+This remains preliminary acceptance: the twelve native cases and remaining
+CI platform matrix are unexecuted; only the earlier private held-handler slice
+has stable/MSRV native runtime proof. The written inventory above is unchanged.
