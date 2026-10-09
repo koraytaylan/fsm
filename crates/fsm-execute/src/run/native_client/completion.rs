@@ -540,6 +540,25 @@ mod tests {
     }
 
     #[test]
+    fn public_completion_refuses_stale_generation_before_receipt_access() {
+        let original = claim();
+        let hash = format!("sha256:{}", "b".repeat(64));
+        let response = response(&original, &hash);
+        let mut fields = original.to_value().as_obj().unwrap().clone();
+        let mut domain = fields.get("domain").unwrap().as_obj().unwrap().clone();
+        domain.insert("generation".into(), Value::Num("10".into()));
+        fields.insert("domain".into(), Value::Obj(domain));
+        let successor = Claim::from_value(&Value::Obj(fields)).unwrap();
+        assert_eq!(
+            NativeCompletion::verify(&response, &successor, &hash)
+                .err()
+                .unwrap(),
+            "native completion original identity differs"
+        );
+        assert!(validate(&response, &original, &hash).is_ok());
+    }
+
+    #[test]
     fn result_material_is_bound_before_any_native_receipt_read() {
         let claim = claim();
         let hash = format!("sha256:{}", "b".repeat(64));
