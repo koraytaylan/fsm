@@ -76,3 +76,11 @@ Focused progress:
   cases, CLI all-target clippy and format/size/diff checks pass. Current operator
   guidance still contains stale inline-execution and pending HTTP-egress claims;
   reconciliation and final plan integration gates remain outstanding.
+- README, execution-mode guidance, HTTP session guidance, SPEC, API-POLICY,
+  release notes and the ServeMode Rust documentation now describe supported
+  production stdio/HTTP autonomous ownership, server/session lifetimes and
+  implemented asynchronous HTTP output. Review removed superseded incomplete
+  HTTP ownership clauses; borrowed helpers remain explicitly request-driven.
+  A transport-document regression and 29 executor/document cases pass with CLI
+  all-target clippy and format/size/diff checks. The complete public-contract
+  audit and frozen plan-end integration gates remain outstanding.

@@ -10,6 +10,18 @@ const README: &str = include_str!("../../../README.md");
 const API_POLICY: &str = include_str!("../../../docs/API-POLICY.md");
 const RELEASE: &str = include_str!("../../../docs/RELEASE.md");
 
+#[test]
+fn production_http_guidance_states_autonomous_host_and_session_lifetimes() {
+    assert!(README.contains("Linux production stdio and HTTP"));
+    assert!(README.contains("HTTP execution continues through DELETE"));
+    assert!(README.contains("stdio EOF requests"));
+    assert!(!README.contains("HTTP and\nborrowed helpers retain"));
+    let section = http_section();
+    assert!(section.contains("zero sessions leave the host running"));
+    assert!(section.contains("Streamed POST delivers questions and progress"));
+    assert!(!section.contains("bounded asynchronous HTTP egress is still pending"));
+}
+
 /// The *Serving over HTTP* section, which is where every claim below lives.
 fn http_section() -> &'static str {
     let start = EMBEDDING

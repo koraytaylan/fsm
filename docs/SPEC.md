@@ -3177,8 +3177,9 @@ construction occurs in its worker. Healthy native startup has no legacy
 fallback; contended/unhealthy startup preserves the exact observed diagnostic
 prefix without publication or reopening into execution. Borrowed session APIs
 retain their bounds and explicit backend selection. Unsupported production
-embedded stdio refuses; HTTP ownership remains incomplete. This routing change
-does not establish installed native or autonomous plan 20 acceptance.
+embedded stdio refuses. Supported embedded HTTP retains the same complete owner
+with the server-scoped lifetime specified below; full plan integration acceptance
+remains required.
 
 Production native stdio failures expose the initiating I/O message and kind
 with separate actual shutdown, endpoint removal/error and output drainage
@@ -3375,12 +3376,12 @@ retirement. Charge Value storage, owned String/array capacities and a conservati
 allowance below; no original wire-frame copies are retained in this boundary. A separately reserved coalesced stop
 control and original-session close MUST remain available at saturation. Stop
 MUST reject queued commands before Store dispatch, finish any already executing
-operation, and reject further admission. The writer-only private owner has no executor. A staged Linux native owner
+operation, and reject further admission. The writer-only private owner has no executor. The Linux native owner
 retains the original OwnedNativeExecutor, including its sole writer, and uses
-the same complete command boundary. Production Linux embedded stdio constructs this owner; HTTP and borrowed
-helpers retain their existing contracts. Interactive continuations and bounded
-raw input/output are integrated; complete egress ordering and diagnostic
-isolation remain outstanding acceptance requirements.
+the same complete command boundary. Supported production Linux embedded stdio
+and HTTP construct this owner; borrowed helpers retain their explicit contracts.
+Interactive continuations, bounded raw input/output, ordered egress and isolated
+diagnostics MUST use the session channel and retirement contracts below.
 
 Private host cancellation MUST reserve control metadata for every admitted
 request, including the retained RPC-ID copy and a conservative 12 KiB allowance
@@ -3591,7 +3592,7 @@ Refusal by bounded host admission MUST return HTTP 503 before any refused
 operation mutates the journal, after existing security and session checks.
 Synchronous borrowed HTTP helpers retain their existing caller-clock behavior.
 This writer-only integration retains manual `fsm.executor/1` discovery;
-asynchronous HTTP egress remains pending.
+its streamed output MUST use the bounded asynchronous HTTP contract below.
 
 On supported Linux, healthy embedded HTTP MUST retain its complete executor
 in one native owner shared by every session, independently scheduling effects,
@@ -3602,8 +3603,9 @@ deadline. Server retirement MUST reject queued work, observe the original
 shutdown and worker result, and remove that endpoint within that deadline;
 missing native, worker, endpoint or diagnostic-drain facts MUST NOT imply
 confirmed shutdown. Embedded discovery MUST use the existing autonomous
-`fsm.executor/2` contract with server-lifetime HTTP guidance. Real-handler and
-bounded asynchronous HTTP egress acceptance remain separately required.
+`fsm.executor/2` contract with server-lifetime HTTP guidance. Real-handler
+acceptance MUST cover quiet success, retry, compensation and original-owner
+retirement across an interval with zero attached sessions.
 Unsupported production embedded HTTP MUST refuse before opening the store or
 binding rather than silently serving a manual writer for `--execute`.
 

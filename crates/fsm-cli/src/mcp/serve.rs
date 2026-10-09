@@ -112,8 +112,9 @@ pub enum ServeMode {
     /// The executor owns the writer; this process watches. Every tool in
     /// `MUTATING_TOOLS` is refused with a sentence naming the mode.
     ReadOnly,
-    /// This process holds the writer *and* runs the executor loop inline, one
-    /// tick per protocol iteration.
+    /// This process owns the writer and complete executor configuration.
+    /// Supported production transports retain an autonomous native owner;
+    /// borrowed helpers preserve their explicit request-driven tick behavior.
     Embedded(Box<ExecutorLoop>),
 }
 

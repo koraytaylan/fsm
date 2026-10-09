@@ -1251,8 +1251,9 @@ Production writer-only HTTP requests share one bounded committing owner.
 Sessions hold separate protocol state; cancellation and DELETE can retire the
 original request/session without stopping that writer. A request refused by
 host admission returns HTTP 503, after security and session validation, and
-performs no store mutation. Execution remains manual in writer-only mode;
-bounded asynchronous HTTP egress is still pending.
+performs no store mutation. Execution remains manual in writer-only mode.
+Streamed POST delivers questions and progress while dispatch runs through bounded
+owned output; ordinary calls remain responsive beside an unanswered question.
 
 On supported Linux, `serve --http <addr> --execute --handlers <file>` retains
 one shared native writer/executor and publishes `fsm.executor/2` with autonomous
@@ -1262,10 +1263,11 @@ requests; DELETE, disconnects and zero sessions leave the host running. Use
 5000` with the same data directory for authenticated original-owner retirement.
 The server preserves the first stop deadline and checks actual native closure,
 worker return, endpoint removal and diagnostic drainage before successful exit;
-uncertainty returns `exec/inflight_deferred` with observed facts. A real-binary
-deadline case proves zero-session scheduling and original stop without launching
-handlers; genuine HTTP handler and bounded asynchronous egress acceptance remain
-pending, so this integration does not complete task 9002.
+uncertainty returns `exec/inflight_deferred` with observed facts. Focused native
+acceptance covers quiet success, retry, compensation and DELETE during an active
+handler, followed by original-owner retirement; portable HTTP cases cover
+deadlines, expiry, ordered questions, cancellation and count/byte refusal.
+Full platform integration and operational acceptance remain separate gates.
 Unsupported production embedded HTTP refuses before opening or binding, as
 stdio does; it does not silently substitute a manual writer for `--execute`.
 
@@ -1768,7 +1770,7 @@ poll's outcome.
 | Mode | Who writes acks | `fsm serve` while it runs | Use it for |
 |---|---|---|---|
 | `paired` (default) | the executor | read-only, for monitoring | the headline case: the model watches progress while the executor drives the workflow unattended |
-| `embedded` | the serve process itself | holds the writer, runs handlers inline | one ad-hoc session, at a keyboard |
+| `embedded` | the serve process itself | holds the writer through an autonomous native owner on supported Linux | author and run through stdio or shared HTTP |
 | `exclusive` | the executor | not running | unattended batch or CI where nothing else touches the store |
 
 `paired` is the default. Start the MCP host read-only against the same data

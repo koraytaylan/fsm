@@ -55,8 +55,10 @@ To author and execute through one MCP connection, start
 its configured effects, required arguments, and outcome events. Embedded
 stdio execution progresses while stdin stays open, including when quiet;
 `instance_get`, `ping`, and subscriptions observe that progress. The executor
-resource publishes `fsm.executor/2` with `progress: "autonomous"`; HTTP and
-borrowed helpers retain their existing request-driven execution contract.
+resource publishes `fsm.executor/2` with `progress: "autonomous"` on supported
+Linux production stdio and HTTP. HTTP execution continues through DELETE,
+disconnects and zero sessions until the shared host stops; stdio EOF requests
+supervised shutdown. Borrowed helpers retain their legacy request-driven contract.
 
 ## Install
 

@@ -48,8 +48,9 @@ autonomous `fsm.executor/2` contract for a server lifetime independent of
 sessions, with original local stop control and observed retirement facts.
 This execution capability and discriminator change shares the pre-1.0 minor
 consequence of autonomous stdio; no version number, public Rust signature,
-journal bytes, hashes, dependency, MSRV or error code changes. Real-handler
-HTTP acceptance and bounded asynchronous egress remain pending.
+journal bytes, hashes, dependency, MSRV or error code changes. Focused native
+HTTP acceptance covers quiet workflows and active-handler session deletion;
+bounded asynchronous output is implemented. Full integration gates remain due.
 Unsupported production embedded HTTP refuses before store acquisition or
 binding, matching production stdio's explicit platform refusal.
 
@@ -1352,8 +1353,8 @@ construction occurs in its worker. Healthy native startup has no legacy
 fallback; contended/unhealthy startup preserves the exact observed diagnostic
 prefix without publication or reopening into execution. Borrowed session APIs
 retain their bounds and explicit backend selection. Unsupported production
-embedded stdio refuses; HTTP ownership remains incomplete. This routing change
-does not establish installed native or autonomous plan 20 acceptance.
+embedded stdio refuses. Supported embedded HTTP retains the same complete owner
+with server-scoped lifetime; full plan integration acceptance remains required.
 
 Production native stdio failures expose the initiating I/O message and kind
 with separate actual shutdown, endpoint removal/error and output drainage
@@ -1523,7 +1524,8 @@ Quiet HTTP mailbox polls no longer report client disconnection; an actual
 session DELETE closes and wakes the original mailbox. This is a correction to
 reverse-response waiting with no new error code, persistence format or tool
 schema. Existing public Mailbox/Reader paths remain reachable through endpoint;
-Mailbox::close is additive. HTTP autonomous ownership remains incomplete.
+Mailbox::close is additive. Production embedded HTTP retains its autonomous
+owner independently of mailbox or session retirement.
 
 HTTP reverse-response overload now returns 503 at 64 queued messages or 32 MiB
 of charged owned payloads per mailbox, preserving admitted replies and journal
@@ -1532,8 +1534,8 @@ persistence format changes. Legacy Mailbox::post closes on failed admission;
 production HTTP uses explicit admission results and returns overload to callers.
 
 The private MCP execution-host owner introduces no supported public Rust API.
-Production Linux embedded stdio constructs its native owner; HTTP and borrowed
-helpers retain their separately specified contracts. Its owned command boundary
+Supported production Linux embedded stdio and HTTP construct the native owner;
+borrowed helpers retain their separately specified contracts. Its owned command boundary
 preserves ordinary Store journal formats, hashes, idempotency and injected clocks
 while bounding retained pending/in-flight command admission. The reserved stop
 control rejects queued work without dispatch, and hosted RPC admission uses the

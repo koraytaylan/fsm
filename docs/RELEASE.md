@@ -14,12 +14,12 @@ frame publication; JSON response buffers are read only after observed drainage.
 
 Production HTTP POST streams now deliver questions before dispatch returns,
 with bounded socket-worker output and session-local failure retirement; borrowed
-endpoint helpers remain synchronous. Remaining native and saturation acceptance
-is still required before task 9002 completion.
+endpoint helpers remain synchronous. Focused native and exact command-saturation
+acceptance pass; full integration gates remain required before plan completion.
 
 HTTP SSE now enforces the replay byte ceiling for individual events, refuses
 oversized partial line frames without emitting suffix events, and closes live
-delivery on replay gaps; asynchronous POST delivery remains pending in 9002.
+delivery on replay gaps; production POST uses bounded asynchronous delivery.
 
 HTTP idle-expiry sweeps now retire original protocol/host state, reverse waits
 and replay streams together, including sweeps through public session counts.
@@ -28,13 +28,13 @@ owner or waits for a protocol-state lock. Retired lookups cannot allocate orphan
 incarnations, late stream writes refuse, and feed stop does not join blocked I/O.
 SSE resume now follows producer/retirement lock order, removing the inverse-lock
 wait between replay and publication. Public signatures and durable/wire formats
-are unchanged; full task 9002 acceptance remains outstanding.
+are unchanged; focused task 9002 acceptance is recorded in its frozen verdict.
 
 Writer-only HTTP routes store calls through one private bounded owner; session
 protocol state and cancellation controls are separate, and admission refusal
 returns HTTP 503. Real-binary cross-session idempotency verifies one committed
-result without duplicate journal mutation. Complete asynchronous egress
-acceptance remains unfinished in task 9002.
+result without duplicate journal mutation. Focused acceptance covers live
+ordered output, cancellation, exact command saturation and byte-pressure refusal.
 
 Supported Linux embedded HTTP now retains the existing native owner for the
 server lifetime, independently of sessions, and exposes autonomous
@@ -43,9 +43,10 @@ deletes the only session, observes completion without HTTP calls, reconnects to
 the same writer and retires through authenticated original local control.
 Retirement retains the first stop deadline and requires actual native closure,
 worker return, endpoint removal and diagnostic drainage; uncertainty reports
-observed facts via `exec/inflight_deferred`. Genuine HTTP handler and bounded
-asynchronous egress acceptance still remain, with no task-completion claim,
-journal-format change, new error code or version-number change.
+observed facts via `exec/inflight_deferred`. Genuine HTTP success, retry,
+compensation and active-handler DELETE acceptance pass on the frozen task
+landing; full integration gates remain due. Journal formats, error codes and
+version numbers are unchanged.
 Unsupported production embedded HTTP explicitly refuses before opening or
 binding, matching production stdio; those platform axes remain unexecuted.
 
@@ -1376,8 +1377,8 @@ construction occurs in its worker. Healthy native startup has no legacy
 fallback; contended/unhealthy startup preserves the exact observed diagnostic
 prefix without publication or reopening into execution. Borrowed session APIs
 retain their bounds and explicit backend selection. Unsupported production
-embedded stdio refuses; HTTP ownership remains incomplete. This routing change
-does not establish installed native or autonomous plan 20 acceptance.
+embedded stdio refuses. Supported embedded HTTP retains the same complete owner
+with server-scoped lifetime; full plan integration acceptance remains required.
 
 Production native stdio failures expose the initiating I/O message and kind
 with separate actual shutdown, endpoint removal/error and output drainage
