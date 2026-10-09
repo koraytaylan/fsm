@@ -1953,3 +1953,9 @@ repeat concrete checks under the writer; incompatible work cannot repeatedly
 take the only slot, while retained owners remain observable and repaired work
 becomes eligible on the next observation. This corrects admission starvation
 without changing public signatures, errors, persisted formats or versions.
+
+Shared service cancellation before native entry now requests original-claim
+closure after its local binding helper retires, independently of writer access;
+authenticated interrupted settlement still requires the original healthy writer.
+This corrects cleanup of bound, unlaunched local claims without changing public
+signatures, errors, persisted formats, hash domains or versions.

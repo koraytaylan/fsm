@@ -165,6 +165,28 @@ fn bound_service_entry_refuses_private_mcp_replacement_and_missing_arguments() {
 }
 
 #[test]
+fn bound_cancellation_retains_original_owner_and_distinguishes_consumed_entry() {
+    for entered in [false, true] {
+        let (_store, mut owner, _table) = bound_owner();
+        owner.entry_requested = entered;
+        let claim = owner.claim.clone();
+        let mut owners = NativeOwners::default();
+        owners.owners.insert(claim.run_id(), owner);
+        for _ in 0..2 {
+            owners.cancel(claim.effect().1).unwrap().unwrap();
+            let original = &owners.owners[&claim.run_id()];
+            assert_eq!(original.claim, claim);
+            assert_eq!(original.cancelled_before_entry, !entered);
+            assert!(original.entry_requested);
+            assert!(original.execution.progress().retained);
+            assert!(original.reconciliation.is_none());
+            assert!(!original.reconciliation_attempted);
+            assert_eq!(owners.local_claims().count(), 1);
+        }
+    }
+}
+
+#[test]
 fn bound_service_entry_refuses_cancelled_or_acknowledged_work_without_consuming_permission() {
     for acknowledged in [false, true] {
         let (mut store, mut owner, table) = bound_owner();

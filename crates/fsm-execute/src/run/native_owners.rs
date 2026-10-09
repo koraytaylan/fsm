@@ -36,6 +36,7 @@ struct Owner {
     reconciliation_retired: bool,
     requested: bool,
     entry_requested: bool,
+    cancelled_before_entry: bool,
     parked_at: Option<u64>,
     _preparation_owner: Option<super::native_client::NativePreparedOwner>,
 }
@@ -217,6 +218,7 @@ impl NativeOwners {
                     .push((owner.claim.clone(), owner.stopped.clone()));
             }
         }
+        self.close_cancelled_bound(snapshot, observation);
         // One owned recovery transport at a time, independent of owner count.
         // A failed request is never replaced by a bind/execute request.
         let busy = self.owners.values().any(|owner| {
@@ -278,6 +280,50 @@ impl NativeOwners {
         Ok(())
     }
 
+    fn close_cancelled_bound(&mut self, snapshot: &Store, observation: &mut Observation) {
+        if self
+            .owners
+            .values()
+            .any(|owner| owner.reconciliation.is_some() && !owner.reconciliation_retired)
+        {
+            return;
+        }
+        for owner in self.owners.values_mut().filter(|owner| {
+            owner.locally_admitted
+                && owner.cancelled_before_entry
+                && !owner.reconciliation_attempted
+                && owner.execution.completion().is_none()
+                && owner
+                    .execution
+                    .progress()
+                    .helper
+                    .is_none_or(|helper| helper.is_retired())
+        }) {
+            let (instance, effect) = owner.claim.effect();
+            if snapshot.state.execution.claim_for(instance, effect) != Some(&owner.claim)
+                || !snapshot
+                    .state
+                    .instances
+                    .get(instance)
+                    .is_some_and(|instance| instance.status == fsm_core::machine::Status::Cancelled)
+            {
+                continue;
+            }
+            // A retired bind helper cannot close its unlaunched domain. Use the
+            // original local claim, never foreign orphan permission or a writer.
+            owner.reconciliation_attempted = true;
+            match super::native_client::NativeShutdown::start(
+                snapshot,
+                &owner.claim,
+                RECOVERY_TIMEOUT,
+            ) {
+                Ok(closure) => owner.reconciliation = Some(closure),
+                Err(_) => observation.unresolved.push(deferred()),
+            }
+            break;
+        }
+    }
+
     fn retain(&mut self, claim: &Claim, stopped: Option<&Stopped>) -> Result<(), ExecError> {
         if let Some(owner) = self.owners.get_mut(&claim.run_id()) {
             if owner.claim != *claim {
@@ -311,6 +357,7 @@ impl NativeOwners {
                 reconciliation_retired: false,
                 requested: false,
                 entry_requested: true,
+                cancelled_before_entry: false,
                 parked_at: None,
                 _preparation_owner: None,
             },
@@ -363,6 +410,7 @@ impl NativeOwners {
         if !owner.locally_admitted {
             return Some(Err(deferred()));
         }
+        owner.cancelled_before_entry |= !owner.entry_requested;
         owner.entry_requested = true;
         Some(owner.execution.cancel().map_err(|error| {
             ExecError::new("exec/inflight_deferred", error)

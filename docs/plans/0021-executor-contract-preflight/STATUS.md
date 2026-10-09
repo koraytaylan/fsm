@@ -151,7 +151,7 @@ ordered completion, stale-report bypass and plan-end gates remain outstanding.
 
 Manual Phase R binds the six-task bundle to validation base `15172d8298f271abfd0bd1d5b47617d1108ceefc` after plans 0022 and 0020 complete: closed frontmatter, repository-relative footprints and the acyclic local dependency graph pass, with uncreated deliverables explicitly inventoried; task-cache validation digest `4298d27510c4726206598590ca50efd51e0aeca49c5605aae9f004697820f1f7`. Task 9101 completes its focused inventory at `efcb4f9e`, with 67 stable effect/configuration/public-surface cases and focused lint/format/diff checks passing; self-review verdict `dfd37ee9a1867119e4c63a048ad58b1030b7db590fe118b95dcee1edff82f9a1`; task 9102 completes at `ed811ab6` with eleven focused outcome tests and self-review verdict `b9a671329f5a8177a34529118e6925015757c21b9a064f5d5371820bd71ac271`; task 9103 is in progress; prior independent preparation remains subject to current task acceptance, and admission/MCP/final acceptance remain incomplete. Full gates run at plan completion.
 
-Focused native admission checkpoint `1a80f6bb` passes thirty-six real
+Focused native admission checkpoint `f8175316` passes thirty-six real
 process/MCP axes on both stable and MSRV: refusal/repair, fairness, unknown
 outcomes, missing arguments, original timeout/reap under writer contention,
 invalid warm/cold retry refusal, positive-backoff boundary and manual-policy
@@ -164,11 +164,16 @@ requires a Root-owned protected binding before cancellation; its exact original
 claim and journal hash are checked by the independent Root verifier, preserving
 the binding's private permissions. Its original scheduler reservation is retained;
 receiver migration blocks entry without losing the cancellation directive.
-Closure under writer contention,
-exact original settlement and absent launch/entry/service artifacts. Every actually
-launched case retains positive memory verification. Thirteen focused admission cases and focused
+Both toolchains expose a real cleanup defect: cancelling a retired binding helper
+does not close its unlaunched domain. Shared observation now requests exact original
+claim closure for locally cancelled pre-entry owners after transport retirement,
+without acquiring the writer; authenticated interrupted settlement still requires
+the original healthy writer. The physical inventory continues requiring closure
+under contention, exact original settlement and absent launch/entry/service
+artifacts; every launched case retains positive memory verification.
+Forty-one focused bound/ownership/admission/pipeline cases and focused
 lint/format/size/diff checks pass. Frozen verdict
-`4b9542251f794a1103fa068180caae716c7c98d1192023165314b50bfdabd0e3`
+`e6a34004b052bc35bb7e87cb9654f21ec46e8ae556dcfaddef703a7f33894d50`
 indexes the native failures, fixture corrections and preceding proofs outside the
 repository; the remaining four cancellation axes, native guard sensitivity and plan-end
 gates remain open.

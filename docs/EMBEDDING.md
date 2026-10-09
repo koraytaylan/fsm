@@ -3242,3 +3242,10 @@ repeat concrete checks under the writer; incompatible work cannot repeatedly
 take the only slot, while retained owners remain observable and repaired work
 becomes eligible on the next observation. This corrects admission starvation
 without changing public signatures, errors, persisted formats or versions.
+
+Shared service cancellation of a locally retained claim before native entry
+requests original-claim closure after its binding helper retires, using the
+verified read-only snapshot even while another writer holds the store. The
+original owner and capacity remain retained until authenticated closure and
+interrupted settlement with the healthy writer; this neither launches work nor
+replaces a retained completion or the separate foreign-owner refusal policy.

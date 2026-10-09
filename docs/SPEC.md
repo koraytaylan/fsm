@@ -1458,6 +1458,14 @@ permission or requesting execution. Contract refusal MUST retain the original
 claim, bound owner and unconsumed entry permission without journal mutation;
 timeout, cancellation and original-owner shutdown remain independently required.
 
+When shared service cancellation stops a locally owned native claim before
+entry permission is consumed, observation MUST request original-claim closure
+after its binding transport retires, independently of writer availability.
+The request MUST NOT bind, launch, replace ownership or interrupt an already
+retained completion. The original claim and capacity MUST remain retained until
+authenticated closure and interrupted settlement under the healthy writer;
+foreign owners MUST retain the separate orphan-reconciliation refusal checks.
+
 Executor outcome delivery, including already-acknowledged recovery, MUST check
 the selected original outcome against the current receiving definition before
 attempting its derived event key. Known invalid or unknown payload/stamp
