@@ -167,12 +167,17 @@ Checkpoint `0ffedd0e` then starts and stops the timeout handler on both toolchai
 but DynamicUser cleanup unlinks its candidate marker. Root now owns the empty
 contention observation slot; entry requires actual nonempty PID bytes, and the
 original bytes/time remain available for refusal and retry comparisons.
+Checkpoint `bcb16ee6` passes twenty native axes on both toolchains, including
+actual timeout/reap under writer contention, invalid warm/cold retry refusal and
+positive-backoff boundary/repair. The next manual fixture incorrectly forbids
+the documented `exec/unhandled_effect` stall; it now requires exactly one such
+diagnostic, preserves pending work and refuses every other error.
 Cancellation, bound-entry and recovery observers share readable-empty Root PID
 slots and strict missing candidate/result markers; repaired completion releases
 the complete original tree. Thirteen focused admission cases, two real portable
 barrier cases, 27 mocked producer/verifier cases and admission-target clippy pass,
 with format/size/diff checks, and lifecycle-target clippy passes. Frozen verdict
-`36d4ace596480159756d5ae77ab36a9ae4de667a2e777001a938715d4702c3d2`
+`8fdd792e8b27f11b32b27f27c604ca3581b4882942b8fcbd45588b63dea82b43`
 indexes the actual failures and corrections; the remaining physical inventory,
 native sensitivity and plan-end gates remain open.
 

@@ -325,6 +325,7 @@ fn observe(borrowed: bool, scenario: Scenario) {
     } else {
         "error exec/contract_invalid"
     };
+    let mut manual_stalls = 0;
     for _ in 0..if matches!(
         scenario,
         Scenario::Contention | Scenario::AckOnly | Scenario::BoundRecheck | Scenario::BoundCancel
@@ -335,8 +336,12 @@ fn observe(borrowed: bool, scenario: Scenario) {
     } {
         let lines = tick(&mut watcher, &mut scheduler, &mut runner, &mut clock);
         if matches!(scenario, Scenario::ManualRepair) {
+            let stall = format!("error exec/unhandled_effect {effect_id}");
+            manual_stalls += lines.iter().filter(|line| *line == &stall).count();
             assert!(
-                lines.iter().all(|line| !line.starts_with("error ")),
+                lines
+                    .iter()
+                    .all(|line| !line.starts_with("error ") || line == &stall),
                 "{lines:?}"
             );
         } else {
@@ -350,6 +355,11 @@ fn observe(borrowed: bool, scenario: Scenario) {
         assert_eq!(current.records, records);
         assert!(fsm_store::snapshot::store_states_eq(&state, &current.state));
         assert!(scheduler.inflight_effect(&effect_id).is_none());
+    }
+    if matches!(scenario, Scenario::ManualRepair) {
+        // EMBEDDING: absent automatic handlers report one deliberate stall;
+        // explicit manual policy supplies compatibility, never spawn permission.
+        assert_eq!(manual_stalls, 1);
     }
     let completed_instance = match scenario {
         Scenario::Contention
