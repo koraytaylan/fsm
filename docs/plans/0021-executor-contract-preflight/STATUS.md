@@ -19,7 +19,7 @@ format/size checks, including unknown-refusal guard sensitivity; self-review
 digest `c9f789207e48c7c0714449a06e13a8d070c6322abf7cf5c31f3b2a4f5e025962`.
 This cache verdict indexes preceding guard, writer, cache and fairness reviews
 and the archived detailed STATUS; those reviews retain their original scopes.
-The current native inventory has twelve unexecuted process/MCP axes and six
+The current native inventory has sixteen unexecuted process/MCP axes and eight
 protected Rust cases ignored locally; complete task 9103 acceptance and plan-end
 gates remain outstanding, with journal-prefix reconstruction cost documented.
 
@@ -40,6 +40,14 @@ configuration restores eligibility. Eleven admission and nine historical-effect
 cases, executor feature-enabled all-target clippy and format/size/diff checks
 pass; frozen review `34d1d6c54e2da29ec54357ff1e2758d5d4a106e8a879cb63bab71566546c6a6a`
 indexes the recovery verdict; genuine native acceptance and task closure remain open.
+
+Native argument preparation `607601d4..613a9d22` adds required-placeholder
+refusal/repair for both writer entries and handler kinds. Eleven portable
+admission and 25 mocked producer/verifier cases, feature-enabled executor
+all-target clippy and format/size/diff checks pass; eight native tests remain
+ignored locally, and the expanded sixteen-axis physical inventory is unexecuted.
+Frozen review `6d255c84bfecbcbea00aa2e8bf0074803215bd40bf9771995c7d870b65386278`
+indexes the prior migration verdict; task 9103 and plan-end acceptance remain open.
 
 CLI focused range `62bdbd5d..2cd48842` passes ten real-binary contract cases,
 17 executor documentation cases and five legacy session cases, CLI all-target
