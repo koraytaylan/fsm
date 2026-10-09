@@ -552,6 +552,8 @@ pub struct Runner {
     native_admission: bool,
     #[cfg(target_os = "linux")]
     native: native_owners::NativeOwners,
+    #[cfg(target_os = "linux")]
+    native_workers: std::sync::Arc<native_client::worker::Budget>,
     scratch: PathBuf,
     children: BTreeMap<String, Running>,
     retiring: Vec<McpWorker>,
@@ -643,6 +645,8 @@ impl Runner {
                         scratch,
                         #[cfg(target_os = "linux")]
                         native: native_owners::NativeOwners::default(),
+                        #[cfg(target_os = "linux")]
+                        native_workers: std::sync::Arc::default(),
                         children: BTreeMap::new(),
                         retiring: Vec::new(),
                     });

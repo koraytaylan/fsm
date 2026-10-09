@@ -73,6 +73,7 @@ impl NativeAdmissions {
         admission_closed: &AtomicBool,
     ) -> Result<(), ExecError> {
         if snapshot.journal.is_memory()
+            || snapshot.journal.is_read_only()
             || snapshot.journal.poisoned
             || !cfg!(any(target_arch = "x86_64", target_arch = "aarch64"))
         {
@@ -289,6 +290,12 @@ impl NativeAdmissions {
         self.pending
             .values()
             .any(|pending| !pending.cancelled && matches!(pending.phase, Phase::Prepared(_)))
+    }
+
+    pub(super) fn queued(&self) -> bool {
+        self.pending
+            .values()
+            .any(|pending| !pending.cancelled && matches!(pending.phase, Phase::Queued))
     }
 
     pub(super) fn is_empty(&self) -> bool {
@@ -743,6 +750,16 @@ mod tests {
             Phase::Preparing(_)
         ));
         assert_eq!(scheduler.inflight_effect(&effect.effect_id), Some(&effect));
+    }
+
+    #[test]
+    fn queued_preparation_requires_writer_attention_without_claim_permission() {
+        let (mut admissions, _, effect) = reservation(Phase::Queued);
+        assert!(admissions.queued());
+        assert!(!admissions.ready());
+        admissions.cancel(&effect.effect_id).unwrap().unwrap();
+        assert!(!admissions.queued());
+        assert!(!admissions.ready());
     }
 
     #[test]

@@ -1738,7 +1738,8 @@ this has no journal, wire-format, core, dependency or MSRV consequence. Real
 preparation, bound-entry and completion wake acceptance remains pending.
 
 OwnedNativeExecutor adds explicit enable_worker_polling; Linux owned stdio
-selects it while standalone defaults remain synchronous. Original raw helper
+selects it for the full owned lifecycle; ordinary shared native ticks also
+provide a runner-owned fallback worker scope. Original raw helper
 requests move to reserved worker polling for socket exchange, reap and final
 transport drop; immutable new startup is also dispatched to that worker,
 including protected-helper checks, sockets and spawn, under the original
@@ -1748,7 +1749,7 @@ that charge until owner handle and worker retire, with a 2 MiB parsed-response
 storage preflight. Joined startup refusal reports not_started separately from
 actual child reap/EOF; is_retired recognizes that empty transport without
 granting native closure or claim release. Owned startup failures now surface
-through polling, while standalone construction remains synchronous. The new
+through polling; low-level construction without a worker scope remains synchronous. The new
 NativeHelperProgress field changes downstream struct literals on this
 provisional API; the field and method are inventoried. Receipt verification
 for original completion and shutdown now runs on proof workers after actual
@@ -1817,7 +1818,14 @@ errors without consuming that key. Cancelled/completed lifecycle suppression
 and runtime guards remain applicable. This execution-policy change has a
 pre-1.0 minor consequence and changes no persisted format or public signature.
 
-Shared service native preparation now performs pending-contract refusal before queuing a helper, using existing exec/contract diagnostics and no persisted-format or public signature change; this execution-policy capability has a pre-1.0 minor consequence, with final claim/entry validation and native acceptance still pending.
+Shared service native preparation performs pending-contract refusal under the original healthy writer before queuing a helper, using existing exec/contract diagnostics and no persisted-format or public signature change; this execution-policy capability has a pre-1.0 minor consequence, with complete native acceptance still pending.
+
+Shared native ticks now require the writer before new queue admission and route
+helper startup through bounded workers, preserving an existing host budget or
+using a runner-owned fallback. Contention releases only unclaimed reservations
+and leaves stop/cleanup observation serviceable; retained queues request writer
+attention for retry. This private execution-policy change has a pre-1.0 minor
+consequence and changes no persisted format, public signature or error code.
 
 Warm native completion reconciliation now recognizes another host's accepted original event through the exact replayed acknowledgement and verified handoff retirement; this fixes retained-owner drain without changing public signatures, error codes, persisted formats or hash domains, and historical acknowledgements without handoffs retain their existing path.
 

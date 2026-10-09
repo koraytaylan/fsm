@@ -1,5 +1,12 @@
 # Releasing
 
+Shared native ticks now admit preparation queues under the original healthy
+writer, release unclaimed reservations on contention and keep stop/cleanup
+observation serviceable before writer acquisition. Helper startup uses bounded
+workers with the existing host budget or a runner-owned fallback; retained queues
+remain eligible for writer retry. No persisted format or public signature changes,
+and full plan 0021 service/native acceptance remains pending.
+
 Executor outcome delivery now validates its selected original payload/stamps
 against the current receiver before sending a derived event request, including
 acknowledged recovery after migration; refusal preserves the request key and

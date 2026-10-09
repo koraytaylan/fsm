@@ -6,6 +6,11 @@ use fsm_store::{clock::Clock, store::Store};
 
 impl Runner {
     #[cfg(target_os = "linux")]
+    pub(crate) fn native_worker_scope(&self) -> super::native_client::worker::Scope {
+        super::native_client::worker::Scope::enter_existing_or(&self.native_workers)
+    }
+
+    #[cfg(target_os = "linux")]
     pub(crate) fn take_native_cleanup_diagnostic(&mut self) -> Option<String> {
         self.native.take_cleanup_diagnostic()
     }

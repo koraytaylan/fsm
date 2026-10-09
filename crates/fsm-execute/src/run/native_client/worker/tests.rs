@@ -8,6 +8,27 @@ use std::{collections::BTreeMap, io::Write, sync::mpsc, time::Instant};
 mod startup;
 
 #[test]
+fn fallback_worker_scope_reuses_host_budget_and_restores_previous_scope() {
+    let _empty = Scope::enter(None);
+    let fallback = Arc::new(Budget::default());
+    {
+        let _scope = Scope::enter_existing_or(&fallback);
+        let ticket = reserve_current().unwrap().unwrap();
+        assert!(Arc::ptr_eq(&ticket.0, &fallback));
+    }
+    assert!(reserve_current().unwrap().is_none());
+    let host = Arc::new(Budget::default());
+    let _host_scope = Scope::enter(Some(&host));
+    {
+        let _scope = Scope::enter_existing_or(&fallback);
+        let ticket = reserve_current().unwrap().unwrap();
+        assert!(Arc::ptr_eq(&ticket.0, &host));
+        assert_eq!(fallback.reserved(), 0);
+    }
+    assert!(Arc::ptr_eq(&reserve_current().unwrap().unwrap().0, &host));
+}
+
+#[test]
 fn native_worker_decodes_response_when_retirement_arrives_after_pending_poll() {
     let budget = Arc::new(Budget::default());
     let _scope = Scope::enter(Some(&budget));

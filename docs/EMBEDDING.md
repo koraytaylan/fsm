@@ -3039,7 +3039,8 @@ this has no journal, wire-format, core, dependency or MSRV consequence. Real
 preparation, bound-entry and completion wake acceptance remains pending.
 
 OwnedNativeExecutor adds explicit enable_worker_polling; Linux owned stdio
-selects it while standalone defaults remain synchronous. Original raw helper
+selects it for the full owned lifecycle; ordinary shared native ticks also
+provide a runner-owned fallback worker scope. Original raw helper
 requests move to reserved worker polling for socket exchange, reap and final
 transport drop; immutable new startup is also dispatched to that worker,
 including protected-helper checks, sockets and spawn, under the original
@@ -3049,7 +3050,7 @@ that charge until owner handle and worker retire, with a 2 MiB parsed-response
 storage preflight. Joined startup refusal reports not_started separately from
 actual child reap/EOF; is_retired recognizes that empty transport without
 granting native closure or claim release. Owned startup failures now surface
-through polling, while standalone construction remains synchronous. The new
+through polling; low-level construction without a worker scope remains synchronous. The new
 NativeHelperProgress field changes downstream struct literals on this
 provisional API; the field and method are inventoried. Receipt verification
 for original completion and shutdown now runs on proof workers after actual
@@ -3098,7 +3099,14 @@ contract::check_pending checks a reconstructed PendingEffect against a verified 
 
 An explicitly manual pending effect can pass check_pending while remaining in the outbox: compatibility evidence does not turn manual policy into an automatic handler or acknowledge its work.
 
-Both shared service tick entry points check the complete pending contract before native preparation is queued; refusal retains pending work and allocates no preparation reservation, while the scheduler can continue unrelated compatible effects, and final writer-held claim and bound-entry revalidation remain unfinished.
+Both shared service tick entry points require the original healthy writer and
+check its complete pending contract before native preparation is queued; refusal
+retains pending work and allocates no preparation reservation. Contention releases
+only unclaimed scheduling reservations, while stop and cleanup observation remain
+serviceable. Retained queued preparations request writer attention for retry;
+helper startup runs on bounded workers using the existing host budget or a
+runner-owned fallback. Prepared claim and bound-entry checks independently
+revalidate current contracts; complete native acceptance remains outstanding.
 
 A runner retaining an original native completion can reconcile delivery performed by another host: it validates the replayed acknowledgement's exact handoff against its checked completion and original closure, then retires only when the healthy writer's verified fold has consumed that obligation; outstanding or conflicting handoffs retain delivery checks or refusal, so a disabled event alone never proves completion.
 

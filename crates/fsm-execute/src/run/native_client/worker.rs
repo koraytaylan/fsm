@@ -71,6 +71,13 @@ thread_local! {
 pub(crate) struct Scope(Option<Arc<Budget>>);
 
 impl Scope {
+    pub(crate) fn enter_existing_or(budget: &Arc<Budget>) -> Self {
+        let selected = CURRENT
+            .with(|current| current.borrow().clone())
+            .unwrap_or_else(|| Arc::clone(budget));
+        Self::enter(Some(&selected))
+    }
+
     pub(crate) fn enter(budget: Option<&Arc<Budget>>) -> Self {
         Self(CURRENT.with(|current| current.replace(budget.cloned())))
     }

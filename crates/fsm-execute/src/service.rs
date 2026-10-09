@@ -50,7 +50,6 @@ use crate::watch::{Observation, Watcher};
 /// The read-only half of a tick: what the journal says, and what to do about
 /// it.
 struct Plan {
-    snapshot: Option<Store>,
     observation: Observation,
     directives: Vec<Directive>,
     lines: Vec<String>,
@@ -66,6 +65,10 @@ pub fn tick_with(
     clock: &mut dyn Clock,
     now_ms: i64,
 ) -> Vec<String> {
+    #[cfg(target_os = "linux")]
+    let _native_workers = runner
+        .uses_native_admission()
+        .then(|| runner.native_worker_scope());
     let mut plan = match plan(watcher, scheduler, runner, now_ms) {
         Ok(plan) => plan,
         Err(lines) => {
@@ -75,9 +78,8 @@ pub fn tick_with(
             return lines;
         }
     };
-    let native_writer_allowed = runner.accepts_native_writer(store);
-    let settles = prepare(scheduler, runner, &mut plan, native_writer_allowed);
-    drop(plan.snapshot.take());
+    let settles = prepare(scheduler, runner, &mut plan);
+    queue_native_starts(scheduler, runner, &mut plan, store);
     let finished = runner.finished_effects();
     runner.release_native_preparations(scheduler);
     plan.lines.extend(settle_phase(
@@ -130,6 +132,10 @@ pub fn tick_reporting(
     clock: &mut dyn Clock,
     now_ms: i64,
 ) -> TickOutcome {
+    #[cfg(target_os = "linux")]
+    let _native_workers = runner
+        .uses_native_admission()
+        .then(|| runner.native_worker_scope());
     let mut plan = match plan(watcher, scheduler, runner, now_ms) {
         Ok(plan) => plan,
         Err(lines) => {
@@ -141,15 +147,21 @@ pub fn tick_reporting(
             };
         }
     };
-    // Native preparation and stop observation run independently of the writer.
-    // Native launch waits for apply_native below, which persists the claim and
-    // rechecks eligibility under the writer before authorizing handler entry.
-    // A handler past its timeout must stop even when settlement cannot write.
-    let settles = prepare(scheduler, runner, &mut plan, true);
-    drop(plan.snapshot.take());
+    // Stops and owned I/O remain serviceable before writer acquisition.
+    // New native queue admission waits for the current writer below.
+    let settles = prepare(scheduler, runner, &mut plan);
+    let native_starts = runner.uses_native_admission()
+        && (!scheduler.unstartable().is_empty()
+            || plan
+                .directives
+                .iter()
+                .any(|directive| matches!(directive, Directive::Start { .. })));
     let finished = runner.finished_effects();
     runner.release_native_preparations(scheduler);
-    if !writes_anything(&plan.directives, &settles, &finished) && !runner.native_ready() {
+    if !native_starts
+        && !writes_anything(&plan.directives, &settles, &finished)
+        && !runner.native_ready()
+    {
         return TickOutcome {
             lines: plan.lines,
             writer_unavailable: false,
@@ -168,12 +180,20 @@ pub fn tick_reporting(
             for settle in &settles {
                 scheduler.complete(&settle.effect.effect_id);
             }
+            if native_starts {
+                for directive in &plan.directives {
+                    if let Directive::Start { effect, .. } = directive {
+                        scheduler.complete_unclaimed(effect);
+                    }
+                }
+            }
             return TickOutcome {
                 lines: plan.lines,
                 writer_unavailable: true,
             };
         }
     };
+    queue_native_starts(scheduler, runner, &mut plan, &store);
     plan.lines.extend(settle_phase(
         scheduler, runner, pipeline, &mut store, clock, &plan, settles, finished,
     ));
@@ -353,7 +373,6 @@ fn plan(
         ));
     }
     Ok(Plan {
-        snapshot: runner.uses_native_admission().then_some(snapshot),
         observation,
         directives,
         lines,
@@ -366,24 +385,19 @@ struct PendingSettle {
     outcome: RunOutcome,
 }
 
-/// Prepare native admission and request stops without writing the journal.
-/// Native starts are authorized later under the writer in `apply_native`;
+/// Request stops and drive primitive handlers without writing the journal.
+/// Native queue admission and starts wait for the writer-held phase;
 /// primitive runners start here, and timed-out handlers stop without waiting
 /// for writer access.
-fn prepare(
-    scheduler: &mut Scheduler,
-    runner: &mut Runner,
-    plan: &mut Plan,
-    native_writer_allowed: bool,
-) -> Vec<PendingSettle> {
+fn prepare(scheduler: &mut Scheduler, runner: &mut Runner, plan: &mut Plan) -> Vec<PendingSettle> {
     let mut settles = Vec::new();
     // An effect whose argv could not be built never reaches the runner; it is
     // a run that failed before it began, and is acked as one.
     for unstartable in scheduler.unstartable().to_vec() {
-        plan.lines.push(error_line(&unstartable.error));
         if runner.uses_native_admission() {
             continue;
         }
+        plan.lines.push(error_line(&unstartable.error));
         settles.push(PendingSettle {
             outcome: RunOutcome::NotStarted {
                 code: unstartable.error.code,
@@ -409,44 +423,6 @@ fn prepare(
                     effect.effect_name, effect.effect_id
                 ));
                 if runner.uses_native_admission() {
-                    let handler = scheduler.handler(&effect.effect_name).cloned();
-                    let result = if native_writer_allowed {
-                        handler
-                            .ok_or_else(|| {
-                                ExecError::new(
-                                    "exec/config",
-                                    "native original handler is unavailable",
-                                )
-                            })
-                            .and_then(|handler| {
-                                plan.snapshot
-                                    .as_ref()
-                                    .ok_or_else(|| {
-                                        ExecError::new(
-                                            "exec/mode",
-                                            "native observation is unavailable",
-                                        )
-                                    })
-                                    .and_then(|snapshot| {
-                                        runner.queue_native(snapshot, effect, &handler, scheduler)
-                                    })
-                            })
-                    } else {
-                        Err(ExecError::new(
-                            "exec/mode",
-                            "native admission requires the original healthy durable writer",
-                        ))
-                    };
-                    match result {
-                        Ok(()) => plan.lines.push(format!(
-                            "native-preparing {} {}",
-                            effect.effect_name, effect.effect_id
-                        )),
-                        Err(error) => {
-                            plan.lines.push(error_line(&error));
-                            scheduler.complete_unclaimed(effect);
-                        }
-                    }
                     continue;
                 }
                 match runner.spawn(effect.effect_id.clone(), argv, call.as_ref()) {
@@ -502,10 +478,64 @@ fn prepare(
             | Directive::SignalDeliver { .. } => {}
         }
     }
-    if runner.uses_native_admission() && native_writer_allowed {
+    settles
+}
+
+/// Admit only the observed generation against the current original writer.
+fn queue_native_starts(
+    scheduler: &mut Scheduler,
+    runner: &mut Runner,
+    plan: &mut Plan,
+    store: &Store,
+) {
+    if !runner.uses_native_admission() {
+        return;
+    }
+    let writer_allowed = runner.accepts_native_writer(store);
+    for unstartable in scheduler.unstartable() {
+        let result = if writer_allowed {
+            crate::contract::check_pending(store, &unstartable.effect, scheduler.handler_table())
+        } else {
+            Err(ExecError::new(
+                "exec/mode",
+                "native admission requires the original healthy durable writer",
+            ))
+        };
+        let error = result.err().unwrap_or_else(|| unstartable.error.clone());
+        plan.lines.push(error_line(&error));
+    }
+    for directive in &plan.directives {
+        let Directive::Start { effect, .. } = directive else {
+            continue;
+        };
+        let result = if writer_allowed {
+            scheduler
+                .handler(&effect.effect_name)
+                .cloned()
+                .ok_or_else(|| {
+                    ExecError::new("exec/config", "native original handler is unavailable")
+                })
+                .and_then(|handler| runner.queue_native(store, effect, &handler, scheduler))
+        } else {
+            Err(ExecError::new(
+                "exec/mode",
+                "native admission requires the original healthy durable writer",
+            ))
+        };
+        match result {
+            Ok(()) => plan.lines.push(format!(
+                "native-preparing {} {}",
+                effect.effect_name, effect.effect_id
+            )),
+            Err(error) => {
+                plan.lines.push(error_line(&error));
+                scheduler.complete_unclaimed(effect);
+            }
+        }
+    }
+    if writer_allowed {
         runner.start_native_preparations();
     }
-    settles
 }
 
 fn writes_anything(

@@ -379,6 +379,7 @@ impl NativeOwners {
                     .any(|owner| owner.settlement_ready(self.observed_seq));
         }
         self.admissions.ready()
+            || self.admissions.queued()
             || self.handoffs.ready()
             || self
                 .owners

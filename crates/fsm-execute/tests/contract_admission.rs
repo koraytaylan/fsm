@@ -11,6 +11,10 @@ use fsm_execute::{
 use fsm_store::{clock::FixedClock, store::Store};
 use std::collections::BTreeMap;
 
+#[cfg(target_os = "linux")]
+#[path = "contract_admission/service.rs"]
+mod service;
+
 fn fixture() -> (Store, PendingEffect, HandlerTable) {
     let mut store = Store::open_memory().unwrap();
     let mut clock = FixedClock::new(1000, 1);

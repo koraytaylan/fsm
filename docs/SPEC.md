@@ -1421,6 +1421,17 @@ MUST cancel that preparation while retaining its original domain for authenticat
 cleanup; it MUST NOT publish a claim or consume an attempt. This pre-claim check
 does not replace final bound-entry validation or acknowledged-outcome recovery.
 
+Both shared native service tick entries MUST obtain the original healthy durable
+writer before admitting a new preparation queue entry, using that writer's
+current pending contract and exact observed effect generation. Writer contention
+MUST queue no new preparation and MUST release only unclaimed scheduling
+reservations; stop requests, output observation and original cleanup MUST remain
+serviceable before writer acquisition. A retained queued preparation MUST request
+writer attention for retry without itself granting claim permission. Shared
+native ticks MUST dispatch helper startup through a bounded transport worker
+scope, reusing an existing host scope when present and a runner-owned fallback
+otherwise; helper spawn and waits MUST NOT execute on the writer owner.
+
 Shared service entry for a bound native owner MUST repeat pending-contract
 validation against its current writer and full loaded table, and MUST match
 the current handler fingerprint to the original claim before consuming entry
@@ -3820,7 +3831,7 @@ URI after the original application response publication scope releases.
 
 Pending-contract evidence MUST accept an explicitly manual pending effect when its current executable closure is compatible, without acknowledging it or authorizing automatic execution.
 
-The shared service native preparation path MUST check pending contract evidence against the complete loaded table before queuing a preparation helper; incompatibility or unknown evidence MUST return the typed contract refusal without a preparation reservation or journal mutation, leaving other eligible work serviceable; final writer-held claim and bound-entry contract revalidation remain a separate integration obligation.
+The shared service native preparation path MUST check pending contract evidence against the complete loaded table under the original healthy writer before queuing a preparation helper; incompatibility or unknown evidence MUST return the typed contract refusal without a preparation reservation or journal mutation, leaving other eligible work serviceable; prepared claim and bound-entry checks MUST independently revalidate their current writer and contract before authorization.
 
 Warm native completion reconciliation MUST validate the exact replayed acknowledgement handoff against the original claim, closure-bound claim hash, handler contract, stopped outcome, acknowledgement request and sequence before consulting the healthy writer's verified handoff collection; an absent matching obligation then proves accepted-event fold retirement and MUST retire the retained completion without another send, while conflicting membership MUST refuse and outstanding membership MUST use the original handoff delivery checks.
 

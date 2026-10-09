@@ -88,8 +88,8 @@ impl OwnedNativeExecutor {
 
     /// Select original transport worker polling for this owned driver.
     ///
-    /// New helper startup, transport observation and original receipt reads
-    /// run on workers; standalone defaults remain synchronous. Current ownership
+    /// Shared ticks already provide a bounded fallback worker budget; this
+    /// selection also covers admission-free observation and shutdown. Current ownership
     /// and journal settlement remain on the owner; polling grants no native closure.
     pub fn enable_worker_polling(&mut self) {
         self.workers.get_or_insert_with(|| {
