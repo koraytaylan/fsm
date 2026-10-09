@@ -197,22 +197,53 @@ instance enters `fulfilment`, the machine emits the `request_confirmation`
 effect; the table maps that effect to a supplier-notification subprocess and
 names the advance event (`pick`) plus the failure event (`cancel`).
 
-Both events are ones `picking` accepts, which is the part of a table that is
-easy to get wrong: an `on_ok` naming an event the instance's state does not
-handle is journalled as an ack with no advance, and the executor holds the
-advance until the instance reaches a state that takes it. `request_confirmation`
-declares no fields, so the table's `argv` carries no `{placeholder}` — one
-naming an argument the emit did not produce is `exec/config` at run time, and
-`--check` cannot catch it because a table is validated on its own, without a
-machine.
+The complete machine check validates every emitted effect and configured
+outcome, including later recovery paths, before any handler runs. A missing
+required argument or an undeclared outcome makes the report invalid. A declared
+event without an enabled transition can still leave an acknowledged outcome
+waiting: structural compatibility does not prove guard satisfiability or
+runtime progress. `request_confirmation` emits no arguments, so this table has
+no `{placeholder}` requirements.
 
-Run it unattended with:
+Check the draft without creating a store or starting the supplier command:
 
 ```
-$ fsm execute --check --handlers examples/order_lifecycle.handlers.json
-ok:           true
+$ fsm execute --check --handlers examples/order_lifecycle.handlers.json --machine-file examples/order_lifecycle.json
+```
+
+The `fsm.executor-check/1` report is `compatible` with `runtime-dependent`
+progress. Exit codes are 0 compatible, 1 invalid, 2 input/usage/store/analysis
+failure and 3 unknown. Unknown means evidence is missing, such as an unresolved
+invoked definition; check the stored root after defining its children. Fix the
+reported event, payload or argument mismatch, then rerun the same check.
+Without a machine selector, `--check` retains legacy `handler-table-only`
+inspection and does not validate a machine contract.
+
+Install the supplier command at `/usr/local/bin/notify-supplier`, provision the
+supported native executor described in [EMBEDDING.md](EMBEDDING.md#executing-workflows),
+and start the operator-configured loop:
+
+```
 $ fsm execute --data-dir ./data --handlers examples/order_lifecycle.handlers.json
 ```
+
+For embedded MCP, start `fsm serve --execute --handlers <file>`, discover
+`fsm://executor`, and call `executor_check` with exactly one `spec` draft or
+stored `machine` name. Repair, check again, then use `machine_create` and trigger
+an instance. The host uses its own immutable loaded table; clients cannot
+supply executable overrides. A saved good report cannot authorize execution
+after state or configuration changes: service admission checks each start.
+`fsm.executor/2` continues to advertise autonomous progress separately from the
+analysis report.
+
+To upgrade an intentionally manual effect, list `request_confirmation` in
+`manual_effects` and remove its automatic handler; names cannot be in both
+lists. The check reports a manual disposition and the effect remains pending
+until the operator acknowledges it. A deliberate automatic handler without
+outcome events instead acknowledges its result without advancing the machine.
+Neither policy changes machine identities, journal formats or historical
+hashes; result mapping and dynamic signal recipients remain outside this
+structural check's scope.
 
 `examples/case_review.handlers.json` is the other committed table, and it is
 **illustrative rather than runnable**: it shows retry, the `mcp` handler kind

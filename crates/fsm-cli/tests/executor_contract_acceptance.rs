@@ -223,6 +223,45 @@ fn complete_stored_catalogue_turns_offline_unknown_composition_into_known_compat
     );
 }
 
+#[test]
+fn documented_order_machine_check_is_compatible_without_store_or_supplier_start() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let directory = Directory::new();
+    let data = directory.0.join("absent");
+    let output = Command::new(env!("CARGO_BIN_EXE_fsm"))
+        .args(["--json", "--data-dir"])
+        .arg(&data)
+        .args(["execute", "--check", "--handlers"])
+        .arg(root.join("examples/order_lifecycle.handlers.json"))
+        .arg("--machine-file")
+        .arg(root.join("examples/order_lifecycle.json"))
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let report = parse(&output.stdout, &JsonLimits::DEFAULT).unwrap();
+    assert_eq!(
+        report.get("format").and_then(Value::as_str),
+        Some("fsm.executor-check/1")
+    );
+    assert_eq!(
+        report.get("status").and_then(Value::as_str),
+        Some("compatible")
+    );
+    assert_eq!(
+        report.get("scope").unwrap().get("outcomes_checked"),
+        Some(&Value::Bool(true))
+    );
+    assert!(
+        report
+            .get("progress")
+            .unwrap()
+            .as_arr()
+            .unwrap()
+            .contains(&Value::Str("runtime-dependent".into()))
+    );
+    assert!(!data.exists());
+}
+
 #[cfg(all(
     target_os = "linux",
     any(target_arch = "x86_64", target_arch = "aarch64")

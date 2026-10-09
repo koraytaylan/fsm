@@ -18,10 +18,13 @@ fsm instance history inst-demo
 The 60-second demo advances the workflow by hand. `fsm execute` does it for
 you: it watches the outbox, runs an operator-configured table of handlers, and
 acks each outcome into the journal, so a workflow triggered in a chat proceeds
-gate to gate with nobody watching.
+gate to gate with nobody watching. Install the operator's supplier handler at
+`/usr/local/bin/notify-supplier` and provision native execution as described in
+[EMBEDDING.md](docs/EMBEDDING.md#executing-workflows). Check the complete machine
+contract before starting the executor; repair invalid findings and check again.
 
 ```
-fsm execute --check --handlers examples/order_lifecycle.handlers.json
+fsm execute --check --handlers examples/order_lifecycle.handlers.json --machine-file examples/order_lifecycle.json
 fsm execute --data-dir ./data --handlers examples/order_lifecycle.handlers.json &
 fsm serve --read-only --data-dir ./data
 ```
@@ -52,7 +55,14 @@ format and the three run modes.
 
 To author and execute through one MCP connection, start
 `fsm serve --execute --handlers <file>`. Read `fsm://executor` to discover
-its configured effects, required arguments, and outcome events. Embedded
+its configured effects, required arguments, and outcome events. Call the
+read-only `executor_check` tool with `{"spec": <draft>}`, repair its findings,
+check again, then call `machine_create` and trigger an instance. Its
+`fsm.executor-check/1` report distinguishes structural compatibility from
+runtime progress; unavailable contract evidence is `unknown`. Explicit
+`manual_effects` keeps operator-owned work pending for manual acknowledgement.
+Every start is checked again against current state and the loaded table.
+Embedded
 stdio execution progresses while stdin stays open, including when quiet;
 `instance_get`, `ping`, and subscriptions observe that progress. The executor
 resource publishes `fsm.executor/2` with `progress: "autonomous"` on supported
