@@ -133,3 +133,13 @@ prove the private scheduler's logical timeout boundary. The remaining written
 compensation, completion fairness, interrupted acknowledgement, construction
 and full integration inventory stays open; no landing OID is assigned and
 staged executable bytes remain without independent comparison.
+
+
+The separate scheduling inventory now includes genuine process/MCP compensation:
+a non-retried authority timeout must acknowledge its original outcome, emit a
+different restore effect, bind that handler's original fingerprint, and reach
+the `restored` terminal leaf without another request. The observer uses bounded
+wait rendezvous and the existing protected fixture; both original completion
+and crash inventories remain unchanged. Local executable host regressions and
+producer/verifier faults pass; genuine runtime acceptance is pending disposable
+CI and the remaining written inventory is unchanged.

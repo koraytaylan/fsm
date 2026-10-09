@@ -257,3 +257,176 @@ fn autonomous_schedule_real_timeout_retry_pins_backoff_without_another_command()
         crate::journal_io::JournalHealth::Ok
     );
 }
+
+const COMPENSATION_MACHINE: &str = r#"{
+ "format":"fsm.machine/1","name":"quiet_compensation","context":[],
+ "events":[{"name":"done","fields":[]},{"name":"failed","fields":[]}],
+ "effects":[{"name":"notify","fields":[]},{"name":"restore","fields":[]}],
+ "states":[
+   {"name":"working","entry":{"emit":[{"effect":"notify","args":{}}]}},
+   {"name":"recovering","entry":{"emit":[{"effect":"restore","args":{}}]}},
+   {"name":"restored","terminal":true},{"name":"cleanup_failed","terminal":true}],
+ "initial":"working","transitions":[
+   {"from":"working","on":"failed","to":"recovering"},
+   {"from":"recovering","on":"done","to":"restored"},
+   {"from":"recovering","on":"failed","to":"cleanup_failed"}]
+}"#;
+
+#[test]
+#[ignore = "requires disposable native CI, genuine failure and a protected restore handler"]
+fn autonomous_schedule_real_compensation_completes_without_another_command() {
+    let manifest = held_handlers::manifest();
+    assert_eq!(
+        held_handlers::field(&manifest, "behavior"),
+        "schedule-compensation"
+    );
+    let store_path = PathBuf::from(held_handlers::field(&manifest, "store"));
+    let resource = PathBuf::from(held_handlers::field(&manifest, "resource"));
+    let mut store = Store::open(&store_path).unwrap();
+    let mut clock = FixedClock::new(2000, 0);
+    store
+        .define_machine_on(&mut clock, value(COMPENSATION_MACHINE), false, false)
+        .unwrap();
+    store
+        .create_instance_ctx_on(
+            &mut clock,
+            "quiet_compensation",
+            "held",
+            "create-held",
+            None,
+            &std::collections::BTreeMap::new(),
+            &[],
+        )
+        .unwrap();
+    let handlers =
+        HandlerTable::parse(&fs::read_to_string(store_path.join("handlers.json")).unwrap())
+            .unwrap();
+    assert_eq!(handlers.handlers["notify"].retry.attempts, 1);
+    assert!(handlers.handlers.contains_key("restore"));
+    let restore_fingerprint = handlers.handlers["restore"].fingerprint();
+    let (gate, wait_clock) = WaitGate::new();
+    let (owner, handle) = NativeOwner::new(
+        OwnedNativeExecutor::new(store, handlers).unwrap(),
+        FixedClock::new(2000, 0),
+        DiagnosticOutput::start(std::io::sink()).unwrap(),
+        Duration::from_millis(1),
+        10000,
+    )
+    .unwrap();
+    let worker = std::thread::spawn(move || owner.with_wait_clock(wait_clock).run());
+    gate.boundaries
+        .recv_timeout(Duration::from_secs(3))
+        .unwrap();
+    // Only wait-clock wakes and genuine completion I/O drive this owner.
+    gate.until(&handle, || {
+        fs::read_to_string(resource.join("root-candidate")).is_ok_and(|pid| !pid.is_empty())
+    });
+    let first_root = fs::read_to_string(resource.join("root-candidate")).unwrap();
+    assert!(!resource.join("root-release").exists());
+    gate.until(&handle, || {
+        let observed = Store::open_read_only(&store_path).unwrap();
+        claim_count(&observed) == 2
+            && fs::read_to_string(resource.join("root-candidate"))
+                .is_ok_and(|pid| !pid.is_empty() && pid != first_root)
+    });
+    let compensating = Store::open_read_only(&store_path).unwrap();
+    let claims = compensating
+        .records
+        .iter()
+        .filter(|record| record.kind == RecordKind::ExecutionClaimed)
+        .collect::<Vec<_>>();
+    assert_eq!(claims.len(), 2);
+    assert_ne!(
+        claims[0].body.get("effect_id"),
+        claims[1].body.get("effect_id")
+    );
+    assert_eq!(
+        claims[1]
+            .body
+            .get("handler_fingerprint")
+            .and_then(super::Value::as_str),
+        Some(restore_fingerprint.as_str())
+    );
+    assert_eq!(
+        claims[1].body.get("attempt").and_then(super::Value::as_num),
+        Some("1")
+    );
+    let first_stopped = compensating
+        .records
+        .iter()
+        .find(|record| record.kind == RecordKind::ExecutionStopped)
+        .unwrap();
+    assert_eq!(
+        first_stopped
+            .body
+            .get("outcome")
+            .and_then(|outcome| outcome.get("status"))
+            .and_then(super::Value::as_str),
+        Some("timeout")
+    );
+    let first_settled = compensating
+        .records
+        .iter()
+        .find(|record| record.kind == RecordKind::ExecutionSettled)
+        .unwrap();
+    assert_eq!(
+        first_settled
+            .body
+            .get("disposition")
+            .and_then(super::Value::as_str),
+        Some("acked")
+    );
+    assert_eq!(compensating.state.instances["held"].pending.len(), 1);
+    drop(compensating);
+    for role in ["grandchild", "child", "root"] {
+        fs::write(resource.join(format!("{role}-release")), b"release").unwrap();
+    }
+    gate.until(&handle, || {
+        Store::open_read_only(&store_path).unwrap().state.instances["held"].status
+            == Status::Completed
+    });
+    handle.stop();
+    drop(gate);
+    let exit = worker.join().unwrap();
+    assert!(exit.failure.is_none());
+    assert_eq!(
+        exit.shutdown.phase,
+        fsm_execute::service::ExecutorPhase::Stopped
+    );
+    assert!(
+        exit.shutdown.writer_released
+            && exit.shutdown.inventory_complete
+            && exit.shutdown.helpers_retired
+    );
+    assert_eq!(exit.diagnostics.dropped(), 0);
+    let reopened = Store::open(&store_path).unwrap();
+    assert_eq!(reopened.state.instances["held"].status, Status::Completed);
+    let view = reopened.instance_view("held", None, None).unwrap();
+    assert_eq!(
+        view.get("configuration")
+            .and_then(|configuration| configuration.get("leaf"))
+            .and_then(super::Value::as_str),
+        Some("restored")
+    );
+    assert!(reopened.state.instances["held"].pending.is_empty());
+    assert_eq!(reopened.state.execution.unresolved().count(), 0);
+    assert_eq!(claim_count(&reopened), 2);
+    let stopped = reopened
+        .records
+        .iter()
+        .filter(|record| record.kind == RecordKind::ExecutionStopped)
+        .collect::<Vec<_>>();
+    assert_eq!(stopped.len(), 2);
+    assert_eq!(
+        stopped[1]
+            .body
+            .get("outcome")
+            .and_then(|outcome| outcome.get("status"))
+            .and_then(super::Value::as_str),
+        Some("ok")
+    );
+    assert_eq!(
+        crate::journal_io::verify(&store_path).health,
+        crate::journal_io::JournalHealth::Ok
+    );
+}

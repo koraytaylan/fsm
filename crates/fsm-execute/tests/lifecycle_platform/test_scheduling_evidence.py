@@ -7,7 +7,9 @@ import verify_scheduling_evidence as verifier
 INVENTORY = (('private', 'process', 'schedule-success'),
              ('private', 'mcp', 'schedule-success'),
              ('private', 'process', 'schedule-retry'),
-             ('private', 'mcp', 'schedule-retry'))
+             ('private', 'mcp', 'schedule-retry'),
+             ('private', 'process', 'schedule-compensation'),
+             ('private', 'mcp', 'schedule-compensation'))
 
 
 class SchedulingEvidence(unittest.TestCase):
@@ -17,7 +19,7 @@ class SchedulingEvidence(unittest.TestCase):
 
     def test_exact_slice_does_not_complete_task_or_verify_executable_bytes(self):
         verdict = self.exercise()
-        self.assertEqual(verdict['cases'], 4)
+        self.assertEqual(verdict['cases'], 6)
         self.assertTrue(verdict['verified'])
         self.assertFalse(verdict['task_complete'])
         self.assertFalse(verdict['gate_released'])

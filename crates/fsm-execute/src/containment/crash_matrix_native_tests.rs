@@ -144,7 +144,11 @@ fn provisioned_private_scheduling_owner_matrix() {
             &format!("FSM_CRASH_{variable}_SHA256"),
         );
     }
-    for behavior in ["schedule-success", "schedule-retry"] {
+    for behavior in [
+        "schedule-success",
+        "schedule-retry",
+        "schedule-compensation",
+    ] {
         for kind in ["process", "mcp"] {
             scenario(
                 &staging,
@@ -303,6 +307,8 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
         .arg(staging.join(artifact))
         .args(["--exact", if behavior == "schedule-success" {
             "mcp::host::tests::held_handlers::autonomous_schedule_real_handler_success_without_another_command"
+        } else if behavior == "schedule-compensation" {
+            "mcp::host::tests::scheduling_handlers::autonomous_schedule_real_compensation_completes_without_another_command"
         } else if behavior == "schedule-retry" {
             "mcp::host::tests::scheduling_handlers::autonomous_schedule_real_timeout_retry_pins_backoff_without_another_command"
         } else if behavior == "private-output" {
@@ -494,6 +500,7 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                             | "private-output"
                             | "schedule-success"
                             | "schedule-retry"
+                            | "schedule-compensation"
                     ) {
                         "hold-result"
                     } else {
@@ -558,9 +565,28 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
         handler.insert("tool".into(), Value::Str("run".into()));
         handler.insert("arguments".into(), object([]));
     }
+    let mut handlers = Vec::new();
+    if behavior == "schedule-compensation" {
+        handler.insert(
+            "retry".into(),
+            parse(
+                br#"{"attempts":1,"backoff_ms":10,"max_backoff_ms":10,"on":["timeout"]}"#,
+                &JsonLimits::DEFAULT,
+            )
+            .unwrap(),
+        );
+        handler.insert(
+            "on_failed".into(),
+            object([("event", Value::Str("failed".into()))]),
+        );
+        let mut restore = handler.clone();
+        restore.insert("effect".into(), Value::Str("restore".into()));
+        handlers.push(Value::Obj(restore));
+    }
+    handlers.push(Value::Obj(handler));
     object([
         ("format", Value::Str("fsm.handlers/1".into())),
-        ("handlers", Value::Arr(vec![Value::Obj(handler)])),
+        ("handlers", Value::Arr(handlers)),
     ])
 }
 
