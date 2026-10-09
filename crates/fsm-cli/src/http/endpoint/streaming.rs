@@ -12,6 +12,30 @@ use std::{
 
 const DRAIN_TIMEOUT: Duration = Duration::from_secs(2);
 
+pub(super) struct BufferedOutput(pub(super) Option<crate::mcp::notify::OutputControl>);
+impl BufferedOutput {
+    pub(super) fn drain(&self) -> io::Result<()> {
+        if let Some(control) = &self.0 {
+            control.close();
+            let deadline = Instant::now() + DRAIN_TIMEOUT;
+            while !control.drained() && Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            if !control.drained() {
+                return Err(io::ErrorKind::TimedOut.into());
+            }
+        }
+        Ok(())
+    }
+}
+impl Drop for BufferedOutput {
+    fn drop(&mut self) {
+        if let Some(control) = &self.0 {
+            control.close();
+        }
+    }
+}
+
 struct QueueRetirement {
     control: crate::mcp::notify::OutputControl,
     wake: TcpStream,
@@ -76,7 +100,7 @@ impl EndpointHandler {
     ) -> io::Result<super::super::server::Flow> {
         let wake = socket.try_clone()?;
         let started = Arc::new(AtomicBool::new(false));
-        let (notifier, control) = Notifier::queued(Box::new(PostWriter {
+        let (notifier, control) = Notifier::http_hosted_queued(Box::new(PostWriter {
             socket,
             started: Arc::clone(&started),
             next_id: 1,

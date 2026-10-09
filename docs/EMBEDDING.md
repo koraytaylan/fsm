@@ -1,5 +1,10 @@
 # Embedding fsm as a library
 
+Hosted HTTP diagnostic tools such as journal_verify now return through bounded
+hosted output; JSON replies wait for queue drainage before reading the response
+buffer. A missing drainage observation retires that session and cannot publish
+an incomplete JSON result; borrowed endpoint output remains synchronous.
+
 Production HTTP streamed POST now delivers progress and elicitation frames
 while the request runs, through a socket worker bounded to 256 frames and 8 MiB
 of retained/in-flight allocation per POST; serialization temporaries are separate.

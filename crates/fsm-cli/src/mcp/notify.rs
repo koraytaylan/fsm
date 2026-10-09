@@ -102,6 +102,15 @@ impl Notifier {
         ))
     }
 
+    /// HTTP owner emission uses its existing 256-frame / 8-MiB transport budget.
+    pub(crate) fn http_hosted_queued(
+        out: Box<dyn Write + Send>,
+    ) -> std::io::Result<(Self, OutputControl)> {
+        let (mut notifier, control) = Self::queued(out)?;
+        notifier.out = OutputMode::Hosted(control.clone());
+        Ok((notifier, control))
+    }
+
     pub(crate) fn publication_guard(&self) -> Option<PublicationGuard> {
         if !matches!(self.out, OutputMode::Hosted(_)) {
             return None;

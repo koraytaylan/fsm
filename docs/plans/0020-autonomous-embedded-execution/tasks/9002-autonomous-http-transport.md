@@ -208,3 +208,14 @@ Focused startup acceptance:
   passes after restoration, with focused clippy and format/size/diff checks.
   The provisioned group must still pass before native acceptance can count;
   no installed handler has been executed locally.
+- Frozen native candidate 340e76ba reached all seven successful handler
+  settlements but failed on an empty HTTP diagnostic response: the adapter used
+  ordinary output where journal_verify requires hosted output. HTTP now exposes
+  the existing bounded transport queue as hosted output, and buffered JSON waits
+  for observed drainage before reading its sink; admission closes on unwinding.
+  A real-binary journal_verify regression returns health Ok, retains the physical
+  writer and continues discovery. Removing only hosted HTTP output mode
+  reproduces the empty response; restoration passes. Twenty-one focused HTTP
+  cases, CLI all-target clippy and format/size/diff checks pass. Native acceptance
+  remains pending for the corrected candidate; full concurrent admission and
+  aggregate response-buffer bounds still require closure before task completion.

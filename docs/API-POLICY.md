@@ -1,5 +1,9 @@
 # API and version policy
 
+HTTP diagnostics now use the existing private hosted-output contract under the
+unchanged HTTP queue budget; no public signature, wire discriminator, journal
+bytes, hashes, error-code strings or versions change.
+
 The HTTP Handler trait gains a default handle_socket adapter for owned output;
 existing handle implementations remain usable. Production streamed POST uses
 the existing bounded output queue and I/O errors, with no new wire discriminator,

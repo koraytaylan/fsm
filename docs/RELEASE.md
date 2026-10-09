@@ -1,5 +1,9 @@
 # Releasing
 
+Hosted HTTP now supplies the bounded notifier required by read-only diagnostic
+workers, fixing empty socket responses for journal_verify and preserving owned
+frame publication; JSON response buffers are read only after observed drainage.
+
 Production HTTP POST streams now deliver questions before dispatch returns,
 with bounded socket-worker output and session-local failure retirement; borrowed
 endpoint helpers remain synchronous. Remaining native and saturation acceptance

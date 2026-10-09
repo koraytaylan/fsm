@@ -759,3 +759,24 @@ fn production_http_refuses_retained_argument_byte_pressure_without_writing() {
         fsm_cli::journal_io::JournalHealth::Ok
     );
 }
+
+#[test]
+fn production_http_hosted_diagnostics_return_their_bounded_result() {
+    let (directory, store) = seeded("hosted-diagnostic");
+    drop(store);
+    let mut client = Client::start_mode(directory.clone(), Mode::Writer);
+    client.initialize();
+    let verified = client.post(r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"journal_verify","arguments":{}}}"#);
+    let result = verified.get("result").unwrap();
+    assert_ne!(result.get("isError"), Some(&Value::Bool(true)));
+    assert_eq!(
+        result
+            .get("structuredContent")
+            .unwrap()
+            .get("health")
+            .and_then(Value::as_str),
+        Some("Ok")
+    );
+    assert!(matches!(Store::open(&directory), Err(error) if error.code == "store/lock"));
+    client.executor();
+}

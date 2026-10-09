@@ -1,5 +1,11 @@
 # fsm — normative specification
 
+Hosted HTTP replies, including read-only diagnostics, MUST use bounded hosted
+output that permits owner-side frame admission without socket writes. Buffered
+JSON responses MUST observe complete queue drainage before reading their sink,
+close admission during unwinding, and retire the original session on unconfirmed
+drainage; direct borrowed endpoints retain synchronous behavior.
+
 Public executor ticks MUST continue bounded owned transport observation when journal scanning fails, without collecting outcomes for settlement, opening a writer, or releasing retained execution state; this does not supply missing timeout or native-host reconciliation.
 
 This document is the source of truth for `fsm`. Implementers MUST treat the

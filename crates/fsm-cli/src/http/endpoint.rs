@@ -409,12 +409,18 @@ impl Endpoint {
             }
         };
         let sink = SharedSink::new();
-        let notifier = if streaming {
-            streaming_output.map(Notifier::clone_handle)
-        } else {
-            None
-        }
-        .unwrap_or_else(|| Notifier::new(Box::new(sink.writer())));
+        let (notifier, buffered_output) =
+            if let (true, Some(output)) = (streaming, streaming_output) {
+                (output.clone_handle(), streaming::BufferedOutput(None))
+            } else if state.hosted.is_some() {
+                let (notifier, control) = Notifier::http_hosted_queued(Box::new(sink.writer()))?;
+                (notifier, streaming::BufferedOutput(Some(control)))
+            } else {
+                (
+                    Notifier::new(Box::new(sink.writer())),
+                    streaming::BufferedOutput(None),
+                )
+            };
         // Anything that outlives this request — the change feed a
         // `resources/subscribe` starts — writes into the session's stream
         // instead, because `sink` is this POST's body and stops being read
@@ -458,6 +464,9 @@ impl Endpoint {
             }
         }
 
+        buffered_output.drain().inspect_err(|_| {
+            self.sessions.close(&session_id);
+        })?;
         if streaming && streaming_output.is_some() {
             if notifier.is_broken() {
                 self.sessions.close(&session_id);
