@@ -8,11 +8,11 @@ Task frontmatter is authoritative; the coordinator owns registration and complet
 | [nonblocking-execution-completions](tasks/8902-nonblocking-execution-completions.md) | done | ee296852b5cdaad2d1f88781fe6a390248233240 |
 | [autonomous-host-scheduling](tasks/8903-autonomous-host-scheduling.md) | done | 6666a55b57a47bd2568bc5113231f76d7a0fdea6 |
 | [bounded-session-channels](tasks/8904-bounded-session-channels.md) | done | 25129d2dd238f717e9b2e4ec2e0c148fa4633c13 |
-| [autonomous-stdio-transport](tasks/9001-autonomous-stdio-transport.md) | in_progress | — |
+| [autonomous-stdio-transport](tasks/9001-autonomous-stdio-transport.md) | done | 6cf1df2be0c2649191c786c2885e7e1f1b1fa2e9 |
 | [autonomous-http-transport](tasks/9002-autonomous-http-transport.md) | planned | — |
 | [autonomous-execution-contract](tasks/9003-autonomous-execution-contract.md) | planned | — |
 
-Progress: 4/7 tasks completed.
+Progress: 5/7 tasks completed.
 
 Frozen 26c68220 closes 8901's written ownership inventory: all six stable/MSRV portable gates and both native jobs pass, with named debug/release ownership cases, verified 82-case containment matrices and twelve production workflow scenarios per toolchain. The independent frozen review has task-cache digest `24b207c7e2fd741f7d298a80c329778fad60d3c374787e5633a6300a18b16cc4`. Completion covers the owned command boundary; sibling completion, scheduling, channel and transport inventories remain separate. Plan 0022 separately completes its lifecycle inventory at `66c785ba`; final transport integration still requires plan 0020's own written acceptance.
 
@@ -59,6 +59,20 @@ defect. Task-cache verdict digest:
 `fe569635e90f67cf49457be2beab4cd5eba679b5990152fcf23effd1c0d8bccb`.
 No independent reviewer or fresh full/platform gate is claimed; plan-end gates
 and real-binary stdio/HTTP acceptance remain outstanding.
+
+Frozen `25129d2d..6cf1df2b` closes 9001's focused stdio inventory: seven
+original native cases (eight scenarios), 28 real-binary/mode cases and eighteen
+protocol/audit goldens pass, including quiet success/retry/compensation,
+responsive reads beside a live tree, interrupted recovery and final-source
+EOF/broken-output shutdown with preserved pending work. CLI all-target and
+provisioner test-target clippy, ten producer checks, format/size/diff pass.
+Self-review verdict digest:
+`da1da2c33f1f5a63e76029ba7662ec02e66b3d42a1cb6edc2852b310139d29c8`.
+Earlier five native cases bind `8863f281` with unchanged production source;
+both retirement cases bind the landing. Native scope is Linux/systemd; no
+independent reviewer, executable byte comparison or fresh full/platform gate
+is claimed. Full gates remain due at plan completion; HTTP and final contract
+inventories remain separate and incomplete.
 
 Historical STATUS evidence is retained outside the repository in the task-cache
 plan-status-archives directory, addressed by SHA-256:

@@ -35,8 +35,8 @@ touches:
   - docs/API-POLICY.md
   - docs/RELEASE.md
   - README.md
-status: in_progress
-merged_as: ""
+status: done
+merged_as: "6cf1df2be0c2649191c786c2885e7e1f1b1fa2e9"
 ---
 # Autonomous Stdio Transport
 
@@ -121,6 +121,19 @@ Focused acceptance review:
   self-review, not an independent review or complete task verdict.
   Cache verdict `9001-native-checkpoint-8863f281.json`, SHA-256
   `9b5ac3a70b06cf7e6c801236c115270175cae27771c9a96a4b7d69d9486cad9a`.
-- EOF during a live handler and verified restart recovery still need their
-  original acceptance proof; final inventory review remains open, no landing
-  OID is assigned, and full gates remain due at plan completion.
+- Frozen `25129d2d..6cf1df2b` completes the focused task inventory: both original
+  EOF and broken-output cases pass on actual live native trees, with bounded
+  owner exit before their 30-second handler deadline, verified interrupted
+  settlement, writer release, unchanged pending instance, and successful
+  successor recovery. Broken output keeps original stdin open throughout.
+  Twenty-eight real-binary/mode cases, eighteen protocol/audit goldens,
+  CLI all-target and provisioner test-target clippy, ten mocked producer
+  checks, formatting, file-size and frozen-range diff checks pass.
+  Final self-review found no further task-scope defect; verdict digest:
+  `da1da2c33f1f5a63e76029ba7662ec02e66b3d42a1cb6edc2852b310139d29c8`.
+  Earlier five native cases bind `8863f281`, whose production source is
+  unchanged at this landing; both retirement cases bind the final landing.
+  Native scope is Linux/systemd, with no independent reviewer or executable
+  byte comparison. Full stable host/platform integration gates remain due
+  at plan completion under the explicit user cadence; no current full-gate
+  or operational live-client acceptance is claimed.
