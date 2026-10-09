@@ -87,9 +87,15 @@ inventory on stable and MSRV in
 [CI 37913138357](https://github.com/koraytaylan/fsm/actions/runs/37913138357),
 independent retained-report digest
 `f92e22f22985a77c94ce0253f3eac66f54e411642f89b19b10de6fa963693790`.
-A separate two-case scheduling inventory now stages the genuine process/MCP
-success observer, with no session or further command after creation; its
-protected coordinator, producer and scoped verifier compile, and 42 mocked
-artifact/evidence checks pass. This new scheduling slice still needs runtime
-execution; it neither changes 8902's inventory nor completes the remaining
-8903 acceptance requirements above.
+Frozen `f31cdfe5` passes the separate two-case scheduling inventory on stable
+and MSRV in
+[CI 37915286721](https://github.com/koraytaylan/fsm/actions/runs/37915286721):
+genuine process and MCP handlers complete through the private owner without
+a session or further command after creation. Independent retained-report
+digest `1c96a0e41f369603f55f50005cf0ff4967df87d7004ff1d9efbb4d7b07c3d726`
+binds both reports to the frozen source, compilers, inventory and invocation;
+staged executable bytes were not independently compared. The protected
+coordinator, producer and scoped verifier also pass 42 mocked artifact/evidence
+checks. This scoped success verdict neither changes 8902's inventory nor
+completes 8903's remaining acceptance requirements; no landing OID is assigned
+and the full integration matrix remains outstanding.
