@@ -67,8 +67,14 @@ boundaries; review digest
 `4538b02dda6d1a1fd01290fd9dd51f57702762f9817c3563b90373e152f60dde`
 indexes the prior preparation reviews with their original scopes. Task 9202
 remains planned behind admission acceptance; genuine embedded draft-to-execution,
-actual HTTP authority, complete mode/bypass inventory and plan-end gates remain
+complete mode/bypass inventory and plan-end gates remain
 outstanding, with no task-completion or native-handler acceptance claim.
+Real HTTP draft/stored checks now prove shared-session loaded-table authority,
+distinct-host isolation after on-disk table replacement, autonomous discovery,
+private-literal non-disclosure and read-only writer fallback without attributable
+writes; the focused MCP target passes six cases with one native case ignored,
+with CLI all-target clippy and format/size checks passing; focused review digest
+`633aec7aeab2104aa0d2aa2dbe5c2f22af27364af04805831b00affdc2bc8536`.
 
 Native MCP preparation range `5fe38b22..a49b0a83` adds the protected original-host
 draft/repair/create/quiet-execution case to the existing disposable workflow.

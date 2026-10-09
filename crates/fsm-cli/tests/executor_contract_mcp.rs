@@ -11,6 +11,13 @@ fn native_draft_repair_execution() {
     native::run();
 }
 
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+#[path = "contract_mcp/http.rs"]
+mod http;
+
 use fsm_cli::{
     clock::FixedClock,
     mcp::tools::{registry, validate_args},
