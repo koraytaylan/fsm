@@ -1,4 +1,6 @@
 """Contract admission evidence faults are independent of native execution."""
+import ast
+from pathlib import Path
 import unittest
 
 from test_completion_evidence import exercise_owner
@@ -47,6 +49,16 @@ INVENTORY = (('contract', 'process', 'contract-standalone'),
 
 
 class ContractAdmissionEvidence(unittest.TestCase):
+    def test_real_producer_inventory_is_literal_and_matches_independent_cases(self):
+        source = Path(__file__).with_name('crash_probe.py').read_text()
+        assignments = [node.value for node in ast.walk(ast.parse(source))
+                       if isinstance(node, ast.Assign)
+                       and any(isinstance(target, ast.Name)
+                               and target.id == 'CONTRACT_ADMISSION_CASES'
+                               for target in node.targets)]
+        self.assertEqual(len(assignments), 1)
+        self.assertEqual(ast.literal_eval(assignments[0]), INVENTORY)
+
     def exercise(self, alter_report=None, alter_log=None):
         return exercise_owner(alter_report, alter_log, profile=verifier.PROFILE,
                               inventory=INVENTORY, call_verify=verifier.verify)

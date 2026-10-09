@@ -21,8 +21,8 @@ manual work, refuse changed receiver contracts after migration and preserve
 acknowledged recovery keys until repair. Prior guard sensitivity and scoped
 reviews retain their original ranges, indexed by frozen verdict
 `636348f8b670a0efa300617801dc592875fd261b9d4086e6d0f51f0a2d5e1163`.
-Forty provisioned process/MCP axes await accepted physical evidence and twenty
-protected Rust cases remain ignored locally; unprovisioned routing proves no native side-effect
+Forty provisioned process/MCP axes have physical evidence at the checkpoint below;
+twenty protected Rust cases remain ignored locally; unprovisioned routing proves no native side-effect
 acceptance. Complete task 9103 inventory and plan-end gates remain outstanding;
 full-prefix reconstruction cost stays documented.
 
@@ -60,8 +60,8 @@ focused admission and 27 mocked producer/verifier cases pass, with executor
 feature-enabled all-target clippy and format/size/diff checks passing.
 Content-addressed review
 `90ab973b4c9700178f0c340e58b5426d0ade914cfa61e072499f4ba3320033d5`
-indexes prior scoped native reviews; physical execution remains outstanding
-until provisioned plan-end CI.
+indexes prior scoped native reviews; the latest physical execution verdict is
+recorded below, with plan-end CI outstanding.
 Five focused bound-entry tests pass, including private MCP replacement and
 nested missing arguments; feature-enabled executor all-target clippy and
 format/size/diff checks pass. Scoped review
@@ -151,32 +151,22 @@ ordered completion, stale-report bypass and plan-end gates remain outstanding.
 
 Manual Phase R binds the six-task bundle to validation base `15172d8298f271abfd0bd1d5b47617d1108ceefc` after plans 0022 and 0020 complete: closed frontmatter, repository-relative footprints and the acyclic local dependency graph pass, with uncreated deliverables explicitly inventoried; task-cache validation digest `4298d27510c4726206598590ca50efd51e0aeca49c5605aae9f004697820f1f7`. Task 9101 completes its focused inventory at `efcb4f9e`, with 67 stable effect/configuration/public-surface cases and focused lint/format/diff checks passing; self-review verdict `dfd37ee9a1867119e4c63a048ad58b1030b7db590fe118b95dcee1edff82f9a1`; task 9102 completes at `ed811ab6` with eleven focused outcome tests and self-review verdict `b9a671329f5a8177a34529118e6925015757c21b9a064f5d5371820bd71ac271`; task 9103 is in progress; prior independent preparation remains subject to current task acceptance, and admission/MCP/final acceptance remain incomplete. Full gates run at plan completion.
 
-Focused native admission checkpoint `f8175316` passes thirty-six real
-process/MCP axes on both stable and MSRV: refusal/repair, fairness, unknown
-outcomes, missing arguments, original timeout/reap under writer contention,
-invalid warm/cold retry refusal, positive-backoff boundary and manual-policy
-repair, atomic ack-only settlement, acknowledged recovery and bound-entry
-table/private-argument/receiver/invoked-closure refusal and repair. Root verifies
-the original closures before each independent marker. Cancellation setup confused
-protected binding with contained service launch: memory evidence is written only
-after entry permission, which this case must never consume. The corrected fixture
-requires a Root-owned protected binding before cancellation; its exact original
-claim and journal hash are checked by the independent Root verifier, preserving
-the binding's private permissions. Its original scheduler reservation is retained;
-receiver migration blocks entry without losing the cancellation directive.
-Both toolchains expose a real cleanup defect: cancelling a retired binding helper
-does not close its unlaunched domain. Shared observation now requests exact original
-claim closure for locally cancelled pre-entry owners after transport retirement,
-without acquiring the writer; authenticated interrupted settlement still requires
-the original healthy writer. The physical inventory continues requiring closure
-under contention, exact original settlement and absent launch/entry/service
-artifacts; every launched case retains positive memory verification.
-Forty-one focused bound/ownership/admission/pipeline cases and focused
-lint/format/size/diff checks pass. Frozen verdict
-`e6a34004b052bc35bb7e87cb9654f21ec46e8ae556dcfaddef703a7f33894d50`
-indexes the native failures, fixture corrections and preceding proofs outside the
-repository; the remaining four cancellation axes, native guard sensitivity and plan-end
-gates remain open.
+Focused native admission checkpoint `be50b287` passes all forty genuine
+process/MCP standalone/borrowed axes on stable and MSRV, including refusal/repair,
+fairness, timeout/reap under contention, warm/cold retry, manual repair, atomic
+ack-only settlement, acknowledged recovery, stale bound-entry refusal and original
+bound cancellation. Root authenticates the original closures and exact settlement
+inventory before every marker. Cancelled pre-entry owners now close independently
+of writer access, retaining capacity until authenticated interruption settles;
+the fixture requires actual settlement backpressure before writer release.
+Forty-one focused Rust cases and executor all-target clippy/format/size/diff pass.
+The CI post-verifier rejects the producer's nonliteral inventory; its unchanged
+forty rows are now literal, with a real-source regression and 28 focused
+producer/evidence cases passing. Frozen review
+`d2aae16a923b68a3a7d755b76ab81aad7434c2b42a55f803f4923ff5424b6316`
+indexes physical reports and scoped verdicts outside the repository; corrected
+frozen CI verification, native guard sensitivity and plan-end gates remain open.
+Task 9103 remains in progress.
 
 Bound entry now reuses its freshly reconstructed effect from the same immutable
 writer, removing its duplicate prefix replay while retaining concrete admission
