@@ -493,7 +493,7 @@ fn observe(borrowed: bool, scenario: Scenario) {
         // validate the actual table again under the original healthy writer.
         while runner.local_native_claims().next().is_none() {
             tick(&mut watcher, &mut scheduler, &mut runner, &mut clock);
-            assert!(!resource.join("root-entered").exists());
+            assert_no_entry(&resource);
             assert!(
                 Instant::now() < deadline,
                 "native claim was never published"
@@ -524,10 +524,7 @@ fn observe(borrowed: bool, scenario: Scenario) {
                 2000,
             );
             blocked += usize::from(outcome.writer_unavailable);
-            assert!(
-                !resource.join("root-entered").exists(),
-                "entry occurred under a competing writer"
-            );
+            assert_no_entry(&resource);
             assert_eq!(
                 Store::open_read_only(&store_path).unwrap().records,
                 claimed_records
@@ -579,10 +576,7 @@ fn observe(borrowed: bool, scenario: Scenario) {
             while refusals < 3 {
                 let lines = tick(&mut watcher, &mut scheduler, &mut runner, &mut clock);
                 refusals += usize::from(lines.iter().any(|line| line == code));
-                assert!(
-                    !resource.join("root-entered").exists(),
-                    "stale approval entered a handler"
-                );
+                assert_no_entry(&resource);
                 assert!(!resource.join("root-candidate").exists());
                 assert_eq!(runner.local_native_claims().next(), Some(&original_claim));
                 let current = Store::open_read_only(&store_path).unwrap();
@@ -617,7 +611,7 @@ fn observe(borrowed: bool, scenario: Scenario) {
                     .iter()
                     .any(|line| line == "error exec/contract_invalid"),
             );
-            assert!(!resource.join("root-entered").exists());
+            assert_no_entry(&resource);
             assert!(!resource.join("root-candidate").exists());
             assert_eq!(runner.local_native_claims().next(), Some(&original_claim));
             let current = Store::open_read_only(&store_path).unwrap();
@@ -656,10 +650,7 @@ fn observe(borrowed: bool, scenario: Scenario) {
                     .iter()
                     .any(|line| line == "error exec/contract_invalid"),
             );
-            assert!(
-                !resource.join("root-entered").exists(),
-                "stale receiver approval entered a handler"
-            );
+            assert_no_entry(&resource);
             assert!(!resource.join("root-candidate").exists());
             assert_eq!(runner.local_native_claims().next(), Some(&original_claim));
             let current = Store::open_read_only(&store_path).unwrap();
@@ -799,6 +790,25 @@ fn observe(borrowed: bool, scenario: Scenario) {
         fsm_store::journal_io::verify(&store_path).health,
         fsm_store::journal_io::JournalHealth::Ok
     );
+}
+
+fn assert_no_entry(resource: &std::path::Path) {
+    // The Root coordinator preallocates these PID slots so DynamicUser cleanup
+    // cannot unlink the independent observations; only nonempty slots show entry.
+    for role in ["root", "child", "grandchild"] {
+        let marker = format!("{role}-entered");
+        let observed = fs::read(resource.join(&marker)).unwrap();
+        assert!(
+            observed.is_empty(),
+            "refused generation entered original handler: {marker}"
+        );
+    }
+    for marker in ["root-candidate", "root-published"] {
+        assert!(
+            !resource.join(marker).try_exists().unwrap(),
+            "refused generation entered original handler: {marker}"
+        );
+    }
 }
 
 // Only the initial dispatch borrows a writer; while another caller owns it,

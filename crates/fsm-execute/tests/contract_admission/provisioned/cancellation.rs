@@ -168,22 +168,3 @@ pub(super) fn observe(
         fsm_store::journal_io::JournalHealth::Ok
     );
 }
-
-fn assert_no_entry(resource: &std::path::Path) {
-    // The Root coordinator preallocates these PID slots so DynamicUser cleanup
-    // cannot unlink the independent observations; only nonempty slots show entry.
-    for role in ["root", "child", "grandchild"] {
-        let marker = format!("{role}-entered");
-        let observed = fs::read(resource.join(&marker)).unwrap();
-        assert!(
-            observed.is_empty(),
-            "cancelled generation entered original handler: {marker}"
-        );
-    }
-    for marker in ["root-candidate", "root-published"] {
-        assert!(
-            !resource.join(marker).try_exists().unwrap(),
-            "cancelled generation entered original handler: {marker}"
-        );
-    }
-}
