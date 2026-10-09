@@ -27,6 +27,7 @@ touches:
   - crates/fsm-cli/tests/fixtures/mcp_affordance/session.expected
   - crates/fsm-cli/tests/fixtures/audit/session.expected
   - crates/fsm-cli/src/http/endpoint.rs
+  - crates/fsm-cli/src/http/endpoint/streaming.rs
   - crates/fsm-cli/src/http/endpoint/retirement_tests.rs
   - crates/fsm-cli/src/http/writer.rs
   - crates/fsm-cli/src/http/session.rs
@@ -151,3 +152,18 @@ Focused startup acceptance:
   guard fails its named case, and restoring it passes. CLI all-target clippy
   and format/size/diff checks pass; asynchronous POST and the remaining native/
   admission acceptance are still required before this task can land.
+- Production streamed POST now gives the existing bounded complete-frame
+  queue an owned socket, delivering elicitation and progress during dispatch;
+  borrowed endpoint calls keep their original synchronous clocks and output.
+  A real writer-mode binary emits the question ID to the actual client, accepts
+  its later answer on another connection, and lets a second session read and
+  advance the workflow while the question remains unanswered. Events retain
+  ordered IDs and EOF delimits the final answer; the journal verifies. Disabling
+  only early output makes this case fail on its bounded read; restoration passes.
+  Forty-six focused HTTP and seven output-queue cases, CLI all-target clippy and
+  format/size/diff checks pass. Queue allocation includes in-flight frames;
+  failure/unwind closes admission and wakes the socket without joining I/O.
+  Original-session failure retirement does not stop the shared executor.
+  Genuine native success/retry/compensation, cancellation during unanswered
+  elicitation, and real HTTP count/byte saturation still require acceptance;
+  this task stays in progress and plan-end gates remain due.

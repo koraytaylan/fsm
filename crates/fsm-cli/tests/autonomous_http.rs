@@ -11,6 +11,25 @@ use std::{
     time::{Duration, Instant},
 };
 
+fn test_cache_root() -> PathBuf {
+    let root = std::env::var_os("TMPDIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            PathBuf::from(
+                std::env::var_os("HOME")
+                    .or_else(|| std::env::var_os("USERPROFILE"))
+                    .expect("a home directory must name the test cache"),
+            )
+            .join(".cache/fsm-http-tests")
+        });
+    assert!(
+        root.is_absolute() && !root.starts_with("/tmp"),
+        "test cache cannot use /tmp"
+    );
+    fs::create_dir_all(&root).unwrap();
+    root
+}
+
 const MACHINE: &str = r#"{"format":"fsm.machine/1","name":"http_fallback","context":[],"events":[{"name":"finish","fields":[]}],"effects":[{"name":"notify","fields":[]}],"states":[{"name":"waiting","entry":{"emit":[{"effect":"notify","args":{}}]}},{"name":"done","terminal":true}],"initial":"waiting","transitions":[{"from":"waiting","on":"finish","to":"done"}]}"#;
 fn value(text: &str) -> Value {
     parse(text.as_bytes(), &JsonLimits::DEFAULT).unwrap()
@@ -212,7 +231,7 @@ impl Client {
 #[test]
 fn production_http_native_deadline_advances_with_zero_sessions_and_stops_through_original_control()
 {
-    let directory = std::env::temp_dir().join(format!("fsm-http-deadline-{}", std::process::id()));
+    let directory = test_cache_root().join(format!("fsm-http-deadline-{}", std::process::id()));
     fs::create_dir(&directory).unwrap();
     drop(Store::open(&directory).unwrap());
     let mut client = Client::start_mode(directory.clone(), Mode::EmbeddedDeadlines);
@@ -396,7 +415,7 @@ fn production_http_writer_shares_committed_results_and_idempotency_across_sessio
 }
 fn seeded(name: &str) -> (PathBuf, Store) {
     let directory =
-        std::env::temp_dir().join(format!("fsm-http-fallback-{}-{name}", std::process::id()));
+        test_cache_root().join(format!("fsm-http-fallback-{}-{name}", std::process::id()));
     fs::create_dir(&directory).unwrap();
     let mut store = Store::open(&directory).unwrap();
     let mut clock = fsm_cli::clock::FixedClock::new(1000, 0);
@@ -510,4 +529,84 @@ fn production_http_damaged_journal_serves_diagnosis_without_starting_handlers() 
     );
     assert!(!directory.join("handler-started").exists());
     assert_eq!(fs::read(segment).unwrap(), original);
+}
+
+fn streaming_post(address: SocketAddr, session: Option<&str>, body: &str) -> TcpStream {
+    let mut socket = TcpStream::connect(address).unwrap();
+    socket
+        .set_read_timeout(Some(Duration::from_secs(3)))
+        .unwrap();
+    socket
+        .set_write_timeout(Some(Duration::from_secs(3)))
+        .unwrap();
+    write!(socket, "POST /mcp HTTP/1.1\r\nHost: {address}\r\nOrigin: http://{address}\r\nConnection: close\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\nContent-Length: {}\r\n", body.len()).unwrap();
+    if let Some(session) = session {
+        write!(socket, "Mcp-Session-Id: {session}\r\n").unwrap();
+    }
+    write!(socket, "\r\n{body}").unwrap();
+    socket.shutdown(std::net::Shutdown::Write).unwrap();
+    socket
+}
+
+#[test]
+fn production_http_emits_the_live_question_and_keeps_other_sessions_responsive() {
+    use std::io::BufRead;
+    let (directory, store) = seeded("live-question");
+    drop(store);
+    let mut client = Client::start_mode(directory.clone(), Mode::Writer);
+    client.post(r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{"elicitation":{}}}}"#);
+    let asking_session = client.session.clone().unwrap();
+    let socket = streaming_post(
+        client.address,
+        Some(&asking_session),
+        r#"{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"instance_elicit","arguments":{"instance_id":"instance","event":"finish","request_id":"live-ask"}}}"#,
+    );
+    let mut asking = std::io::BufReader::new(socket);
+    let mut prefix = String::new();
+    let question = loop {
+        let mut line = String::new();
+        assert!(asking.read_line(&mut line).unwrap() > 0, "{prefix}");
+        prefix.push_str(&line);
+        if let Some(data) = line.strip_prefix("data: ") {
+            let event = value(data.trim());
+            if event.get("method").and_then(Value::as_str) == Some("elicitation/create") {
+                break event;
+            }
+        }
+    };
+    assert!(prefix.starts_with("HTTP/1.1 200"), "{prefix}");
+    assert!(prefix.contains("Content-Type: text/event-stream"));
+    let question_id = question.get("id").unwrap().clone();
+    client.session = None;
+    client.initialize();
+    let responsive = Instant::now();
+    client.post(r#"{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"instance_get","arguments":{"instance_id":"instance"}}}"#);
+    let advanced = client.post(r#"{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"instance_send","arguments":{"instance_id":"instance","event":{"name":"finish"},"request_id":"while-unanswered"}}}"#);
+    assert_ne!(
+        advanced.get("result").unwrap().get("isError"),
+        Some(&Value::Bool(true))
+    );
+    assert!(responsive.elapsed() < Duration::from_secs(2));
+    let answer = format!(
+        r#"{{"jsonrpc":"2.0","id":{},"result":{{"action":"decline"}}}}"#,
+        String::from_utf8(fsm_core::canon::canon_bytes(&question_id)).unwrap()
+    );
+    let mut response = String::new();
+    streaming_post(client.address, Some(&asking_session), &answer)
+        .read_to_string(&mut response)
+        .unwrap();
+    assert!(response.starts_with("HTTP/1.1 202"), "{response}");
+    let mut tail = String::new();
+    asking.read_to_string(&mut tail).unwrap();
+    assert!(tail.contains("\"id\":7"), "{tail}");
+    let ids: Vec<u64> = prefix
+        .lines()
+        .chain(tail.lines())
+        .filter_map(|line| line.strip_prefix("id: ").and_then(|id| id.parse().ok()))
+        .collect();
+    assert_eq!(ids, (1..=ids.len() as u64).collect::<Vec<_>>());
+    assert_eq!(
+        fsm_cli::journal_io::verify(&directory).health,
+        fsm_cli::journal_io::JournalHealth::Ok
+    );
 }

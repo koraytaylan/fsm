@@ -67,6 +67,15 @@ pub trait Handler: Send + Sync {
         input: &mut dyn std::io::BufRead,
         output: &mut dyn Write,
     ) -> std::io::Result<Flow>;
+
+    /// Production socket ownership permits bounded asynchronous response output.
+    fn handle_socket(
+        &self,
+        input: &mut dyn std::io::BufRead,
+        mut output: TcpStream,
+    ) -> std::io::Result<Flow> {
+        self.handle(input, &mut output)
+    }
 }
 
 /// A bound listener, and the address it actually got.
@@ -241,7 +250,10 @@ fn serve_connection(socket: TcpStream, handler: &dyn Handler, stop: &AtomicBool)
         // the same window as a silent new one, rather than living forever
         // because it once said something.
         let _ = input.get_ref().set_read_timeout(Some(IO_TIMEOUT));
-        match handler.handle(&mut input, &mut output) {
+        let Ok(owned_output) = output.try_clone() else {
+            return;
+        };
+        match handler.handle_socket(&mut input, owned_output) {
             Ok(Flow::KeepAlive) => {}
             // A write to a socket the peer reset is that connection ending,
             // not the server failing.

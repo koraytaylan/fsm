@@ -1,5 +1,13 @@
 # Embedding fsm as a library
 
+Production HTTP streamed POST now delivers progress and elicitation frames
+while the request runs, through a socket worker bounded to 256 frames and 8 MiB
+of retained/in-flight allocation per POST; serialization temporaries are separate.
+A question can be answered on a second connection before the original call ends.
+Output failure retires its session, and final output drains for at most two
+seconds before the socket is closed; the shared executor remains running.
+Borrowed endpoint calls preserve synchronous output and caller-supplied clocks.
+
 SSE replay retains at most 256 events and 1 MiB of payload, including a single
 oversized event. A line writer refuses payload beyond 1 MiB and stays failed;
 exactly 1 MiB is accepted. Direct recording of an oversized sent event keeps

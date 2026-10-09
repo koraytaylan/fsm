@@ -37,6 +37,9 @@ pub const ALLOWED_METHODS: &str = "POST, GET, DELETE";
 #[path = "endpoint/retirement_tests.rs"]
 mod retirement_tests;
 
+#[path = "endpoint/streaming.rs"]
+mod streaming;
+
 /// One server's endpoint: the store every session shares, the sessions
 /// themselves, and the protocol state each of them keeps.
 pub struct Endpoint {
@@ -235,11 +238,21 @@ impl Endpoint {
         clock: &mut dyn Clock,
         out: &mut dyn Write,
     ) -> std::io::Result<()> {
+        self.serve_with_output(request, clock, out, None)
+    }
+
+    fn serve_with_output(
+        &self,
+        request: &Request,
+        clock: &mut dyn Clock,
+        out: &mut dyn Write,
+        streaming_output: Option<&Notifier>,
+    ) -> std::io::Result<()> {
         if request.path != self.path {
             return write_response(out, &Response::error(404));
         }
         match request.method.as_str() {
-            "POST" => self.post(request, clock, out),
+            "POST" => self.post(request, clock, out, streaming_output),
             // `7003` fills the stream in; until then the method is routed
             // and answered rather than silently unhandled.
             "GET" => self.stream(request, clock, out),
@@ -264,6 +277,7 @@ impl Endpoint {
         request: &Request,
         clock: &mut dyn Clock,
         out: &mut dyn Write,
+        streaming_output: Option<&Notifier>,
     ) -> std::io::Result<()> {
         let body = String::from_utf8_lossy(&request.body).to_string();
         let message = match parse_line(body.trim()) {
@@ -326,7 +340,7 @@ impl Endpoint {
                 write_response(out, &Response::text(status, ""))
             }
             Incoming::Request { id, method, params } => {
-                self.request(request, clock, out, id, &method, params)
+                self.request(request, clock, out, (id, &method, params), streaming_output)
             }
         }
     }
@@ -337,10 +351,10 @@ impl Endpoint {
         http: &Request,
         clock: &mut dyn Clock,
         out: &mut dyn Write,
-        id: Value,
-        method: &str,
-        params: Option<Value>,
+        call: (Value, &str, Option<Value>),
+        streaming_output: Option<&Notifier>,
     ) -> std::io::Result<()> {
+        let (id, method, params) = call;
         let now_ms = clock.now_ms();
         // `initialize` mints the session; everything else must name one.
         let session_id = if method == "initialize" {
@@ -395,7 +409,12 @@ impl Endpoint {
             }
         };
         let sink = SharedSink::new();
-        let notifier = Notifier::new(Box::new(sink.writer()));
+        let notifier = if streaming {
+            streaming_output.map(Notifier::clone_handle)
+        } else {
+            None
+        }
+        .unwrap_or_else(|| Notifier::new(Box::new(sink.writer())));
         // Anything that outlives this request — the change feed a
         // `resources/subscribe` starts — writes into the session's stream
         // instead, because `sink` is this POST's body and stops being read
@@ -439,6 +458,13 @@ impl Endpoint {
             }
         }
 
+        if streaming && streaming_output.is_some() {
+            if notifier.is_broken() {
+                self.sessions.close(&session_id);
+                return Err(std::io::ErrorKind::BrokenPipe.into());
+            }
+            return Ok(());
+        }
         let written = sink.text();
         if written.is_empty()
             && let Some(hosted) = &state.hosted
@@ -776,11 +802,12 @@ impl EndpointHandler {
     }
 }
 
-impl super::server::Handler for EndpointHandler {
-    fn handle(
+impl EndpointHandler {
+    fn handle_transport(
         &self,
         input: &mut dyn std::io::BufRead,
         output: &mut dyn Write,
+        socket: Option<std::net::TcpStream>,
     ) -> std::io::Result<super::server::Flow> {
         let head = match super::request::read_head(input) {
             // The client closed the connection between requests, which is
@@ -816,7 +843,33 @@ impl super::server::Handler for EndpointHandler {
             body,
         };
         let mut clock = crate::clock::SystemClock;
+        if let Some(socket) = socket
+            && request.method == "POST"
+            && matches!(parse_line(String::from_utf8_lossy(&request.body).trim()),
+                Ok(Incoming::Request { ref method, ref params, .. }) if speaks_first(method, params.as_ref()))
+        {
+            return self.stream_post(&request, &mut clock, output, socket);
+        }
         self.endpoint.serve(&request, &mut clock, output)?;
         Ok(super::server::Flow::KeepAlive)
+    }
+}
+
+impl super::server::Handler for EndpointHandler {
+    fn handle(
+        &self,
+        input: &mut dyn std::io::BufRead,
+        output: &mut dyn Write,
+    ) -> std::io::Result<super::server::Flow> {
+        self.handle_transport(input, output, None)
+    }
+
+    fn handle_socket(
+        &self,
+        input: &mut dyn std::io::BufRead,
+        mut output: std::net::TcpStream,
+    ) -> std::io::Result<super::server::Flow> {
+        let owned = output.try_clone()?;
+        self.handle_transport(input, &mut output, Some(owned))
     }
 }

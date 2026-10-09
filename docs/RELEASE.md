@@ -1,5 +1,10 @@
 # Releasing
 
+Production HTTP POST streams now deliver questions before dispatch returns,
+with bounded socket-worker output and session-local failure retirement; borrowed
+endpoint helpers remain synchronous. Remaining native and saturation acceptance
+is still required before task 9002 completion.
+
 HTTP SSE now enforces the replay byte ceiling for individual events, refuses
 oversized partial line frames without emitting suffix events, and closes live
 delivery on replay gaps; asynchronous POST delivery remains pending in 9002.

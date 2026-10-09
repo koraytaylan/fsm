@@ -3590,6 +3590,18 @@ bounded asynchronous HTTP egress acceptance remain separately required.
 Unsupported production embedded HTTP MUST refuse before opening the store or
 binding rather than silently serving a manual writer for `--execute`.
 
+Production HTTP streaming POST MUST enqueue complete protocol frames to an
+owned socket worker while dispatch is still running, so an elicitation request
+can be observed and answered before its parent call returns. Each POST queue
+MUST bound retained and in-flight allocation to 256 frames and 8 MiB, with
+nonblocking admission; serialization temporaries are outside this allocation
+budget. Socket failure or queue refusal MUST retire only the original session,
+never the shared executor. Completed POST output MUST close admission and
+observe drainage within two seconds, waking the original socket on failure
+without joining blocked I/O. Pre-stream validation and admission refusals MUST
+retain their HTTP statuses; EOF MUST delimit a completed streamed POST body.
+Borrowed synchronous endpoint callers retain their caller-clock behavior.
+
 HTTP SSE replay MUST retain at most 256 events and 1 MiB of payload bytes,
 including when one event alone exceeds the byte bound. Direct recording of an
 oversized sent event MUST advance its ID without retaining its payload, evict

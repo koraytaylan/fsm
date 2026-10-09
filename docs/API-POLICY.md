@@ -1,5 +1,10 @@
 # API and version policy
 
+The HTTP Handler trait gains a default handle_socket adapter for owned output;
+existing handle implementations remain usable. Production streamed POST uses
+the existing bounded output queue and I/O errors, with no new wire discriminator,
+journal bytes, hashes, error codes or version changes.
+
 Private SSE bound enforcement retains public signatures, event IDs and existing
 resume refusals; an oversized line writer reports an I/O InvalidData error.
 No journal bytes, hashes, error-code strings or versions change.
