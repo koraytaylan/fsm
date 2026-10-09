@@ -92,4 +92,14 @@ standalone/embedded and process/MCP, with five recovery source files unchanged
 from verified `66c785ba`; continuity review digest
 `06eb4326bbaff259756e6d9e230eb63d29f6e0def3f2c10d0d3bd77bd3518983`.
 This preserves prior recovery evidence, but does not verify the changed worker
-capacity path or the newly wired six-case completion inventory at this checkpoint.
+capacity path or the completion inventory added after that checkpoint.
+
+Review of frozen `465c248a..3ae5b2fa` confirms that successor helpers reuse
+an original reservation only after predecessor retirement, proof verification
+shares that reservation, and the retained run survives writer refusal until
+owner settlement. The ten-case CI inventory now includes both handler kinds
+for durable capacity and backpressure. Its evidence verifier rejects missing
+cases and omitted or rebound private owner artifacts; 27 mocked tests pass.
+This is preliminary source/fixture review: new native runtime cases and the
+full current matrix are unexecuted, and the original generation and blocked
+reaping/output acceptance requirements remain open.

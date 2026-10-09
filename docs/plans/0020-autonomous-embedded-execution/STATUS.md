@@ -23,13 +23,15 @@ on both stable and MSRV in
 [CI 37863129424](https://github.com/koraytaylan/fsm/actions/runs/37863129424).
 Independent retained-artifact verdict:
 `568c9272b2fafe095aedb1b439b0bd33f41d0fb95b16ffe42e68d25f129250d7`.
-The public/private four-case CI wiring lands at `e86ad092` with independent
-evidence fault checks at `5f42f0da`; native execution remains unverified.
-Review found pre-dispatch capacity refusal stranding queued admission as unknown;
-`631e7496` preserves the queue, with a load-bearing 0/101/0 regression and focused
-clippy. This local reservation proof does not establish durable capacity or
-settlement acceptance; generation, recovery and full-gate requirements remain
-incomplete, so 8902 retains no landing OID.
+Frozen completion checkpoint `465c248a..3ae5b2fa` wires ten process/MCP cases:
+private owner responsiveness, public held polling, duplicate settlement,
+writer refusal and durable capacity exhaustion. Review confirms shared
+reservation ownership across helper phases and retention until settlement;
+27 mocked artifact/evidence tests and focused all-target clippy pass.
+Pre-dispatch capacity refusal now stays queued (`631e7496`, load-bearing
+0/101/0 regression). New native cases and the current full matrix remain
+unexecuted; stale-generation and worker reaping/output acceptance still need
+production-level evidence, so 8902 retains no landing OID.
 
 Historical STATUS evidence is retained outside the repository in the task-cache
 plan-status-archives directory, addressed by SHA-256:
