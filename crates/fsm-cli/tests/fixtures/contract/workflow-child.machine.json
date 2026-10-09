@@ -1,0 +1,29 @@
+{
+  "format": "fsm.machine/1",
+  "name": "precondition_child",
+  "context": [],
+  "events": [
+    {
+      "name": "release",
+      "fields": []
+    }
+  ],
+  "effects": [],
+  "states": [
+    {
+      "name": "waiting"
+    },
+    {
+      "name": "completed",
+      "terminal": true
+    }
+  ],
+  "initial": "waiting",
+  "transitions": [
+    {
+      "from": "waiting",
+      "on": "release",
+      "to": "completed"
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "format": "fsm.executor-check/1",
+  "status": "compatible",
+  "machine_id": "$MACHINE_ID",
+  "contract_id": "4a83853cdf9f20f2b78e8ec9f17d4e9f056f34dff6af0e3048f12b4b4398323d",
+  "definitions": [
+    "$MACHINE_ID"
+  ],
+  "scope": {
+    "effects_checked": true,
+    "outcomes_checked": true,
+    "dynamic_signals": false
+  },
+  "findings": [],
+  "effects": [
+    {
+      "machine_id": "$MACHINE_ID",
+      "path": "/states/0/entry/emit/0",
+      "effect": "inspect",
+      "arguments": {
+        "resource": "str"
+      },
+      "disposition": "manual",
+      "required_args": [],
+      "outcomes": {}
+    },
+    {
+      "machine_id": "$MACHINE_ID",
+      "path": "/states/1/entry/emit/0",
+      "effect": "work",
+      "arguments": {
+        "resource": "str"
+      },
+      "disposition": "manual",
+      "required_args": [],
+      "outcomes": {}
+    },
+    {
+      "machine_id": "$MACHINE_ID",
+      "path": "/states/2/entry/emit/0",
+      "effect": "recover",
+      "arguments": {
+        "resource": "str"
+      },
+      "disposition": "manual",
+      "required_args": [],
+      "outcomes": {}
+    }
+  ],
+  "progress": [
+    "manual"
+  ]
+}

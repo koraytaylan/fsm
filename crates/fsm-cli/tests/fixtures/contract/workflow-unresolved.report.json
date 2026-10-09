@@ -1,0 +1,80 @@
+{
+  "format": "fsm.executor-check/1",
+  "status": "unknown",
+  "machine_id": "$MACHINE_ID",
+  "contract_id": "c6cc46d49a07f288a44faa9a9d8a4834ea0d67c5f3de4e9ea694c1104dad7931",
+  "definitions": [
+    "$MACHINE_ID"
+  ],
+  "scope": {
+    "effects_checked": true,
+    "outcomes_checked": true,
+    "dynamic_signals": false
+  },
+  "findings": [
+    {
+      "code": "exec/contract_definition_unknown",
+      "severity": "unknown",
+      "machine_id": "$MACHINE_ID",
+      "path": "/states/0/invoke/0/machine",
+      "effect": null,
+      "outcome": null,
+      "message": "a static invocation has no matching supplied definition",
+      "hint": "supply the content-addressed child definition before checking execution",
+      "cause": null
+    }
+  ],
+  "effects": [
+    {
+      "machine_id": "$MACHINE_ID",
+      "path": "/states/0/entry/emit/0",
+      "effect": "inspect",
+      "arguments": {
+        "resource": "str"
+      },
+      "disposition": "automatic",
+      "required_args": [
+        "resource"
+      ],
+      "outcomes": {
+        "on_ok": "compatible",
+        "on_failed": "compatible"
+      }
+    },
+    {
+      "machine_id": "$MACHINE_ID",
+      "path": "/states/1/entry/emit/0",
+      "effect": "work",
+      "arguments": {
+        "resource": "str"
+      },
+      "disposition": "automatic",
+      "required_args": [
+        "resource"
+      ],
+      "outcomes": {
+        "on_ok": "compatible",
+        "on_failed": "compatible"
+      }
+    },
+    {
+      "machine_id": "$MACHINE_ID",
+      "path": "/states/2/entry/emit/0",
+      "effect": "recover",
+      "arguments": {
+        "resource": "str"
+      },
+      "disposition": "automatic",
+      "required_args": [
+        "resource"
+      ],
+      "outcomes": {
+        "on_ok": "compatible",
+        "on_failed": "compatible"
+      }
+    }
+  ],
+  "progress": [
+    "runtime-dependent"
+  ]
+}

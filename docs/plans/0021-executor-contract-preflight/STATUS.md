@@ -83,6 +83,17 @@ the genuine native case remains ignored locally and unexecuted. Frozen review
 digest `314b7a451cf586eca53de2a358bf938d299009729e0bf4e497ca9a5192765496`
 indexes the preceding MCP verdict; task 9202 and plan-end acceptance remain open.
 
+Cross-surface acceptance preparation adds independently specified staged
+precondition/work/recovery fixtures and full reports. Four focused tests pass
+28 real offline/stored CLI and original embedded MCP report checks, including
+canonical CLI bytes, manual/no-outcome distinctions, unknown stamp evidence,
+complete-catalogue resolution, unchanged stores and successful host shutdown.
+CLI all-target clippy and format/size checks pass; focused review digest
+`8d3dc079884c171730354ba506e329004fde1bfdf20db84999d1dff08b9c7e5a`.
+Task 9203 stays planned behind its dependencies; native side-effect acceptance,
+ordered completion, stale-report bypass, operator examples and plan-end gates
+remain outstanding.
+
 Manual Phase R binds the six-task bundle to validation base `15172d8298f271abfd0bd1d5b47617d1108ceefc` after plans 0022 and 0020 complete: closed frontmatter, repository-relative footprints and the acyclic local dependency graph pass, with uncreated deliverables explicitly inventoried; task-cache validation digest `4298d27510c4726206598590ca50efd51e0aeca49c5605aae9f004697820f1f7`. Task 9101 completes its focused inventory at `efcb4f9e`, with 67 stable effect/configuration/public-surface cases and focused lint/format/diff checks passing; self-review verdict `dfd37ee9a1867119e4c63a048ad58b1030b7db590fe118b95dcee1edff82f9a1`; task 9102 completes at `ed811ab6` with eleven focused outcome tests and self-review verdict `b9a671329f5a8177a34529118e6925015757c21b9a064f5d5371820bd71ac271`; task 9103 is in progress; prior independent preparation remains subject to current task acceptance, and admission/MCP/final acceptance remain incomplete. Full gates run at plan completion.
 
 Historical STATUS evidence is retained outside the repository in the task-cache

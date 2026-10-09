@@ -1,0 +1,115 @@
+{
+  "format": "fsm.machine/1",
+  "name": "contract_workflow",
+  "context": [],
+  "events": [
+    {
+      "name": "ready",
+      "fields": []
+    },
+    {
+      "name": "done",
+      "fields": []
+    },
+    {
+      "name": "restored",
+      "fields": []
+    },
+    {
+      "name": "failed",
+      "fields": []
+    }
+  ],
+  "effects": [
+    {
+      "name": "inspect",
+      "fields": []
+    },
+    {
+      "name": "work",
+      "fields": []
+    },
+    {
+      "name": "recover",
+      "fields": []
+    }
+  ],
+  "states": [
+    {
+      "name": "preconditions",
+      "entry": {
+        "emit": [
+          {
+            "effect": "inspect",
+            "args": {
+              "resource": "\"target\""
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "working",
+      "entry": {
+        "emit": [
+          {
+            "effect": "work",
+            "args": {
+              "resource": "\"target\""
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "recovering",
+      "entry": {
+        "emit": [
+          {
+            "effect": "recover",
+            "args": {
+              "resource": "\"target\""
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "completed",
+      "terminal": true
+    }
+  ],
+  "initial": "preconditions",
+  "transitions": [
+    {
+      "from": "preconditions",
+      "on": "ready",
+      "to": "working"
+    },
+    {
+      "from": "preconditions",
+      "on": "failed",
+      "to": "completed"
+    },
+    {
+      "from": "working",
+      "on": "done",
+      "to": "completed"
+    },
+    {
+      "from": "working",
+      "on": "failed",
+      "to": "recovering"
+    },
+    {
+      "from": "recovering",
+      "on": "restored",
+      "to": "completed"
+    },
+    {
+      "from": "recovering",
+      "on": "failed",
+      "to": "completed"
+    }
+  ]
+}

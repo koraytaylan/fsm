@@ -1,0 +1,76 @@
+{
+  "format": "fsm.handlers/1",
+  "max_inflight": 1,
+  "max_inflight_per_instance": 1,
+  "handlers": [
+    {
+      "effect": "inspect",
+      "argv": [
+        "/PRIVATE_WORKFLOW_EXECUTABLE",
+        "inspect",
+        "{resource}"
+      ],
+      "timeout_ms": 1000,
+      "retry": {
+        "attempts": 1,
+        "backoff_ms": 1000,
+        "max_backoff_ms": 60000,
+        "on": [
+          "timeout"
+        ]
+      },
+      "on_ok": {
+        "event": "ready"
+      },
+      "on_failed": {
+        "event": "failed"
+      }
+    },
+    {
+      "effect": "work",
+      "argv": [
+        "/PRIVATE_WORKFLOW_EXECUTABLE",
+        "work",
+        "{resource}"
+      ],
+      "timeout_ms": 1000,
+      "retry": {
+        "attempts": 1,
+        "backoff_ms": 1000,
+        "max_backoff_ms": 60000,
+        "on": [
+          "timeout"
+        ]
+      },
+      "on_ok": {
+        "event": "done"
+      },
+      "on_failed": {
+        "event": "failed"
+      }
+    },
+    {
+      "effect": "recover",
+      "argv": [
+        "/PRIVATE_WORKFLOW_EXECUTABLE",
+        "recover",
+        "{resource}"
+      ],
+      "timeout_ms": 1000,
+      "retry": {
+        "attempts": 1,
+        "backoff_ms": 1000,
+        "max_backoff_ms": 60000,
+        "on": [
+          "timeout"
+        ]
+      },
+      "on_ok": {
+        "event": "restored"
+      },
+      "on_failed": {
+        "event": "failed"
+      }
+    }
+  ]
+}

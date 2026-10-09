@@ -1,0 +1,11 @@
+{
+  "format": "fsm.handlers/1",
+  "max_inflight": 1,
+  "max_inflight_per_instance": 1,
+  "handlers": [],
+  "manual_effects": [
+    "inspect",
+    "recover",
+    "work"
+  ]
+}
