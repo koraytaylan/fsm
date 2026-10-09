@@ -9,10 +9,10 @@ Task frontmatter is authoritative; the coordinator owns registration and complet
 | [autonomous-host-scheduling](tasks/8903-autonomous-host-scheduling.md) | done | 6666a55b57a47bd2568bc5113231f76d7a0fdea6 |
 | [bounded-session-channels](tasks/8904-bounded-session-channels.md) | done | 25129d2dd238f717e9b2e4ec2e0c148fa4633c13 |
 | [autonomous-stdio-transport](tasks/9001-autonomous-stdio-transport.md) | done | 6cf1df2be0c2649191c786c2885e7e1f1b1fa2e9 |
-| [autonomous-http-transport](tasks/9002-autonomous-http-transport.md) | in_progress | — |
+| [autonomous-http-transport](tasks/9002-autonomous-http-transport.md) | done | 32dc871170b3402c091a62274cfa88efe1cbc05e |
 | [autonomous-execution-contract](tasks/9003-autonomous-execution-contract.md) | planned | — |
 
-Progress: 5/7 tasks completed.
+Progress: 6/7 tasks completed.
 
 Frozen 26c68220 closes 8901's written ownership inventory: all six stable/MSRV portable gates and both native jobs pass, with named debug/release ownership cases, verified 82-case containment matrices and twelve production workflow scenarios per toolchain. The independent frozen review has task-cache digest `24b207c7e2fd741f7d298a80c329778fad60d3c374787e5633a6300a18b16cc4`. Completion covers the owned command boundary; sibling completion, scheduling, channel and transport inventories remain separate. Plan 0022 separately completes its lifecycle inventory at `66c785ba`; final transport integration still requires plan 0020's own written acceptance.
 
@@ -74,15 +74,20 @@ independent reviewer, executable byte comparison or fresh full/platform gate
 is claimed. Full gates remain due at plan completion; HTTP and final contract
 inventories remain separate and incomplete.
 
-Frozen HTTP checkpoint `6cf1df2b..80c1c34a` passes 102 focused HTTP cases,
-CLI all-target clippy and format/size/diff checks; its corrected native DELETE
-case preserves the original active handler tree, completes once during the
-zero-session interval and retires the original owner and authority cleanly in
-[CI 37963113671](https://github.com/koraytaylan/fsm/actions/runs/37963113671).
-Verified source-bound report digest:
-`e3aa5143844db1753ddeb9b4aa1cf9ebd3a11e7750c123c94213f55e1b44602c`.
-This is a focused milestone, not task closure or an independent verdict;
-concurrent host admission acceptance and plan-end integration gates remain due.
+Frozen `6cf1df2b..32dc8711` closes 9002's focused HTTP inventory: 103 HTTP
+cases, CLI all-target clippy and format/size/diff checks pass, including exact
+32/33 command refusal, byte pressure, unchanged refused journal/request IDs,
+same-session reads beside unanswered questions and cancellation reclamation.
+Four final-source native scenarios pass in
+[workflow CI](https://github.com/koraytaylan/fsm/actions/runs/37964394147) and
+[active DELETE CI](https://github.com/koraytaylan/fsm/actions/runs/37964421239),
+with quiet success/retry/compensation, original-tree survival, zero-session
+completion, original-owner exit and authority/staging retirement verified.
+Self-review verdict digest:
+`7af50075bf68db37fc2c6c48f90649876e2022533702a708b625c9dc73652ee8`.
+Native scope remains Linux/systemd stable; no independent review, executable
+byte comparison or fresh full/platform gate is claimed. Task 9003 remains
+incomplete and full integration gates remain due at plan completion.
 
 Historical STATUS evidence is retained outside the repository in the task-cache
 plan-status-archives directory, addressed by SHA-256:

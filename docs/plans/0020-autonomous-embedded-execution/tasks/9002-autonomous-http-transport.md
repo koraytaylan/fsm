@@ -9,6 +9,7 @@ gated: false
 touches:
   - crates/fsm-cli/tests/mcp_execute_workflow.rs
   - crates/fsm-cli/tests/workflow_http/mod.rs
+  - crates/fsm-cli/tests/workflow_race/mod.rs
   - crates/fsm-cli/tests/workflow_stdio/mod.rs
   - crates/fsm-execute/src/containment/workflow_native_tests.rs
   - crates/fsm-execute/tests/lifecycle_platform/workflow_probe.py
@@ -52,8 +53,8 @@ touches:
   - docs/EMBEDDING.md
   - docs/API-POLICY.md
   - docs/RELEASE.md
-status: in_progress
-merged_as: ""
+status: done
+merged_as: "32dc871170b3402c091a62274cfa88efe1cbc05e"
 ---
 # Autonomous HTTP Transport
 
@@ -291,3 +292,15 @@ Focused startup acceptance:
   The integrated focused checkpoint passes 103 HTTP cases, CLI all-target
   clippy and format/size/diff checks; native acceptance must be revalidated
   against the final same-session dispatch repair before focused task closure.
+- Frozen `6cf1df2b..32dc8711` closes the original focused HTTP inventory:
+  all four provisioned success/retry/compensation/active-handler DELETE scenarios
+  pass on the final dispatch source, with verified clean-source reports,
+  log/transcript digests, actual original-owner exit, writer reopening and
+  authority/staging retirement. The 103 focused HTTP cases cover deadline
+  progress, expiry, modes, security, replay, live questions, cancellation and
+  exact global count refusal with unchanged journal/request-ID state.
+  Self-review found no further task-scope defect; task-cache verdict digest:
+  `7af50075bf68db37fc2c6c48f90649876e2022533702a708b625c9dc73652ee8`.
+  Native scope is Linux/systemd stable; no independent reviewer, executable-byte
+  comparison or fresh full/platform gate is claimed. Full integration gates
+  remain due at plan completion; task 9003 owns final public-contract alignment.
