@@ -13,41 +13,18 @@ Task frontmatter is authoritative; the coordinator owns registration and complet
 
 Progress: 2/6 tasks completed.
 
-Admission latest focused range `b373a453..4cac61bb` passes nine contract/service
-cases, 25 mocked producer/verifier cases, feature-enabled executor clippy and
-format/size checks, including unknown-refusal guard sensitivity; self-review
-digest `c9f789207e48c7c0714449a06e13a8d070c6322abf7cf5c31f3b2a4f5e025962`.
-This cache verdict indexes preceding guard, writer, cache and fairness reviews
-and the archived detailed STATUS; those reviews retain their original scopes.
-The current native inventory has sixteen unexecuted process/MCP axes and eight
-protected Rust cases ignored locally; complete task 9103 acceptance and plan-end
-gates remain outstanding, with journal-prefix reconstruction cost documented.
-
-Recovery range `49e2c0c4..64ba1e25` verifies both production service writer
-entries refuse an incompatible acknowledged outcome without mutation, then
-repair and advance exactly once without selecting the acknowledged handler.
-Ten admission and fifteen pipeline cases, executor feature-enabled all-target
-clippy and format/size/diff checks pass; removing only the outcome guard makes
-the named recovery case fail, and restored suites pass. Frozen verdict
-`fdbaff3bd6b77b65c3a5335ebf6e2b19b657c533dd5e702e3c98419ef92ba9d3`
-indexes the prior admission review; six provisioned cases remain ignored, and
-unprovisioned recovery routing does not establish native side-effect acceptance.
-
-Migration range `ad380abe..f2d81c29` exercises warmed service evidence through
-both writer entries after receiver/context migration: incompatible outcomes
-refuse without mutation, historical pending arguments survive, and corrected
-configuration restores eligibility. Eleven admission and nine historical-effect
-cases, executor feature-enabled all-target clippy and format/size/diff checks
-pass; frozen review `34d1d6c54e2da29ec54357ff1e2758d5d4a106e8a879cb63bab71566546c6a6a`
-indexes the recovery verdict; genuine native acceptance and task closure remain open.
-
-Native argument preparation `607601d4..613a9d22` adds required-placeholder
-refusal/repair for both writer entries and handler kinds. Eleven portable
-admission and 25 mocked producer/verifier cases, feature-enabled executor
-all-target clippy and format/size/diff checks pass; eight native tests remain
-ignored locally, and the expanded sixteen-axis physical inventory is unexecuted.
-Frozen review `6d255c84bfecbcbea00aa2e8bf0074803215bd40bf9771995c7d870b65386278`
-indexes the prior migration verdict; task 9103 and plan-end acceptance remain open.
+Admission milestone `b373a453..f07056df` has 61 passing focused cases:
+twelve admission/service, fifteen pipeline recovery, nine historical-effect
+and 25 mocked native producer/verifier cases; feature-enabled executor
+all-target clippy and format/size/diff checks pass. Both writer entries retain
+manual work, refuse changed receiver contracts after migration and preserve
+acknowledged recovery keys until repair. Prior guard sensitivity and scoped
+reviews retain their original ranges, indexed by frozen verdict
+`636348f8b670a0efa300617801dc592875fd261b9d4086e6d0f51f0a2d5e1163`.
+Sixteen provisioned process/MCP axes remain unexecuted and eight protected Rust
+cases remain ignored locally; unprovisioned routing proves no native side-effect
+acceptance. Complete task 9103 inventory and plan-end gates remain outstanding;
+full-prefix reconstruction cost stays documented.
 
 CLI focused range `62bdbd5d..2cd48842` passes ten real-binary contract cases,
 17 executor documentation cases and five legacy session cases, CLI all-target
