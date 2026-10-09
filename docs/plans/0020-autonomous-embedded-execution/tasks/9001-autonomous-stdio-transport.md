@@ -27,7 +27,7 @@ touches:
   - docs/API-POLICY.md
   - docs/RELEASE.md
   - README.md
-status: planned
+status: in_progress
 merged_as: ""
 ---
 # Autonomous Stdio Transport
@@ -72,3 +72,15 @@ client no longer pauses its workflow.
   starts while preserving the expected read-only or diagnostic surface.
 
 - **Done when:** every real-binary `autonomous_stdio` case passes without polling requests driving execution, existing mode/stdio tests pass, and the stable host gate records the lifecycle integration used.
+
+Focused acceptance review:
+
+- Six existing real-binary `autonomous_stdio` cases pass on the integrated
+  channel implementation: quiet deadlines with and without subscription,
+  broken stdout while stdin remains open, poll-interval refusals and exact
+  accepted boundaries, and installed protocol panic-hook cleanup. These
+  fixtures use empty handler tables and do not invoke containment helpers.
+- Success, transient retry, compensation, interrupted advance, a held real
+  handler with responsive reads, and production contention/degraded no-start
+  evidence remain to be matched to this original inventory; no landing OID
+  or full-gate claim is assigned. Full gates run at plan completion.
