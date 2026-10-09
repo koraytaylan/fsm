@@ -16,8 +16,8 @@ touches:
   - crates/fsm-execute/tests/fixtures/public_surface.txt
   - docs/SPEC.md
   - docs/EMBEDDING.md
-status: in_progress
-merged_as: ""
+status: done
+merged_as: "ed811ab651cfc25e53b5e7a207355c9c204e3503"
 ---
 # Executor Contract Outcome Validation
 
@@ -43,3 +43,15 @@ The handler can finish successfully before the store discovers that its configur
 - Repeated analysis consumes no clock tick and changes no input objects; report limits and deterministic ordering hold when effect and both outcome findings combine.
 
 - **Done when:** the production outcome checker passes the full `contract_outcomes` matrix and independent report goldens, proves only the stamp families and structural properties it reports, preserves deliberate no-advance behavior, and the applicable CONTRIBUTING gate succeeds.
+
+Frozen acceptance:
+
+Eleven outcome tests pass, including 28 handwritten good/bad scalar checks
+across success and failure, symbolic signed-millisecond endpoints, supplied
+literals, partial enum evidence, child definitions, typed-cause/report goldens
+and combined exact limits; focused clippy, formatting and diff checks pass.
+Source-backed self-review matches core validation and store first-fill
+stamping, with no unresolved task-scope finding; verdict digest
+`b9a671329f5a8177a34529118e6925015757c21b9a064f5d5371820bd71ac271`.
+No independent reviewer or fresh full/platform gate is claimed; complete
+integration remains due at plan completion, and spawn admission is separate.

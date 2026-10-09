@@ -20,7 +20,7 @@ touches:
   - docs/SPEC.md
   - docs/EMBEDDING.md
   - docs/API-POLICY.md
-status: planned
+status: in_progress
 merged_as: ""
 ---
 # Executor Contract Admission Before Spawn
