@@ -159,6 +159,28 @@ fn repair_machine() -> Value {
     repaired
 }
 
+fn changed_table(original: &Value) -> Value {
+    let mut changed = original.clone();
+    let Value::Obj(fields) = &mut changed else {
+        unreachable!()
+    };
+    let Value::Arr(handlers) = fields.get_mut("handlers").unwrap() else {
+        unreachable!()
+    };
+    let handler = handlers
+        .iter_mut()
+        .find(|handler| handler.get("effect").and_then(Value::as_str) == Some("restore"))
+        .unwrap();
+    let Value::Obj(handler) = handler else {
+        unreachable!()
+    };
+    handler.insert(
+        "on_ok".into(),
+        obj([("event", Value::Str("undeclared_restore_outcome".into()))]),
+    );
+    changed
+}
+
 fn refuse_unchecked_draft(
     client: &mut Client,
     store: &std::path::Path,
@@ -430,6 +452,12 @@ pub(super) fn run() {
         Store::open_read_only(&store).unwrap().records,
         stored_records
     );
+    // Keep the successful report, but load a different late outcome before
+    // migrating; admission must use this host's actual table without a token.
+    retire(&mut client);
+    let changed = changed_table(entry.get("handlers").unwrap());
+    fs::write(&handlers, canon_bytes(&changed)).unwrap();
+    client = start(&entry);
     let migrated = client.call(
         8,
         "tools/call",
@@ -459,7 +487,40 @@ pub(super) fn run() {
         current.state.instance_machines["inst-contract-run"],
         historical.emitting_machine_id
     );
+    let changed_records = current.records.clone();
+    let changed_state = current.state.clone();
     drop(current);
+    let deadline = Instant::now() + Duration::from_secs(1);
+    while Instant::now() < deadline {
+        client.call(28, "ping", obj([]));
+        let current = Store::open_read_only(&store).unwrap();
+        assert_eq!(
+            current.records, changed_records,
+            "saved good report bypassed the changed loaded table"
+        );
+        assert!(fsm_store::snapshot::store_states_eq(
+            &changed_state,
+            &current.state
+        ));
+        assert_eq!(fs::read_to_string(resource.join("calls")).unwrap(), "");
+        assert!(!resource.join("work").exists());
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let changed_report = client.check(
+        29,
+        obj([("machine", Value::Str("native_contract_draft".into()))]),
+    );
+    assert_eq!(
+        changed_report.get("status").and_then(Value::as_str),
+        Some("invalid")
+    );
+    assert_ne!(
+        changed_report.get("contract_id"),
+        repaired.get("contract_id")
+    );
+    retire(&mut client);
+    fs::write(&handlers, canon_bytes(entry.get("handlers").unwrap())).unwrap();
+    client = start(&entry);
     // No client requests after repair: observe the actual journal while the
     // restarted host autonomously executes, acknowledges and retires its handler.
     let deadline = Instant::now() + Duration::from_secs(12);
@@ -561,6 +622,41 @@ fn authored_native_pair_has_an_independent_missing_argument_and_repair() {
             assert!(findings.is_empty());
         }
     }
+}
+
+#[test]
+fn changed_loaded_table_invalidates_the_repaired_staged_contract() {
+    let source = parse(br#"{"format":"fsm.handlers/1","handlers":[
+      {"effect":"check_prerequisite","argv":["/operator/check","{resource}","{run}"],"timeout_ms":1000,"on_ok":{"event":"check_prerequisite_ok"},"on_failed":{"event":"check_prerequisite_failed"}},
+      {"effect":"suspend","argv":["/operator/suspend","{resource}","{run}"],"timeout_ms":1000,"on_ok":{"event":"suspend_ok"},"on_failed":{"event":"suspend_failed"}},
+      {"effect":"perform_work","argv":["/operator/work","{resource}","{run}"],"timeout_ms":1000,"on_ok":{"event":"perform_work_ok"},"on_failed":{"event":"perform_work_failed"}},
+      {"effect":"restore","argv":["/operator/restore","{resource}","{run}"],"timeout_ms":1000,"on_ok":{"event":"restore_ok"},"on_failed":{"event":"restore_failed"}}
+    ]}"#, &JsonLimits::DEFAULT).unwrap();
+    let machine = fsm_core::spec::compile_accepted(&repair_machine()).unwrap();
+    let analyze = |source: &Value| {
+        let table = fsm_execute::config::HandlerTable::parse(
+            &String::from_utf8(canon_bytes(source)).unwrap(),
+        )
+        .unwrap();
+        fsm_execute::contract::analyze_contract(
+            &machine,
+            &BTreeMap::new(),
+            &table,
+            fsm_execute::contract::Limits::default(),
+        )
+        .unwrap()
+    };
+    let original = analyze(&source);
+    let changed = analyze(&changed_table(&source));
+    assert_eq!(
+        original.status,
+        fsm_execute::contract::CheckStatus::Compatible
+    );
+    assert_eq!(changed.status, fsm_execute::contract::CheckStatus::Invalid);
+    assert_ne!(
+        original.to_value().get("contract_id"),
+        changed.to_value().get("contract_id")
+    );
 }
 
 #[test]

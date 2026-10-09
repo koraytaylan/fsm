@@ -94,12 +94,14 @@ work, restored phase and four original closures required. An unchecked draft
 missing a late restore argument must preserve its pending work, entire store
 and absent side effects across successful host retirement, writer reacquisition
 and restart, then migrate the same instance to a checked repair without replacing
-its historical pending operation. The executed Store fixture
-also completes all four corrected outcome transitions. Seven focused Rust cases
+its historical pending operation. A subsequently loaded incompatible late
+outcome must defeat the saved good report without side effects, until restoring
+the original table lets that same work proceed. The executed Store fixture
+also completes all four corrected outcome transitions. Eight focused Rust cases
 and 22 mocked artifact/producer cases pass, with
 feature-enabled CLI/executor all-target clippy and format/size/diff checks;
 the genuine native case remains ignored locally and unexecuted. Scoped review
-`089546d0a45d5a0f596bddae3a5d3828114c7bf86936adc998809bc833feaad1`
+`e25f3f75036a7ab0992db63b46ff62fbc99eb1182f825a584789557e2380b061`
 indexes the preceding MCP verdict; tasks 9202/9203 and plan-end acceptance remain open.
 
 Cross-surface acceptance preparation adds independently specified staged
