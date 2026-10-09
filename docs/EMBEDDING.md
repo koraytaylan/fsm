@@ -2241,7 +2241,8 @@ host's owner registry immediately after durable claim publication, then call
 `start_retained` with the healthy writer; retain that same object on any error.
 Startup is one-shot even if the first writer was read-only, and a recovery or
 completed object cannot request binding. Do not recreate an object to retry an
-uncertain run. The shared production tick still needs this admission wiring.
+uncertain run. The shared production tick performs this original-owner admission
+sequence under its writer-held claim and entry checks.
 
 Poll an installed owner until its progress reaches `Bound`; further observation
 keeps it bound and does not request execution. After acquiring a healthy writer,
@@ -2249,11 +2250,12 @@ call `launch_bound` to recheck the original claim/hash, admission and effect
 eligibility. Read-only or unavailable writers leave that bound owner retained.
 Once an execution request has been made, continue observation independently of
 writer access and retain the owner on every refusal; do not request entry again.
-Automatic shared-tick preparation and admission still need integration.
+Shared native ticks integrate preparation and admission with these same
+original-owner and healthy-writer checks.
 
-The provisioned Root broker can close an unbound prepared allocation on its original route: it revokes admission and verifies native retirement before publishing a domain tombstone, without issuing claim closure evidence; transport cancellation alone still cannot release a host reservation, and automatic production Runner integration remains unfinished.
+The provisioned Root broker can close an unbound prepared allocation on its original route: it revokes admission and verifies native retirement before publishing a domain tombstone, without issuing claim closure evidence; transport cancellation alone still cannot release a host reservation. The production runner retains the original preparation and cleanup helper until the matched response and actual helper retirement permit reservation release.
 
-Hosts retiring an unclaimed prepared domain should use `discard-prepared` on the retained original route with the full original domain, retain the cleanup helper until reap and EOF, and require the successful echoed domain to match; numeric `close` alone does not convey the caller’s original domain identity, and host cleanup integration remains unfinished.
+Hosts retiring an unclaimed prepared domain should use `discard-prepared` on the retained original route with the full original domain, retain the cleanup helper until reap and EOF, and require the successful echoed domain to match; numeric `close` alone does not convey the caller’s original domain identity. Shared native runner cleanup uses this route and retains uncertain original ownership on refusal.
 
 NativePreparedCleanup owns a bounded cleanup request for a delivered unclaimed domain, without new discovery; retain the handle and reservation until poll confirms matching success after helper retirement, and retain uncertainty on cancellation or refusal, since reap alone proves transport retirement only.
 
@@ -2544,8 +2546,10 @@ owner-only control endpoint; ordinary `execute` uses the paired native writer
 strategy, and `execute stop` requests authenticated drain or abort through
 the endpoint. Supported Linux embedded HTTP also selects this native owner,
 with a server lifetime independent of sessions; borrowed session helpers do
-not select it. Signal integration and installed-native nonempty workflow
-acceptance remain unfinished. Native execution requires protected authority
+not select it. Signal integration remains a separate limitation; installed-native
+nonempty workflow acceptance is recorded by the production transport tasks and
+their final integrated platform gate, rather than established by this library
+entry alone. Native execution requires protected authority
 registration of the actual physical store; this library entry does not install
 that authority or register the store.
 

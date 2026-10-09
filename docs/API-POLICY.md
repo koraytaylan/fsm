@@ -146,7 +146,7 @@ Owned stdio initialization warnings and notifications now retain their session s
 
 Native original-settlement outcome advance now rechecks the protected proof against the writer’s current physical store directory before replay or event application; replaced/copied directories retain the wrapped store/execution_evidence refusal, with no signature, journal format or hash-domain change.
 
-Executor ticks now drain owned output on journal scan refusal while retaining outcomes for later settlement; signatures, journal bytes and hash domains are unchanged, and automatic native production routing remains unfinished.
+Executor ticks drain owned output on journal scan refusal while retaining outcomes for later settlement; signatures, journal bytes and hash domains are unchanged. Supported production transports select the guarded native owner, while borrowed helpers retain their explicit caller-driven contract.
 
 Native exec-status association checks its shared two-second deadline before
 every accept and hello-read retry, including interrupted I/O; expiry refuses

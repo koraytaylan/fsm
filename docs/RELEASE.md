@@ -1278,6 +1278,11 @@ shutdown wiring and installed native acceptance remain incomplete.
 
 ### Shared native admission closure and local targets
 
+Current operator guidance now describes the implemented shared native admission
+and unclaimed-preparation cleanup, including original reservation retention on
+refusal; the low-level primitives' individual limits do not imply that their
+production integration is absent, and signal integration remains separate.
+
 Corrected original runner candidate selection during external closure: matching
 protected revocation is checked before selecting process exits or MCP answers,
 including after root-status observation, so shutdown-induced failures cannot

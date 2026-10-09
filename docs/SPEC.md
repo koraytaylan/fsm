@@ -2980,6 +2980,11 @@ On supported Linux native runners, NativeAdmissionControl::close MUST irreversib
 
 ### Explicitly owned native lifecycle driver
 
+Shared native ticks integrate original preparation, writer-held claim retention,
+bound entry and unclaimed cleanup under the preceding identity, admission and
+retirement requirements; low-level explicit primitives do not replace those
+production-owner checks.
+
 On supported Linux, `service::OwnedNativeExecutor` MAY own a healthy durable
 writer and native runner; the host MUST explicitly drive `tick` or `poll`.
 Its cloned `ExecutorControl::stop` MUST validate a finite timeout in
