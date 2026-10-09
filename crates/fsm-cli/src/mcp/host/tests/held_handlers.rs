@@ -85,11 +85,7 @@ fn observe_held_handler(barrier: HandlerBarrier) {
     let root: u32 = root.trim().parse().unwrap();
     let original = if matches!(barrier, HandlerBarrier::InheritedPipes) {
         let deadline = Instant::now() + Duration::from_secs(12);
-        while !resource.join("root-retired").is_file()
-            || fs::read_to_string(format!("/proc/{root}/stat")).is_ok_and(|stat| {
-                stat.rsplit_once(") ").unwrap().1.split_whitespace().next() != Some("Z")
-            })
-        {
+        while !resource.join("root-retired").is_file() || !has_exited(root) {
             assert!(Instant::now() < deadline);
             std::thread::sleep(Duration::from_millis(5));
         }
@@ -172,6 +168,14 @@ fn observe_held_handler(barrier: HandlerBarrier) {
     let reopened = Store::open(&store_path).unwrap();
     assert_eq!(reopened.state.execution.unresolved().count(), 0);
     assert!(reopened.state.instances.contains_key("inst-unrelated-held"));
+}
+
+fn has_exited(pid: u32) -> bool {
+    match fs::read_to_string(format!("/proc/{pid}/stat")) {
+        Ok(stat) => stat.rsplit_once(") ").unwrap().1.split_whitespace().next() == Some("Z"),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
+        Err(error) => panic!("cannot observe original root termination: {error}"),
+    }
 }
 
 fn identity(pid: u32) -> String {
