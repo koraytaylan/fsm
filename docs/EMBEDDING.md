@@ -1453,6 +1453,8 @@ and check it with the same `--handlers` command; those effects stay pending
 for manual acknowledgement. The check itself creates no directory,
 lock, snapshot, request id, instance, effect or handler process. A compatible
 report does not guarantee runtime progress or bypass execution admission.
+Machine checks reject execution options, including `--control-dir` and
+`--poll-interval-ms`, with usage exit 2.
 Without either machine selector, the legacy table inspection labels itself
 `scope: "handler-table-only"` and retains its privileged command details;
 machine reports expose only sanitized public contract metadata.

@@ -1470,8 +1470,9 @@ runtime enabled-event guards, or bypass cancelled/completed lifecycle suppressio
 
 `fsm execute --check --handlers <file>` MAY select exactly one of
 `--machine-file <file>` and `--machine <name-or-id>`. Selectors MUST require
-`--check` and MUST NOT combine with execution/dead-letter options. Both
-machine input and handler input MUST NOT consume the same stdin stream.
+`--check` and MUST NOT combine with execution/dead-letter options, including
+`--control-dir` and `--poll-interval-ms`. The machine and handler inputs MUST NOT
+consume the same stdin stream.
 The file selector MUST compile offline without inspecting the data directory;
 unresolved child definitions remain unknown. The stored selector MUST use
 an existing strictly read-only store, including while its writer is held.

@@ -1,5 +1,9 @@
 # Releasing
 
+Executor machine checks now reject `--control-dir` with usage exit 2, preserving
+the documented separation from execution options; private nested MCP literals
+remain absent from compatible/invalid reports and malformed-table diagnostics.
+
 Shared native ticks now admit preparation queues under the original healthy
 writer, release unclaimed reservations on contention and keep stop/cleanup
 observation serviceable before writer acquisition. Helper startup uses bounded

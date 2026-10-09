@@ -158,6 +158,7 @@ fn execute(ctx: &mut Ctx, args: &Args) -> u8 {
             || args.switches.contains("list-dead")
             || args.switches.contains("exclusive")
             || args.flags.contains_key("since")
+            || args.flags.contains_key("control-dir")
             || args.flags.contains_key("poll-interval-ms");
         let shared_stdin = args
             .flags

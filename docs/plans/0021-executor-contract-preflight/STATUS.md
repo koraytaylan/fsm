@@ -7,7 +7,7 @@ Task frontmatter is authoritative; the coordinator owns registration and complet
 | [executor-contract-effects](tasks/9101-executor-contract-effects.md) | done | efcb4f9e2811fc388d65af9ce13f6fe5b3068b97 |
 | [executor-contract-outcomes](tasks/9102-executor-contract-outcomes.md) | done | ed811ab651cfc25e53b5e7a207355c9c204e3503 |
 | [executor-contract-admission](tasks/9103-executor-contract-admission.md) | in_progress | — |
-| [executor-contract-cli](tasks/9201-executor-contract-cli.md) | planned | — |
+| [executor-contract-cli](tasks/9201-executor-contract-cli.md) | in_progress | — |
 | [executor-contract-mcp](tasks/9202-executor-contract-mcp.md) | planned | — |
 | [executor-contract-acceptance](tasks/9203-executor-contract-acceptance.md) | planned | — |
 

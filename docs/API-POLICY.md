@@ -862,6 +862,10 @@ distinct from the unchanged table-only exit behavior; table-only inspection
 adds the scope string `handler-table-only`. This additive command extension
 changes no persisted machine, journal or hash representation.
 
+Machine checks reject `--control-dir` as an execution option using the existing
+usage error and exit 2; this corrects the documented prohibition on combining
+execution options with checks and changes no report, persisted format or version.
+
 Plan 0022 adds `execution_claimed`, `execution_stopped`, `execution_settled`
 and `execution_enabled`. VERSION 11 is stamped before new records; historical
 VERSION 1–10 journal bytes stay unchanged and admission remains quarantined.

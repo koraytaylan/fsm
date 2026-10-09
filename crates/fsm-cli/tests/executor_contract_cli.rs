@@ -386,6 +386,7 @@ fn single_stdin_draft_works_and_execution_options_are_refused() {
         vec!["--list-dead"],
         vec!["--poll-interval-ms", "100"],
         vec!["--since", "1"],
+        vec!["--control-dir", "unused-control-directory"],
     ] {
         let mut arguments = vec!["--check", "--machine-file", draft.to_str().unwrap()];
         arguments.extend(extra);
@@ -433,4 +434,115 @@ fn explicit_manual_policy_is_compatible_and_legacy_scope_remains_table_only() {
         }
         assert!(!data.exists());
     }
+}
+
+#[test]
+fn machine_reports_and_input_errors_never_disclose_nested_mcp_literals() {
+    let directory = Directory::new();
+    let data = directory.0.join("absent");
+    let draft = directory.0.join("draft.json");
+    let handlers = directory.0.join("handlers.json");
+    fs::write(&draft, DRAFT).unwrap();
+    let table = r#"{"format":"fsm.handlers/1","handlers":[{
+      "effect":"work","kind":"mcp","argv":["/SECRET_EXECUTABLE_SENTINEL","SECRET_ARGV_SENTINEL","{value}"],
+      "tool":"SECRET_TOOL_SENTINEL","arguments":{"nested":{"literal":"SECRET_ARGUMENT_SENTINEL","value":"{value}"}},
+      "timeout_ms":1000
+    }]}"#;
+    let invalid = table.replace("\"timeout_ms\":1000", "\"timeout_ms\":1000,\"on_ok\":{\"event\":\"undeclared\",\"payload\":{\"private\":\"SECRET_OUTCOME_SENTINEL\"}}");
+    let malformed = table.replace("/SECRET_EXECUTABLE_SENTINEL", "SECRET_EXECUTABLE_SENTINEL");
+    for (source, expected_exit) in [(table, 0), (invalid.as_str(), 1), (malformed.as_str(), 2)] {
+        fs::write(&handlers, source).unwrap();
+        let output = Command::new(env!("CARGO_BIN_EXE_fsm"))
+            .args(["--json", "--data-dir"])
+            .arg(&data)
+            .args(["execute", "--check", "--handlers"])
+            .arg(&handlers)
+            .arg("--machine-file")
+            .arg(&draft)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(expected_exit), "{output:?}");
+        for encoded in [&output.stdout, &output.stderr] {
+            assert!(
+                !String::from_utf8_lossy(encoded).contains("SENTINEL"),
+                "private table data leaked: {output:?}"
+            );
+        }
+        if expected_exit != 2 {
+            let machine = compile_accepted(&json(DRAFT.as_bytes())).unwrap();
+            let table = HandlerTable::parse(source).unwrap();
+            let report =
+                analyze_contract(&machine, &BTreeMap::new(), &table, Limits::default()).unwrap();
+            let mut expected = canon_bytes(&report.to_value());
+            expected.push(b'\n');
+            assert_eq!(output.stdout, expected);
+        }
+        assert!(!data.exists());
+    }
+}
+
+#[test]
+fn handler_stdin_and_file_draft_use_separate_inputs_without_store_access() {
+    use std::io::Write;
+    let directory = Directory::new();
+    let data = directory.0.join("absent");
+    let draft = directory.0.join("draft.json");
+    fs::write(&draft, DRAFT).unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_fsm"))
+        .args(["--json", "--data-dir"])
+        .arg(&data)
+        .args(["execute", "--check", "--handlers", "-"])
+        .arg("--machine-file")
+        .arg(&draft)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(TABLE.as_bytes())
+        .unwrap();
+    let output = child.wait_with_output().unwrap();
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    assert_golden(
+        &output,
+        DRAFT,
+        include_str!("fixtures/contract/compatible.report.json"),
+    );
+    assert!(!data.exists());
+}
+
+#[test]
+fn legacy_table_inspection_and_dead_letter_listing_remain_read_only_under_writer() {
+    let directory = Directory::new();
+    let data = directory.0.join("store");
+    let store = open_writer(&data);
+    let records = store.records.clone();
+    let before = inventory(&data);
+    let check = run(&directory, &data, &["--check"]);
+    assert_eq!(check.status.code(), Some(0), "{check:?}");
+    let table = json(&check.stdout);
+    assert_eq!(
+        table.get("scope").and_then(Value::as_str),
+        Some("handler-table-only")
+    );
+    assert!(String::from_utf8_lossy(&check.stdout).contains("SECRET_EXECUTABLE_SENTINEL"));
+    assert_eq!(table.get("dead_letters"), Some(&json(b"[]")));
+    let dead = Command::new(env!("CARGO_BIN_EXE_fsm"))
+        .args(["--json", "--data-dir"])
+        .arg(&data)
+        .args(["execute", "--list-dead", "--since", "0"])
+        .output()
+        .unwrap();
+    assert_eq!(dead.status.code(), Some(0), "{dead:?}");
+    let report = json(&dead.stdout);
+    assert_eq!(report.get("count"), Some(&json(b"0")));
+    assert_eq!(report.get("dead_letters"), Some(&json(b"[]")));
+    assert_eq!(inventory(&data), before);
+    assert_eq!(Store::open_read_only(&data).unwrap().records, records);
+    drop(store);
+    verify_released_lock(&data);
 }
