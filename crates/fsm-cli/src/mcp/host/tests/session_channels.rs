@@ -168,3 +168,106 @@ fn session_channels_stalled_output_allows_quiet_deadline_and_another_session() {
         crate::journal_io::JournalHealth::Ok
     );
 }
+
+struct FailedOutput;
+impl Write for FailedOutput {
+    fn write(&mut self, _: &[u8]) -> io::Result<usize> {
+        Err(io::Error::new(
+            io::ErrorKind::BrokenPipe,
+            "original session disconnected",
+        ))
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
+fn session_channels_reconnect_replays_committed_mutation_after_actual_delivery_failure() {
+    let scratch = Scratch::new();
+    let store = super::seeded(&scratch.0);
+    let prefix = store.journal.last_seq;
+    let (owner, handle) = super::Owner::new(store, FixedClock::new(2000, 0));
+    let worker = std::thread::spawn(move || owner.run());
+    let original = handle.session().unwrap();
+    let (notifier, output) = Notifier::hosted_queued(Box::new(FailedOutput)).unwrap();
+    let parameters = value(
+        r#"{"name":"instance_create","arguments":{"machine":"owner_case","request_id":"lost-response"}}"#,
+    );
+    // Queue acceptance is not delivery; observe the actual adapter failure.
+    let _reply = handle_request_hosted(
+        &notifier,
+        &original,
+        &scratch.0,
+        &mut FixedClock::new(2000, 0),
+        &mut true,
+        &mut Live::default(),
+        value("1"),
+        "tools/call",
+        Some(parameters.clone()),
+        "original session",
+        None,
+        None,
+    );
+    let watchdog = Instant::now() + Duration::from_secs(3);
+    while !output.is_broken() {
+        assert!(
+            Instant::now() < watchdog,
+            "original output did not report delivery failure"
+        );
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    original.close();
+    let committed = Store::open_read_only(&scratch.0).unwrap().journal.last_seq;
+    let reconnect = handle.session().unwrap();
+    let sink = SharedSink::new();
+    let (replacement, replacement_output) =
+        Notifier::hosted_queued(Box::new(sink.writer())).unwrap();
+    let replay = handle_request_hosted(
+        &replacement,
+        &reconnect,
+        &scratch.0,
+        &mut FixedClock::new(9999, 0),
+        &mut true,
+        &mut Live::default(),
+        value("2"),
+        "tools/call",
+        Some(parameters),
+        "reconnected session",
+        None,
+        None,
+    );
+    handle.stop();
+    worker.join().unwrap();
+    replacement_output.close();
+    let watchdog = Instant::now() + Duration::from_secs(3);
+    while !replacement_output.drained() {
+        assert!(
+            Instant::now() < watchdog,
+            "replacement response was not delivered"
+        );
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert!(replay.is_ok());
+    assert_eq!(committed, prefix + 1);
+    let reopened = Store::open(&scratch.0).unwrap();
+    assert_eq!(reopened.journal.last_seq, committed);
+    assert_eq!(reopened.state.instances.len(), 1);
+    assert!(reopened.state.instances.contains_key("inst-lost-response"));
+    let frames: Vec<_> = sink.text().lines().map(value).collect();
+    assert_eq!(frames.len(), 1);
+    assert_eq!(frames[0].get("id"), Some(&value("2")));
+    assert_eq!(
+        frames[0]
+            .get("result")
+            .unwrap()
+            .get("structuredContent")
+            .unwrap()
+            .get("duplicate"),
+        Some(&fsm_core::json::Value::Bool(true))
+    );
+    assert_eq!(
+        crate::journal_io::verify(&scratch.0).health,
+        crate::journal_io::JournalHealth::Ok
+    );
+}
