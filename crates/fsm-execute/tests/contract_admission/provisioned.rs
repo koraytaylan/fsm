@@ -486,8 +486,11 @@ fn observe(borrowed: bool, scenario: Scenario) {
         });
     if matches!(scenario, Scenario::BoundCancel) {
         cancellation::observe(
-            &store_path,
-            &resource,
+            cancellation::Fixture {
+                store_path: &store_path,
+                resource: &resource,
+                table: &table,
+            },
             &mut watcher,
             &mut scheduler,
             &mut runner,

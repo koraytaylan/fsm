@@ -2,15 +2,25 @@
 
 use super::*;
 
+pub(super) struct Fixture<'a> {
+    pub store_path: &'a std::path::Path,
+    pub resource: &'a std::path::Path,
+    pub table: &'a HandlerTable,
+}
+
 pub(super) fn observe(
-    store_path: &std::path::Path,
-    resource: &std::path::Path,
+    fixture: Fixture<'_>,
     watcher: &mut Watcher,
     scheduler: &mut Scheduler,
     runner: &mut Runner,
     clock: &mut FixedClock,
     tick: impl Fn(&mut Watcher, &mut Scheduler, &mut Runner, &mut FixedClock) -> Vec<String>,
 ) {
+    let Fixture {
+        store_path,
+        resource,
+        table,
+    } = fixture;
     let deadline = Instant::now() + Duration::from_secs(20);
     while runner.local_native_claims().next().is_none() {
         tick(watcher, scheduler, runner, clock);
@@ -22,27 +32,30 @@ pub(super) fn observe(
         std::thread::sleep(Duration::from_millis(5));
     }
     let claim = runner.local_native_claims().next().unwrap().clone();
-    let mut competing = Store::open(store_path).unwrap();
-    let claim_hash = competing.current_execution_claim_hash(&claim).unwrap();
+    // Binding must finish with the writer available, while the current invalid
+    // late outcome keeps the original claim from entering its handler.
+    let mut blocked_table = table.clone();
+    blocked_table.handlers.get_mut("restore").unwrap().on_ok = Some(Advance {
+        event: "undeclared".into(),
+        payload: Value::Obj(BTreeMap::new()),
+        stamps: Vec::new(),
+    });
+    *scheduler = Scheduler::new(blocked_table.clone());
+    *watcher = Watcher::with_handlers(store_path.to_path_buf(), &blocked_table);
     let authority = PathBuf::from(manifest().get("authority").unwrap().as_str().unwrap());
     let domain = claim.domain().to_value();
     let allocation = domain.get("allocation").unwrap().as_num().unwrap();
     let memory_receipt = authority.join(format!("fixture-memory-{allocation}.json"));
     // Require actual contained startup before cancelling: otherwise this case
     // could pass by closing an allocation that never launched its waiting gate.
-    let claimed_records = competing.records.clone();
-    let claimed_state = competing.state.clone();
+    let claimed = Store::open_read_only(store_path).unwrap();
+    let claimed_records = claimed.records.clone();
+    let claimed_state = claimed.state.clone();
+    drop(claimed);
     while !memory_receipt.try_exists().unwrap() {
-        let outcome = tick_reporting(
-            watcher,
-            scheduler,
-            runner,
-            &mut Pipeline,
-            store_path,
-            clock,
-            2000,
-        );
+        let lines = tick(watcher, scheduler, runner, clock);
         assert_no_entry(resource);
+        assert_eq!(runner.local_native_claims().next(), Some(&claim));
         let current = Store::open_read_only(store_path).unwrap();
         assert_eq!(current.records, claimed_records);
         assert!(fsm_store::snapshot::store_states_eq(
@@ -52,10 +65,12 @@ pub(super) fn observe(
         assert!(
             Instant::now() < deadline,
             "original contained startup was not observed: {:?}",
-            outcome.lines
+            lines
         );
         std::thread::sleep(Duration::from_millis(5));
     }
+    let mut competing = Store::open(store_path).unwrap();
+    let claim_hash = competing.current_execution_claim_hash(&claim).unwrap();
     competing
         .cancel_instance_reason_on(clock, "original", "cancel-original", "before handler entry")
         .unwrap();

@@ -151,20 +151,21 @@ ordered completion, stale-report bypass and plan-end gates remain outstanding.
 
 Manual Phase R binds the six-task bundle to validation base `15172d8298f271abfd0bd1d5b47617d1108ceefc` after plans 0022 and 0020 complete: closed frontmatter, repository-relative footprints and the acyclic local dependency graph pass, with uncreated deliverables explicitly inventoried; task-cache validation digest `4298d27510c4726206598590ca50efd51e0aeca49c5605aae9f004697820f1f7`. Task 9101 completes its focused inventory at `efcb4f9e`, with 67 stable effect/configuration/public-surface cases and focused lint/format/diff checks passing; self-review verdict `dfd37ee9a1867119e4c63a048ad58b1030b7db590fe118b95dcee1edff82f9a1`; task 9102 completes at `ed811ab6` with eleven focused outcome tests and self-review verdict `b9a671329f5a8177a34529118e6925015757c21b9a064f5d5371820bd71ac271`; task 9103 is in progress; prior independent preparation remains subject to current task acceptance, and admission/MCP/final acceptance remain incomplete. Full gates run at plan completion.
 
-Focused native admission checkpoint `aba0bbfd` passes twenty-four real
+Focused native admission checkpoint `cfb8a9aa` passes thirty-six real
 process/MCP axes on both stable and MSRV: refusal/repair, fairness, unknown
 outcomes, missing arguments, original timeout/reap under writer contention,
 invalid warm/cold retry refusal, positive-backoff boundary and manual-policy
-repair. Root verifies the original closures before each independent marker.
-The next ack-only fixture incorrectly requires a legacy ack record; its corrected
-inventory requires one atomic original `ExecutionSettled` acknowledgement,
-matching derived key/sequence/fingerprint, no synthetic event or handoff, and
-unchanged later observations. Thirteen focused admission cases, the independent
-protected-policy test, two portable barrier cases and focused lint/format/size/diff
-checks pass. Frozen verdict
-`f6e28788e9afd718a3c74bbf92d42dd2e83140e2a1af0536ad88da4b9c2584b6`
+repair, atomic ack-only settlement, acknowledged recovery and bound-entry
+table/private-argument/receiver/invoked-closure refusal and repair. Root verifies
+the original closures before each independent marker. Cancellation setup held
+the writer before binding could finish; the corrected fixture allows actual
+contained startup while a changed late outcome prevents entry, then requires
+authenticated cancellation closure under writer contention and exact original
+settlement without handler entry. Thirteen focused admission cases and focused
+lint/format/size/diff checks pass. Frozen verdict
+`f4fb33ff1a76a92a29a326d8c247c7f57aca7cc899ca927dc72d3dd79f32ba3d`
 indexes the native failures, fixture corrections and preceding proofs outside the
-repository; the remaining sixteen axes, native guard sensitivity and plan-end
+repository; the remaining four cancellation axes, native guard sensitivity and plan-end
 gates remain open.
 
 Bound entry now reuses its freshly reconstructed effect from the same immutable
