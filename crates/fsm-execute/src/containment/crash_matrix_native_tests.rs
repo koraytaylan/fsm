@@ -211,6 +211,8 @@ fn provisioned_contract_admission_matrix() {
         "contract-ack-only-borrowed",
         "contract-recovery-standalone",
         "contract-recovery-borrowed",
+        "contract-bound-standalone",
+        "contract-bound-borrowed",
     ] {
         for kind in ["process", "mcp"] {
             scenario(
@@ -385,7 +387,11 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
     let mut command = Command::new("/usr/bin/python3");
     command.args(["-c", "import os,sys;os.setgroups([]);os.setgid(65534);os.setuid(65534);os.execv(sys.argv[1],sys.argv[1:])"])
         .arg(staging.join(artifact))
-        .args(["--exact", if behavior == "contract-recovery-standalone" {
+        .args(["--exact", if behavior == "contract-bound-standalone" {
+            "provisioned::standalone_native_bound_entry_refuses_stale_table_until_original_is_restored"
+        } else if behavior == "contract-bound-borrowed" {
+            "provisioned::borrowed_native_bound_entry_refuses_stale_table_until_original_is_restored"
+        } else if behavior == "contract-recovery-standalone" {
             "provisioned::standalone_native_acknowledged_recovery_repairs_without_handler_restart"
         } else if behavior == "contract-recovery-borrowed" {
             "provisioned::borrowed_native_acknowledged_recovery_repairs_without_handler_restart"
@@ -632,6 +638,8 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                             | "contract-manual-borrowed"
                             | "contract-ack-only-standalone"
                             | "contract-ack-only-borrowed"
+                            | "contract-bound-standalone"
+                            | "contract-bound-borrowed"
                             | "contract-recovery-standalone"
                             | "contract-recovery-borrowed"
                             | "schedule-success"
@@ -677,6 +685,8 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                         | "contract-manual-borrowed"
                         | "contract-ack-only-standalone"
                         | "contract-ack-only-borrowed"
+                        | "contract-bound-standalone"
+                        | "contract-bound-borrowed"
                         | "contract-recovery-standalone"
                         | "contract-recovery-borrowed"
                         | "schedule-success"
@@ -871,6 +881,8 @@ fn verify(fixture: &Fixture, behavior: &str) {
                     | "contract-manual-borrowed"
                     | "contract-ack-only-standalone"
                     | "contract-ack-only-borrowed"
+                    | "contract-bound-standalone"
+                    | "contract-bound-borrowed"
                     | "schedule-success"
                     | "schedule-recovery"
             ) {

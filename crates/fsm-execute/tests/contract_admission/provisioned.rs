@@ -62,6 +62,7 @@ enum Scenario {
     ManualRepair,
     AckOnly,
     Recovery,
+    BoundRecheck,
 }
 
 #[test]
@@ -124,6 +125,18 @@ fn borrowed_native_acknowledged_recovery_repairs_without_handler_restart() {
     observe(true, Scenario::Recovery);
 }
 
+#[test]
+#[ignore = "requires disposable native CI and exact staged process/MCP fixture"]
+fn standalone_native_bound_entry_refuses_stale_table_until_original_is_restored() {
+    observe(false, Scenario::BoundRecheck);
+}
+
+#[test]
+#[ignore = "requires disposable native CI and exact staged process/MCP fixture"]
+fn borrowed_native_bound_entry_refuses_stale_table_until_original_is_restored() {
+    observe(true, Scenario::BoundRecheck);
+}
+
 fn observe(borrowed: bool, scenario: Scenario) {
     let manifest = manifest();
     let store_path = PathBuf::from(manifest.get("store").unwrap().as_str().unwrap());
@@ -169,7 +182,7 @@ fn observe(borrowed: bool, scenario: Scenario) {
     }
     if matches!(
         scenario,
-        Scenario::ManualRepair | Scenario::AckOnly | Scenario::Recovery
+        Scenario::ManualRepair | Scenario::AckOnly | Scenario::Recovery | Scenario::BoundRecheck
     ) {
         restore.on_ok = None;
     }
@@ -278,7 +291,10 @@ fn observe(borrowed: bool, scenario: Scenario) {
     } else {
         "error exec/contract_invalid"
     };
-    for _ in 0..if matches!(scenario, Scenario::Contention | Scenario::AckOnly) {
+    for _ in 0..if matches!(
+        scenario,
+        Scenario::Contention | Scenario::AckOnly | Scenario::BoundRecheck
+    ) {
         0
     } else {
         3
@@ -302,7 +318,7 @@ fn observe(borrowed: bool, scenario: Scenario) {
         assert!(scheduler.inflight_effect(&effect_id).is_none());
     }
     let completed_instance = match scenario {
-        Scenario::Contention | Scenario::AckOnly => "original",
+        Scenario::Contention | Scenario::AckOnly | Scenario::BoundRecheck => "original",
         Scenario::Recovery => {
             table.handlers.insert("notify".into(), original_notify);
             scheduler = Scheduler::new(table.clone());
@@ -425,6 +441,99 @@ fn observe(borrowed: bool, scenario: Scenario) {
         return;
     }
     let deadline = Instant::now() + Duration::from_secs(20);
+    if matches!(scenario, Scenario::BoundRecheck) {
+        // A claim tick cannot also authorize entry; the next decision must
+        // validate the actual table again under the original healthy writer.
+        while runner.local_native_claims().next().is_none() {
+            tick(&mut watcher, &mut scheduler, &mut runner, &mut clock);
+            assert!(!resource.join("root-entered").exists());
+            assert!(
+                Instant::now() < deadline,
+                "native claim was never published"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let original_claim = runner.local_native_claims().next().unwrap().clone();
+        let original_table = table.clone();
+        let competing = Store::open(&store_path).unwrap();
+        let claimed_records = competing.records.clone();
+        let claimed_state = competing.state.clone();
+        table.handlers.get_mut("restore").unwrap().on_ok = Some(Advance {
+            event: "undeclared".into(),
+            payload: Value::Obj(BTreeMap::new()),
+            stamps: Vec::new(),
+        });
+        scheduler = Scheduler::new(table.clone());
+        watcher = Watcher::with_handlers(store_path.clone(), &table);
+        let mut blocked = 0;
+        while blocked < 3 {
+            let outcome = tick_reporting(
+                &mut watcher,
+                &mut scheduler,
+                &mut runner,
+                &mut Pipeline,
+                &store_path,
+                &mut clock,
+                2000,
+            );
+            blocked += usize::from(outcome.writer_unavailable);
+            assert!(
+                !resource.join("root-entered").exists(),
+                "entry occurred under a competing writer"
+            );
+            assert_eq!(
+                Store::open_read_only(&store_path).unwrap().records,
+                claimed_records
+            );
+            assert!(
+                Instant::now() < deadline,
+                "bound owner never reached writer backpressure"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        drop(competing);
+        // First reject an incompatible executable closure, then a structurally
+        // compatible private argv change; neither can consume entry permission.
+        for code in ["error exec/contract_invalid", "error exec/contract_unknown"] {
+            if code.ends_with("unknown") {
+                table = original_table.clone();
+                table
+                    .handlers
+                    .get_mut("notify")
+                    .unwrap()
+                    .argv
+                    .push("PRIVATE_STALE_NATIVE_ARGUMENT".into());
+                scheduler = Scheduler::new(table.clone());
+                watcher = Watcher::with_handlers(store_path.clone(), &table);
+            }
+            let mut refusals = 0;
+            while refusals < 3 {
+                let lines = tick(&mut watcher, &mut scheduler, &mut runner, &mut clock);
+                refusals += usize::from(lines.iter().any(|line| line == code));
+                assert!(
+                    !resource.join("root-entered").exists(),
+                    "stale approval entered a handler"
+                );
+                assert!(!resource.join("root-candidate").exists());
+                assert_eq!(runner.local_native_claims().next(), Some(&original_claim));
+                let current = Store::open_read_only(&store_path).unwrap();
+                assert_eq!(current.records, claimed_records);
+                assert!(fsm_store::snapshot::store_states_eq(
+                    &claimed_state,
+                    &current.state
+                ));
+                assert!(
+                    Instant::now() < deadline,
+                    "bound entry did not report {code}: {lines:?}"
+                );
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        }
+        table = original_table;
+        scheduler = Scheduler::new(table.clone());
+        watcher = Watcher::with_handlers(store_path.clone(), &table);
+        assert_eq!(runner.local_native_claims().next(), Some(&original_claim));
+    }
     while !resource.join("root-candidate").is_file() {
         let lines = tick(&mut watcher, &mut scheduler, &mut runner, &mut clock);
         assert!(

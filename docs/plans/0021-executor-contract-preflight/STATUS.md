@@ -21,7 +21,7 @@ manual work, refuse changed receiver contracts after migration and preserve
 acknowledged recovery keys until repair. Prior guard sensitivity and scoped
 reviews retain their original ranges, indexed by frozen verdict
 `636348f8b670a0efa300617801dc592875fd261b9d4086e6d0f51f0a2d5e1163`.
-Thirty-two provisioned process/MCP axes remain unexecuted and sixteen protected Rust
+Thirty-six provisioned process/MCP axes remain unexecuted and eighteen protected Rust
 cases remain ignored locally; unprovisioned routing proves no native side-effect
 acceptance. Complete task 9103 inventory and plan-end gates remain outstanding;
 full-prefix reconstruction cost stays documented.
@@ -37,23 +37,17 @@ indexes prior scoped proofs; metadata fixtures do not close physical acceptance.
 Focused regression checkpoint `8b659d64` passes 49 tick, retry, scheduler,
 composition and chaos cases; verdict
 `eedbf3f61b365721543985fc1eadab72632c3e2511c5b8f0232ae554659bf0e9`.
-The provisioned inventory now includes both initial writer entry paths crossed
-with process/MCP timeout cleanup under a competing writer: original process
-identities must disappear before writer release, blocked work creates no claim
-or marker, and the retained original owner subsequently settles once.
-Manual-to-handler repair and intentional no-outcome execution are also crossed
-with both writer entry paths and handler kinds; ack-only execution requires
-one acknowledgement, no applied event and no further journal changes.
-Acknowledged-recovery axes retain an invalid outcome until repair, then require
-one outcome event and stable derived keys with zero handler markers, execution
-claims or native allocations through both writer entries and handler kinds;
-focused review digest
-`bd3be6c4d389d3f27b7c437bbd6798ea133e454d2058b0b03244168e08b8b857`.
-Focused admission cases (12) and mocked producer/verifier cases (25) pass;
-executor feature-enabled all-target clippy and format/size/diff checks pass.
-Content-addressed focused review:
-`5cd1565e580013e44b2ab8e0ed833c62634a6ac71bf54a60979b0da5a1c892f7`;
-physical execution remains outstanding until provisioned plan-end CI.
+The provisioned inventory crosses both writer entry paths and process/MCP
+handlers for timeout cleanup under contention, manual repair, ack-only work,
+acknowledged recovery and bound-entry table replacement. Original ownership,
+unchanged refusal journals, marker absence and exact settlement/allocation
+counts are required before repair or writer release, as applicable. Twelve
+focused admission and 25 mocked producer/verifier cases pass, with executor
+feature-enabled all-target clippy and format/size/diff checks passing.
+Content-addressed review
+`90ab973b4c9700178f0c340e58b5426d0ade914cfa61e072499f4ba3320033d5`
+indexes prior scoped native reviews; physical execution remains outstanding
+until provisioned plan-end CI.
 
 CLI focused range `62bdbd5d..2cd48842` passes ten real-binary contract cases,
 17 executor documentation cases and five legacy session cases, CLI all-target
