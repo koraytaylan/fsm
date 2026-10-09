@@ -32,15 +32,16 @@ The eight-stage stable host report at `0bd1e14e` has digest
 `11d09f239210cfd4a4b7f71a7ba738902ed478da3ace92b5182684aa67dc5a4c`.
 Scheduling, channels and transport inventories remain separate and incomplete.
 
-Frozen `c7ac31b0` advances 8903's scoped scheduling acceptance in
-[CI 37919434760](https://github.com/koraytaylan/fsm/actions/runs/37919434760):
-both native toolchains pass eight genuine process/MCP cases covering autonomous
-success, exact retry backoff, failure-driven restore, and private-owner recovery
-after durable acknowledgement without an RPC or handler relaunch. Independent
-verdict: `123ad9e401cd766ddc1db138e29294c22005a1098310fb23cf15d9d802cdd963`.
+Frozen `96e0d73f` advances 8903's scoped scheduling acceptance in
+[CI 37920428854](https://github.com/koraytaylan/fsm/actions/runs/37920428854):
+both native toolchains pass ten genuine process/MCP cases covering autonomous
+success, exact retry backoff, failure-driven restore, private-owner recovery
+after durable acknowledgement, and restricted construction without fixture
+entry or native domain allocation. Independent verdict:
+`8d95d8aac67b387928dc9c4b78885646d248dc4e42c2df506954a866ca48fdc8`.
 This scoped verdict grants no task completion; exact authority timeout,
-completion fairness, construction and the frozen integration gate remain
-outstanding, with no independent staged-byte comparison.
+completion fairness and the frozen integration gate remain outstanding,
+with no independent staged-byte comparison.
 
 Historical STATUS evidence is retained outside the repository in the task-cache
 plan-status-archives directory, addressed by SHA-256:

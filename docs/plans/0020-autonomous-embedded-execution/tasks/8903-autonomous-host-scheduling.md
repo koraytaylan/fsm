@@ -176,6 +176,12 @@ through production mode selection: writer-only, explicit read-only, contended
 embedded and degraded sessions must disclose no executor, leave the original
 ready effect and journal unchanged, and start no genuine fixture. Root separately
 requires the original allocation counter to remain zero with no allocation
-record. The observer and coordinator compile, and focused host regressions plus
-producer/verifier faults pass; runtime verification is pending disposable CI.
-The timeout, fairness and full integration inventory remains unchanged.
+record. Frozen `96e0d73f` passes all ten scheduling cases on stable and MSRV in
+[CI 37920428854](https://github.com/koraytaylan/fsm/actions/runs/37920428854),
+independent retained-report digest
+`8d95d8aac67b387928dc9c4b78885646d248dc4e42c2df506954a866ca48fdc8`.
+Both genuine fixture kinds remain unentered and the authority allocation counter
+stays zero across all four restricted modes; strict journal verification passes.
+Focused host regressions, fixture-enabled all-target clippy and producer/verifier
+faults also pass. Timeout, fairness and full integration acceptance remain open;
+no landing OID or independent staged-byte comparison is claimed.
