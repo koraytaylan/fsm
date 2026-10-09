@@ -15,6 +15,7 @@ mod native {
     use fsm_core::json::{JsonLimits, Value, parse};
     use fsm_execute::{
         config::HandlerTable,
+        run::native_client::{NativeExecution, NativeRun},
         service::{ExecutorPhase, OwnedNativeExecutor, ShutdownMode},
     };
     use fsm_store::{clock::FixedClock, store::Store};
@@ -121,6 +122,21 @@ mod native {
             1
         );
         let prefix = driver.store_mut().unwrap().journal.last_seq;
+        let original = driver
+            .store_mut()
+            .unwrap()
+            .state
+            .execution
+            .unresolved()
+            .next()
+            .unwrap()
+            .0
+            .clone();
+        let original_hash = driver
+            .store_mut()
+            .unwrap()
+            .current_execution_claim_hash(&original)
+            .unwrap();
 
         // Invoke the public completion boundary on the same writer owner while
         // the actual process/MCP conversation is still held outside that owner.
@@ -187,7 +203,7 @@ mod native {
         );
         let verified = fsm_store::journal_io::verify(&store_path);
         assert_eq!(verified.health, fsm_store::journal_io::JournalHealth::Ok);
-        let reopened = Store::open(&store_path).unwrap();
+        let mut reopened = Store::open(&store_path).unwrap();
         assert_eq!(verified.records, reopened.records.len() as u64);
         assert_eq!(reopened.state.execution.unresolved().count(), 0);
         if matches!(mode, CompletionMode::Release) {
@@ -196,6 +212,35 @@ mod native {
                 reopened.state.instances["held"].status,
                 fsm_core::machine::Status::Completed
             );
+            let mut recovered =
+                NativeRun::recover(&original, &original_hash, Duration::from_secs(10)).unwrap();
+            let deadline = Instant::now() + Duration::from_secs(12);
+            let completion = loop {
+                if let Some(completion) = recovered.poll().unwrap() {
+                    break completion;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "original completion recovery timed out"
+                );
+                std::thread::sleep(Duration::from_millis(5));
+            };
+            assert!(recovered.reap().unwrap());
+            let mut retained =
+                NativeExecution::from_completion(&original, &original_hash, completion).unwrap();
+            let records = reopened.records.clone();
+            let mut reader = Store::open_read_only(&store_path).unwrap();
+            assert_eq!(
+                retained.settle(&mut reader, &mut clock).unwrap_err().code,
+                "exec/mode"
+            );
+            assert!(retained.progress().retained && retained.completion().is_some());
+            assert_eq!(reader.records, records);
+            for _ in 0..3 {
+                retained.settle(&mut reopened, &mut clock).unwrap();
+                assert_eq!(reopened.records, records);
+                assert!(!retained.progress().retained);
+            }
         }
         for kind in [
             fsm_core::record::RecordKind::ExecutionClaimed,
