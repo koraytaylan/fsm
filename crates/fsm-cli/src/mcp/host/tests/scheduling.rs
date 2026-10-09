@@ -532,3 +532,57 @@ fn autonomous_schedule_ready_application_runs_between_bounded_executor_batches()
         crate::journal_io::JournalHealth::Ok
     );
 }
+
+#[test]
+fn autonomous_schedule_continuously_ready_application_gets_each_bounded_turn() {
+    let scratch = Scratch::new();
+    let store = deadline_chain(&scratch.0, 128);
+    let before = store.journal.last_seq;
+    let calls = Arc::new(AtomicUsize::new(0));
+    let (owner, handle) = scheduled_owner(store, CountingClock(Arc::clone(&calls)));
+    let sessions = (0..4)
+        .map(|_| handle.session().unwrap())
+        .collect::<Vec<_>>();
+    let mut replies = std::collections::VecDeque::new();
+    for index in 0..32 {
+        replies.push_back(
+            sessions[index % 4]
+                .submit(super::command("instance_get", r#"{"instance_id":"chain"}"#))
+                .unwrap(),
+        );
+    }
+    let worker = std::thread::spawn(move || owner.run());
+    let mut outcomes = Vec::new();
+    for index in 0..88 {
+        let reply = replies.pop_front().unwrap();
+        outcomes.push(reply.recv_timeout(Duration::from_secs(5)).unwrap());
+        // The initial backlog covers all sixteen progressing decision passes;
+        // replenishment additionally exercises admission while the owner runs.
+        if index < 56 {
+            replies.push_back(
+                sessions[index % 4]
+                    .submit(super::command("instance_get", r#"{"instance_id":"chain"}"#))
+                    .unwrap(),
+            );
+        }
+    }
+    assert!(replies.is_empty());
+    handle.stop();
+    let exit = worker.join().unwrap();
+    assert!(exit.failure.is_none());
+    assert!(exit.shutdown.writer_released);
+    assert!(outcomes.iter().all(|outcome| outcome.result.is_ok()));
+    for (index, outcome) in outcomes.iter().take(16).enumerate() {
+        assert_eq!(outcome.committed_seq, before + ((index + 1) * 8) as u64);
+    }
+    let reopened = Store::open(&scratch.0).unwrap();
+    assert_eq!(reopened.journal.last_seq, before + 128);
+    assert_eq!(
+        reopened.state.instances["chain"].status,
+        fsm_core::machine::Status::Completed
+    );
+    assert_eq!(
+        crate::journal_io::verify(&scratch.0).health,
+        crate::journal_io::JournalHealth::Ok
+    );
+}
