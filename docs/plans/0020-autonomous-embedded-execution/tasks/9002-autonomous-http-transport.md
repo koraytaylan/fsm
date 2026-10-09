@@ -280,3 +280,14 @@ Focused startup acceptance:
   pass. Fixture startup serializes its reserve-to-bind gap after a parallel
   connection-refusal failure; request execution remains concurrent. The exact
   concurrent command saturation case and plan-end gates remain outstanding.
+- Real writer-mode HTTP now retains exactly 32 admitted unanswered requests
+  across original sessions and refuses a thirty-third mutation with HTTP 503.
+  Every original request cancels with typed req/cancelled, journal sequence
+  remains unchanged through refusal and drain, and retrying the refused request
+  ID commits as nonduplicate with a verified journal and retained writer.
+  Raising only the original host count to 33 fails this named case by admitting
+  the mutation; restoration passes. This closes the concurrent global command
+  count acceptance alongside the existing real HTTP byte-pressure refusal.
+  The integrated focused checkpoint passes 103 HTTP cases, CLI all-target
+  clippy and format/size/diff checks; native acceptance must be revalidated
+  against the final same-session dispatch repair before focused task closure.

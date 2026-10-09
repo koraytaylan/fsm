@@ -840,3 +840,81 @@ fn production_http_session_count_refuses_the_thirty_third_and_reclaims_deleted_c
         fsm_cli::journal_io::JournalHealth::Ok
     );
 }
+
+#[test]
+fn production_http_host_command_count_refuses_mutation_and_reclaims_cancelled_capacity() {
+    use std::io::BufRead;
+    let (directory, store) = seeded("command-count");
+    let before = store.journal.last_seq;
+    drop(store);
+    let mut client = Client::start_mode(directory.clone(), Mode::Writer);
+    let mut questions = Vec::new();
+    for index in 0..32 {
+        client.session = None;
+        client.post(r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{"elicitation":{}}}}"#);
+        let session = client.session.clone().unwrap();
+        let body = format!(
+            r#"{{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{{"name":"instance_elicit","arguments":{{"instance_id":"instance","event":"finish","request_id":"count-ask-{index}"}}}}}}"#
+        );
+        let mut asking =
+            std::io::BufReader::new(streaming_post(client.address, Some(&session), &body));
+        let mut prefix = String::new();
+        loop {
+            let mut line = String::new();
+            assert!(asking.read_line(&mut line).unwrap() > 0, "{prefix}");
+            prefix.push_str(&line);
+            if let Some(data) = line.strip_prefix("data: ")
+                && value(data.trim()).get("method").and_then(Value::as_str)
+                    == Some("elicitation/create")
+            {
+                break;
+            }
+        }
+        assert!(prefix.starts_with("HTTP/1.1 200"), "{prefix}");
+        questions.push((session, asking));
+    }
+    let mutation = r#"{"jsonrpc":"2.0","id":33,"method":"tools/call","params":{"name":"instance_send","arguments":{"instance_id":"instance","event":{"name":"finish"},"request_id":"after-count-refusal"}}}"#;
+    let mut refused = String::new();
+    streaming_post(client.address, client.session.as_deref(), mutation)
+        .read_to_string(&mut refused)
+        .unwrap();
+    assert!(refused.starts_with("HTTP/1.1 503"), "{refused}");
+    assert_eq!(
+        Store::open_read_only(&directory).unwrap().journal.last_seq,
+        before
+    );
+    for (session, mut asking) in questions {
+        let mut accepted = String::new();
+        streaming_post(
+            client.address,
+            Some(&session),
+            r#"{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":7}}"#,
+        )
+        .read_to_string(&mut accepted)
+        .unwrap();
+        assert!(accepted.starts_with("HTTP/1.1 202"), "{accepted}");
+        let mut tail = String::new();
+        asking.read_to_string(&mut tail).unwrap();
+        assert!(tail.contains("req/cancelled"), "{tail}");
+    }
+    assert_eq!(
+        Store::open_read_only(&directory).unwrap().journal.last_seq,
+        before
+    );
+    let accepted = client.post(mutation);
+    let result = accepted.get("result").unwrap();
+    assert_ne!(
+        result.get("isError"),
+        Some(&Value::Bool(true)),
+        "{accepted:?}"
+    );
+    assert_eq!(
+        result.get("structuredContent").unwrap().get("duplicate"),
+        Some(&Value::Bool(false))
+    );
+    assert!(matches!(Store::open(&directory), Err(error) if error.code == "store/lock"));
+    assert_eq!(
+        fsm_cli::journal_io::verify(&directory).health,
+        fsm_cli::journal_io::JournalHealth::Ok
+    );
+}
