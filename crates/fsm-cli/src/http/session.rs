@@ -97,31 +97,57 @@ impl SessionError {
 /// Every live session on one server.
 #[derive(Default)]
 pub struct Sessions {
-    live: Mutex<BTreeMap<String, Session>>,
+    live: Mutex<Registry>,
+}
+
+pub(crate) type Retirement = Box<dyn FnOnce() + Send>;
+
+#[derive(Default)]
+struct Registry {
+    sessions: BTreeMap<String, Session>,
+    retirements: BTreeMap<String, Retirement>,
+}
+impl Registry {
+    fn expire(&mut self, now_ms: i64) -> Vec<Retirement> {
+        let expired: Vec<String> = self
+            .sessions
+            .iter()
+            .filter(|(_, session)| now_ms.saturating_sub(session.touched_ms) >= IDLE_TIMEOUT_MS)
+            .map(|(id, _)| id.clone())
+            .collect();
+        let mut retirements = Vec::new();
+        for id in expired {
+            self.sessions.remove(&id);
+            if let Some(retirement) = self.retirements.remove(&id) {
+                retirements.push(retirement);
+            }
+        }
+        retirements
+    }
 }
 
 impl Sessions {
     /// Open a session, or refuse because this server is full.
-    ///
-    /// Expired sessions are swept here rather than by a timer thread: a
-    /// server with no clients should be doing nothing at all, and a sweep
-    /// nobody asked for is work nobody asked for.
+    /// Expiry is swept on access; this bookkeeping creates no timer worker.
     pub fn open(&self, protocol_version: &str, now_ms: i64) -> Result<String, SessionError> {
         let mut live = self.lock();
-        live.retain(|_, session| now_ms - session.touched_ms < IDLE_TIMEOUT_MS);
-        if live.len() >= MAX_SESSIONS {
-            return Err(SessionError::TooMany);
-        }
-        let id = new_session_id();
-        live.insert(
-            id.clone(),
-            Session::new(id.clone(), protocol_version.to_string(), now_ms),
-        );
-        Ok(id)
+        let retirements = live.expire(now_ms);
+        let result = if live.sessions.len() >= MAX_SESSIONS {
+            Err(SessionError::TooMany)
+        } else {
+            let id = new_session_id();
+            live.sessions.insert(
+                id.clone(),
+                Session::new(id.clone(), protocol_version.to_string(), now_ms),
+            );
+            Ok(id)
+        };
+        drop(live);
+        retire(retirements);
+        result
     }
 
-    /// Look one up for a request, checking the header and the version, and
-    /// marking it used.
+    /// Check the header and negotiated version, then mark the session used.
     pub fn touch(
         &self,
         id: Option<&str>,
@@ -132,32 +158,43 @@ impl Sessions {
             return Err(SessionError::Missing);
         };
         let mut live = self.lock();
-        live.retain(|_, session| now_ms - session.touched_ms < IDLE_TIMEOUT_MS);
-        let Some(session) = live.get_mut(id) else {
-            return Err(SessionError::Unknown);
+        let retirements = live.expire(now_ms);
+        let result = match live.sessions.get_mut(id) {
+            None => Err(SessionError::Unknown),
+            Some(session) if version.is_some_and(|stated| stated != session.protocol_version) => {
+                Err(SessionError::VersionMismatch)
+            }
+            Some(session) => {
+                session.touched_ms = now_ms;
+                Ok(session.id.clone())
+            }
         };
-        // An absent version header is the negotiated one: the specification's
-        // own backwards-compatibility guidance, and a client that never
-        // learned to send it is not a client to refuse.
-        if let Some(stated) = version
-            && stated != session.protocol_version
-        {
-            return Err(SessionError::VersionMismatch);
-        }
-        session.touched_ms = now_ms;
-        Ok(session.id.clone())
+        drop(live);
+        retire(retirements);
+        result
     }
 
-    /// End one session. `false` if this server did not have it.
+    /// End the original incarnation, invoking transport retirement without
+    /// holding the registry lock; false means no such session remained.
     pub fn close(&self, id: &str) -> bool {
-        self.lock().remove(id).is_some()
+        let mut live = self.lock();
+        let closed = live.sessions.remove(id).is_some();
+        let retirement = live.retirements.remove(id);
+        drop(live);
+        if let Some(retirement) = retirement {
+            retirement();
+        }
+        closed
     }
 
-    /// How many are live right now, after a sweep.
+    /// How many are live right now, after sweeping original incarnations.
     pub fn len(&self, now_ms: i64) -> usize {
         let mut live = self.lock();
-        live.retain(|_, session| now_ms - session.touched_ms < IDLE_TIMEOUT_MS);
-        live.len()
+        let retirements = live.expire(now_ms);
+        let count = live.sessions.len();
+        drop(live);
+        retire(retirements);
+        count
     }
 
     pub fn is_empty(&self, now_ms: i64) -> bool {
@@ -166,14 +203,37 @@ impl Sessions {
 
     /// Do something with one session's state.
     pub fn with<T>(&self, id: &str, body: impl FnOnce(&mut Session) -> T) -> Option<T> {
-        let mut live = self.lock();
-        live.get_mut(id).map(body)
+        self.lock().sessions.get_mut(id).map(body)
     }
 
-    fn lock(&self) -> std::sync::MutexGuard<'_, BTreeMap<String, Session>> {
+    /// Atomically bind transport resources to a still-live original ID;
+    /// DELETE/expiry cannot intervene between validation and registration.
+    pub(crate) fn bind<T>(
+        &self,
+        id: &str,
+        body: impl FnOnce() -> (T, Option<Retirement>),
+    ) -> Option<T> {
+        let mut live = self.lock();
+        if !live.sessions.contains_key(id) {
+            return None;
+        }
+        let (result, retirement) = body();
+        if let Some(retirement) = retirement {
+            live.retirements.entry(id.to_owned()).or_insert(retirement);
+        }
+        Some(result)
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, Registry> {
         self.live
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+}
+
+fn retire(retirements: Vec<Retirement>) {
+    for retirement in retirements {
+        retirement();
     }
 }
 

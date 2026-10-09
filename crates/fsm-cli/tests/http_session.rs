@@ -187,6 +187,17 @@ fn a_session_expires_after_its_idle_window() {
 }
 
 #[test]
+fn idle_expiry_handles_extreme_clock_samples_without_overflow() {
+    let sessions = Sessions::default();
+    let id = sessions.open(VERSION, i64::MAX).unwrap();
+    assert!(sessions.touch(Some(&id), None, i64::MIN).is_ok());
+    assert_eq!(
+        sessions.touch(Some(&id), None, i64::MAX),
+        Err(SessionError::Unknown)
+    );
+}
+
+#[test]
 fn the_thirty_third_session_is_refused_and_the_others_keep_working() {
     let sessions = Sessions::default();
     let ids: Vec<String> = (0..MAX_SESSIONS)

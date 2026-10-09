@@ -1,5 +1,12 @@
 # API and version policy
 
+HTTP DELETE and lazy expiry now retire transport resources with their original
+session incarnation, including host generation, reverse mailbox and replay
+stream; public session-count sweeps do the same. Atomic resource binding refuses
+retired IDs, and retired writers cannot replenish cleared replay storage.
+Private bookkeeping and feed-stop wiring change no public Rust signature,
+wire discriminator, journal bytes, hashes, error codes or version numbers.
+
 HTTP server stop now wakes admitted socket I/O before joining connection
 workers, including silent and partial-request reads; completed connections
 close despite retained shutdown descriptors. This retirement correction changes

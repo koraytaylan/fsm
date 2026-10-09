@@ -1258,6 +1258,14 @@ rather than retry — sessions expire after 30 minutes idle, and `DELETE` on
 the endpoint ends one immediately. A server holds at most 32 at once and
 refuses the thirty-third with `503`.
 
+Idle expiry is swept when sessions are opened, checked or counted. That sweep
+and DELETE retire the same original host generation, protocol state, reverse
+mailbox and replay stream outside the session registry lock; neither stops the
+shared executor. A held protocol-state lock cannot postpone retirement, and a
+late lookup or stream writer cannot recreate the old incarnation or replenish
+its retained bytes. Feed retirement requests stop without joining a worker
+blocked on filesystem I/O; this does not prove that worker has already returned.
+
 `MCP-Protocol-Version` is checked on every request against the version
 negotiated at `initialize`; a mismatch is `400`. An absent header is treated
 as the negotiated version.

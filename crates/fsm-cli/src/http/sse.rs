@@ -81,6 +81,7 @@ pub struct Stream {
     kept: Mutex<Vec<Kept>>,
     next_id: Mutex<u64>,
     open: AtomicBool,
+    retired: AtomicBool,
     /// The buffer's size in bytes, kept as it grows and shrinks.
     bytes: Mutex<usize>,
     /// The oldest id that was ever evicted, so an id below the buffer can be
@@ -95,7 +96,15 @@ impl Stream {
     /// reassemble it. A client that wants two should open two sessions,
     /// which is free.
     pub fn claim(&self) -> bool {
-        !self.open.swap(true, Ordering::SeqCst)
+        if self.retired.load(Ordering::Acquire) {
+            return false;
+        }
+        let claimed = !self.open.swap(true, Ordering::SeqCst);
+        if self.retired.load(Ordering::Acquire) {
+            self.release();
+            return false;
+        }
+        claimed
     }
 
     /// Release it — on disconnect, on `DELETE`, or on shutdown. The session
@@ -118,7 +127,14 @@ impl Stream {
     /// wire agree by construction, rather than by two pieces of code staying
     /// in step.
     pub fn record(&self, data: &[u8]) -> u64 {
+        self.try_record(data).unwrap_or_else(|| self.next_id())
+    }
+
+    fn try_record(&self, data: &[u8]) -> Option<u64> {
         let mut next = self.next_id.lock().unwrap_or_else(|e| e.into_inner());
+        if self.retired.load(Ordering::Acquire) {
+            return None;
+        }
         *next += 1;
         let id = *next;
         let mut kept = self.kept.lock().unwrap_or_else(|e| e.into_inner());
@@ -137,7 +153,7 @@ impl Stream {
                 .lock()
                 .unwrap_or_else(|e| e.into_inner()) = dropped.id;
         }
-        id
+        Some(id)
     }
 
     /// How many bytes the buffer is holding.
@@ -156,6 +172,15 @@ impl Stream {
         *self.bytes.lock().unwrap_or_else(|e| e.into_inner()) = 0;
     }
 
+    pub(crate) fn retire(&self) {
+        // Match record's lock order; no admitted record may replenish bytes
+        // after the original session has cleared its replay allocation.
+        let _next = self.next_id.lock().unwrap_or_else(|e| e.into_inner());
+        self.retired.store(true, Ordering::Release);
+        self.forget();
+        self.release();
+    }
+
     /// The events a client resuming after `id` should receive, or why it
     /// cannot resume at all.
     ///
@@ -164,9 +189,9 @@ impl Stream {
     /// something different if the store has moved on. A replayed event must
     /// be *the event that was sent*.
     pub fn resume_after(&self, id: u64) -> Result<Vec<Kept>, ResumeError> {
+        let issued = self.next_id.lock().unwrap_or_else(|e| e.into_inner());
         let kept = self.kept.lock().unwrap_or_else(|e| e.into_inner());
-        let issued = *self.next_id.lock().unwrap_or_else(|e| e.into_inner());
-        if id > issued {
+        if id > *issued {
             return Err(ResumeError::Unknown);
         }
         let evicted_through = *self
@@ -233,11 +258,18 @@ impl<W: Write> SessionStream<W> {
 
 impl<W: Write> Write for SessionStream<W> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        if self.stream.retired.load(Ordering::Acquire) {
+            self.pending.clear();
+            return Err(std::io::ErrorKind::BrokenPipe.into());
+        }
         for byte in buf {
             if *byte == b'\n' {
                 let data = std::mem::take(&mut self.pending);
                 if !data.is_empty() {
-                    let id = self.stream.record(&data);
+                    let id = self
+                        .stream
+                        .try_record(&data)
+                        .ok_or(std::io::ErrorKind::BrokenPipe)?;
                     write_event(&mut self.out, id, &data)?;
                 }
             } else {

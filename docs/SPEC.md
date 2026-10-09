@@ -3590,6 +3590,15 @@ bounded asynchronous HTTP egress acceptance remain separately required.
 Unsupported production embedded HTTP MUST refuse before opening the store or
 binding rather than silently serving a manual writer for `--execute`.
 
+Every HTTP session incarnation MUST own its original protocol state, host
+generation, reverse mailbox and replay stream. DELETE and lazy idle-expiry
+sweeps, including public session-count observations, MUST remove that
+incarnation and retire its resources outside the session registry lock without
+stopping the shared execution owner or waiting for a protocol-state lock.
+A request racing retirement MUST NOT recreate resources for the retired ID.
+Retired streams MUST clear retained bytes and reject late writer admission;
+feed stop requests MUST NOT join a worker blocked on operating-system I/O.
+
 HTTP server stop MUST shut down both halves of every retained admitted socket
 before joining its connection workers, so silent or partial requests do not
 consume the normal socket I/O timeout during retirement. A finished connection

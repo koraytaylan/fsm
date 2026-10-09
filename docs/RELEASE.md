@@ -1,5 +1,14 @@
 # Releasing
 
+HTTP idle-expiry sweeps now retire original protocol/host state, reverse waits
+and replay streams together, including sweeps through public session counts.
+DELETE uses that same retirement; neither action stops the shared execution
+owner or waits for a protocol-state lock. Retired lookups cannot allocate orphan
+incarnations, late stream writes refuse, and feed stop does not join blocked I/O.
+SSE resume now follows producer/retirement lock order, removing the inverse-lock
+wait between replay and publication. Public signatures and durable/wire formats
+are unchanged; full task 9002 acceptance remains outstanding.
+
 Writer-only HTTP routes store calls through one private bounded owner; session
 protocol state and cancellation controls are separate, and admission refusal
 returns HTTP 503. Real-binary cross-session idempotency verifies one committed

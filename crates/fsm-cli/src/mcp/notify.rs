@@ -292,7 +292,14 @@ impl FeedHandle {
     /// because a sleep that ignores the flag turns every disconnect into a
     /// quarter-second stall.
     pub fn spawn(body: impl FnOnce(&AtomicBool) + Send + 'static) -> Self {
-        let stop = Arc::new(AtomicBool::new(false));
+        Self::spawn_with_stop(Arc::new(AtomicBool::new(false)), body)
+    }
+
+    /// Share an original HTTP retirement signal without consulting its Live lock.
+    pub(crate) fn spawn_with_stop(
+        stop: Arc<AtomicBool>,
+        body: impl FnOnce(&AtomicBool) + Send + 'static,
+    ) -> Self {
         let flag = Arc::clone(&stop);
         FEEDS_SPAWNED.fetch_add(1, Ordering::Relaxed);
         let join = std::thread::spawn(move || body(&flag));

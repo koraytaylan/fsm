@@ -27,8 +27,11 @@ touches:
   - crates/fsm-cli/tests/fixtures/mcp_affordance/session.expected
   - crates/fsm-cli/tests/fixtures/audit/session.expected
   - crates/fsm-cli/src/http/endpoint.rs
+  - crates/fsm-cli/src/http/endpoint/retirement_tests.rs
   - crates/fsm-cli/src/http/writer.rs
   - crates/fsm-cli/src/http/session.rs
+  - crates/fsm-cli/src/mcp/serve/session_store.rs
+  - crates/fsm-cli/src/mcp/notify.rs
   - crates/fsm-cli/src/http/sse.rs
   - crates/fsm-cli/src/http/server.rs
   - crates/fsm-cli/src/mcp/host/
@@ -36,6 +39,7 @@ touches:
   - crates/fsm-cli/tests/http_multi_client.rs
   - crates/fsm-cli/tests/http_resume.rs
   - crates/fsm-cli/tests/http_limits.rs
+  - crates/fsm-cli/tests/http_session.rs
   - crates/fsm-cli/tests/http_server.rs
   - docs/SPEC.md
   - docs/EMBEDDING.md
@@ -126,3 +130,14 @@ Focused startup acceptance:
   No installed handler was run locally; genuine success/retry/compensation,
   expiry retirement, exact HTTP saturation and bounded asynchronous SSE/
   unanswered-elicitation isolation still require acceptance before task closure.
+- Lazy expiry and DELETE now retire the original host session, mailbox, replay
+  allocation and feed stop signal outside the session registry and without
+  waiting for its protocol lock; lookup cannot recreate retired IDs. Four
+  focused retirement cases cover held protocol state, repeated full capacity
+  reclamation and real TCP native deadline progress after forced idle expiry,
+  followed by original-owner shutdown and journal verification. Disabling only
+  expiry callbacks fails the named retirement case; restoration passes.
+  Thirty-four existing HTTP cases and CLI all-target clippy pass; one fixture
+  subprocess entry remains intentionally ignored. Genuine installed-handler,
+  saturation and asynchronous SSE/elicitation acceptance remain outstanding;
+  task 9002 stays in progress and full gates remain due at plan completion.

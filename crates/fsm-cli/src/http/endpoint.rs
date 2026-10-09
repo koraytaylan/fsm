@@ -33,6 +33,10 @@ pub const DEFAULT_PATH: &str = "/mcp";
 /// The methods this endpoint answers, for the `Allow` header a `405` carries.
 pub const ALLOWED_METHODS: &str = "POST, GET, DELETE";
 
+#[cfg(test)]
+#[path = "endpoint/retirement_tests.rs"]
+mod retirement_tests;
+
 /// One server's endpoint: the store every session shares, the sessions
 /// themselves, and the protocol state each of them keeps.
 pub struct Endpoint {
@@ -43,13 +47,8 @@ pub struct Endpoint {
     /// goes through it — a guard nothing calls guards nothing.
     store: super::writer::SerializedWriter,
     sessions: Sessions,
-    lives: Mutex<BTreeMap<String, std::sync::Arc<SessionLive>>>,
+    lives: std::sync::Arc<Mutex<BTreeMap<String, std::sync::Arc<SessionLive>>>>,
     host: Option<std::sync::Arc<crate::mcp::http_host::SharedWriter>>,
-    /// Inbound responses, per session, waiting for whoever asked.
-    mailboxes: Mutex<BTreeMap<String, std::sync::Arc<Mailbox>>>,
-    /// Each session's event stream: what it has sent, and whether anybody is
-    /// reading it.
-    streams: Mutex<BTreeMap<String, std::sync::Arc<Stream>>>,
     /// What this server will answer, and from whom.
     policy: Option<Policy>,
     mode_note: &'static str,
@@ -78,13 +77,30 @@ struct SessionLive {
     live: Mutex<Live>,
     cancellations: crate::mcp::cancel::Cancellations,
     hosted: Option<crate::mcp::http_host::HostedSession>,
+    mailbox: std::sync::Arc<Mailbox>,
+    stream: std::sync::Arc<Stream>,
+    retirement: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl SessionLive {
     fn close(&self) {
+        self.retirement
+            .store(true, std::sync::atomic::Ordering::Release);
+        self.mailbox.close();
+        self.stream.retire();
         if let Some(hosted) = &self.hosted {
             hosted.close();
         }
+    }
+}
+
+impl Drop for SessionLive {
+    fn drop(&mut self) {
+        self.close();
+        self.live
+            .get_mut()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .retire_http_feed();
     }
 }
 
@@ -94,10 +110,8 @@ impl Endpoint {
             path: path.to_string(),
             store: super::writer::SerializedWriter::new(store),
             sessions: Sessions::default(),
-            lives: Mutex::new(BTreeMap::new()),
+            lives: std::sync::Arc::new(Mutex::new(BTreeMap::new())),
             host: None,
-            mailboxes: Mutex::new(BTreeMap::new()),
-            streams: Mutex::new(BTreeMap::new()),
             policy: None,
             mode_note,
             degraded: None,
@@ -128,22 +142,48 @@ impl Endpoint {
     }
 
     fn session_live(&self, id: &str) -> std::io::Result<std::sync::Arc<SessionLive>> {
-        let mut lives = self.lives.lock_safe();
-        if let Some(live) = lives.get(id) {
-            return Ok(std::sync::Arc::clone(live));
-        }
-        let mut live = Live::default();
-        if let Some((dir, detail)) = &self.degraded {
-            live.degraded_dir = Some(dir.clone());
-            live.degraded = Some(detail.clone());
-        }
-        let state = std::sync::Arc::new(SessionLive {
-            cancellations: live.cancellations.clone(),
-            live: Mutex::new(live),
-            hosted: self.host.as_ref().map(|host| host.session()).transpose()?,
-        });
-        lives.insert(id.to_owned(), std::sync::Arc::clone(&state));
-        Ok(state)
+        self.sessions
+            .bind(id, || {
+                let mut lives = self.lives.lock_safe();
+                if let Some(live) = lives.get(id) {
+                    return (Ok(std::sync::Arc::clone(live)), None);
+                }
+                let (mut live, retirement) = Live::for_http();
+                if let Some((dir, detail)) = &self.degraded {
+                    live.degraded_dir = Some(dir.clone());
+                    live.degraded = Some(detail.clone());
+                }
+                let hosted = match self.host.as_ref().map(|host| host.session()).transpose() {
+                    Ok(hosted) => hosted,
+                    Err(error) => return (Err(error), None),
+                };
+                let state = std::sync::Arc::new(SessionLive {
+                    cancellations: live.cancellations.clone(),
+                    live: Mutex::new(live),
+                    hosted,
+                    mailbox: std::sync::Arc::new(Mailbox::default()),
+                    stream: std::sync::Arc::new(Stream::default()),
+                    retirement,
+                });
+                lives.insert(id.to_owned(), std::sync::Arc::clone(&state));
+                let original = id.to_owned();
+                let lives = std::sync::Arc::downgrade(&self.lives);
+                let retirement: super::session::Retirement = Box::new(move || {
+                    if let Some(lives) = lives.upgrade() {
+                        let state = lives.lock_safe().remove(&original);
+                        if let Some(state) = state {
+                            state.close();
+                        }
+                    }
+                });
+                (Ok(state), Some(retirement))
+            })
+            .unwrap_or_else(|| {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "HTTP session retired",
+                ))
+            })
     }
 
     /// The same endpoint, with a posture to enforce.
@@ -206,21 +246,6 @@ impl Endpoint {
             "DELETE" => {
                 let id = request.header(SESSION_HEADER).unwrap_or("");
                 if self.sessions.close(id) {
-                    if let Some(mailbox) = self.mailboxes.lock_safe().remove(id) {
-                        mailbox.close();
-                    }
-                    if let Some(live) = self.lives.lock_safe().remove(id) {
-                        live.close();
-                    }
-                    // The stream closes with the session, and says nothing
-                    // on its way out: there is nothing to say and the client
-                    // may already be gone.
-                    if let Some(stream) = self.streams.lock_safe().remove(id) {
-                        stream.release();
-                        // A disconnected client's buffer must not outlive
-                        // the session it belonged to.
-                        stream.forget();
-                    }
                     write_response(out, &Response::text(200, "session ended"))
                 } else {
                     write_response(out, &Response::error(404))
@@ -297,7 +322,7 @@ impl Endpoint {
                 write_response(out, &Response::text(202, ""))
             }
             Incoming::Response { id, result, error } => {
-                let status = self.deliver_response(request, id, result, error);
+                let status = self.deliver_response(request, id, result, error, clock);
                 write_response(out, &Response::text(status, ""))
             }
             Incoming::Request { id, method, params } => {
@@ -355,21 +380,31 @@ impl Endpoint {
             return write_response(out, &Response::error(406));
         }
 
+        let state = match self.session_live(&session_id) {
+            Ok(state) => state,
+            Err(error) => {
+                if method == "initialize" {
+                    self.sessions.close(&session_id);
+                }
+                let status = if error.kind() == std::io::ErrorKind::NotFound {
+                    404
+                } else {
+                    503
+                };
+                return write_response(out, &Response::error(status));
+            }
+        };
         let sink = SharedSink::new();
         let notifier = Notifier::new(Box::new(sink.writer()));
         // Anything that outlives this request — the change feed a
         // `resources/subscribe` starts — writes into the session's stream
         // instead, because `sink` is this POST's body and stops being read
         // the moment it is answered.
-        let feed_out = super::sse::recorder_for(self.stream_state(&session_id));
-        let mailbox = self.mailbox(&session_id);
+        let feed_out = super::sse::recorder_for(std::sync::Arc::clone(&state.stream));
+        let mailbox = std::sync::Arc::clone(&state.mailbox);
         let mut reader = MailboxReader::new(std::sync::Arc::clone(&mailbox));
         let io = std::cell::RefCell::new(SessionIo::new(&notifier, &mut reader));
 
-        let state = match self.session_live(&session_id) {
-            Ok(state) => state,
-            Err(_) => return write_response(out, &Response::error(503)),
-        };
         {
             let mut live = state.live.lock_safe();
             let mut initialized = true;
@@ -486,13 +521,27 @@ impl Endpoint {
         id: Value,
         result: Option<Value>,
         error: Option<Value>,
+        clock: &mut dyn Clock,
     ) -> u16 {
         let Some(session_id) = http.header(SESSION_HEADER) else {
             return 202;
         };
+        if let Err(error) = self.sessions.touch(
+            Some(session_id),
+            http.header(VERSION_HEADER),
+            clock.now_ms(),
+        ) {
+            // Unsolicited/late answers remain accepted and ignored; a wrong
+            // negotiated version is still a protocol-header refusal.
+            return if error == SessionError::VersionMismatch {
+                400
+            } else {
+                202
+            };
+        }
         // Only into this session's mailbox: one client's answer must never
         // complete another client's question.
-        let Some(mailbox) = self.mailboxes.lock_safe().get(session_id).cloned() else {
+        let Some(state) = self.lives.lock_safe().get(session_id).cloned() else {
             return 202;
         };
         let mut message = BTreeMap::from([
@@ -505,7 +554,7 @@ impl Endpoint {
         if let Some(error) = error {
             message.insert("error".to_string(), error);
         }
-        match mailbox.try_post(Value::Obj(message)) {
+        match state.mailbox.try_post(Value::Obj(message)) {
             Ok(()) => 202,
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => 503,
             Err(_) => 404,
@@ -514,11 +563,14 @@ impl Endpoint {
 
     /// The stream state for one session, created on first use.
     pub fn stream_state(&self, session_id: &str) -> std::sync::Arc<Stream> {
-        let mut streams = self.streams.lock_safe();
-        streams
-            .entry(session_id.to_string())
-            .or_insert_with(|| std::sync::Arc::new(Stream::default()))
-            .clone()
+        self.session_live(session_id).map_or_else(
+            |_| {
+                let stream = std::sync::Arc::new(Stream::default());
+                stream.retire();
+                stream
+            },
+            |state| std::sync::Arc::clone(&state.stream),
+        )
     }
 
     /// GET: the session's one event stream.
@@ -547,7 +599,18 @@ impl Endpoint {
             Ok(id) => id,
             Err(error) => return write_response(out, &Response::error(error.status())),
         };
-        let stream = self.stream_state(&session_id);
+        let state = match self.session_live(&session_id) {
+            Ok(state) => state,
+            Err(error) => {
+                let status = if error.kind() == std::io::ErrorKind::NotFound {
+                    404
+                } else {
+                    503
+                };
+                return write_response(out, &Response::error(status));
+            }
+        };
+        let stream = std::sync::Arc::clone(&state.stream);
         // One stream per session. Two would split notification ordering with
         // nothing to reassemble it; a client that wants two opens two
         // sessions, which costs nothing.
@@ -642,14 +705,6 @@ impl Endpoint {
                 silent_for = std::time::Duration::ZERO;
             }
         }
-    }
-
-    fn mailbox(&self, session_id: &str) -> std::sync::Arc<Mailbox> {
-        let mut boxes = self.mailboxes.lock_safe();
-        boxes
-            .entry(session_id.to_string())
-            .or_insert_with(|| std::sync::Arc::new(Mailbox::default()))
-            .clone()
     }
 }
 

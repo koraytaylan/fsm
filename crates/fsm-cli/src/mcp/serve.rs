@@ -445,44 +445,11 @@ pub struct Live {
     /// non-subscribing transcript byte-identical and this plan inert for the
     /// callers that do not use it.
     feed: Option<FeedHandle>,
+    /// Original HTTP incarnation retirement, independent of the Live mutex.
+    http_retirement: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 }
 
 impl Live {
-    /// Start the change feed if this session does not have one yet.
-    ///
-    /// The body is `5902`'s; until then a session's subscription is recorded
-    /// and nothing polls. The lifecycle is decided here regardless, because
-    /// deciding it after something is spawned is how a thread outlives its
-    /// session.
-    pub(crate) fn ensure_feed(&mut self, data_dir: Option<std::path::PathBuf>, output: &Notifier) {
-        if self.feed.is_some() {
-            return;
-        }
-        let Some(data_dir) = data_dir else {
-            return;
-        };
-        let writer = output.clone_handle();
-        let watched = self.subscriptions.clone_handle();
-        // The feed starts from wherever the journal is now: a subscriber
-        // asked to be told what happens next, not what already had.
-        let from_seq = crate::store::Store::open_read_only(&data_dir)
-            .map(|store| store.journal.last_seq)
-            .unwrap_or(0);
-        // A test driving the feed by hand takes it here; everyone else gets
-        // the timer. The session's own bookkeeping is the same either way,
-        // so a hand-driven session is the same session.
-        if watch::park(watch::Feed::new(&data_dir, watched, writer, from_seq)) {
-            self.feed = Some(FeedHandle::parked());
-            return;
-        }
-        let writer = output.clone_handle();
-        let watched = self.subscriptions.clone_handle();
-        self.feed = Some(FeedHandle::spawn(move |stop| {
-            let mut feed = watch::Feed::new(&data_dir, watched, writer, from_seq);
-            feed.run(stop, FEED_INTERVAL_MS);
-        }));
-    }
-
     /// Stop the feed and wait for it. Idempotent, and called on every exit
     /// path including a drop.
     fn shutdown(&mut self) {
