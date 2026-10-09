@@ -2,6 +2,8 @@
 
 use super::*;
 
+#[path = "provisioned/cancellation.rs"]
+mod cancellation;
 #[path = "provisioned/receiver.rs"]
 mod receiver;
 use fsm_execute::{
@@ -67,6 +69,19 @@ enum Scenario {
     AckOnly,
     Recovery,
     BoundRecheck,
+    BoundCancel,
+}
+
+#[test]
+#[ignore = "requires disposable native CI and exact staged process/MCP fixture"]
+fn standalone_native_cancellation_retires_bound_claim_without_entry() {
+    observe(false, Scenario::BoundCancel);
+}
+
+#[test]
+#[ignore = "requires disposable native CI and exact staged process/MCP fixture"]
+fn borrowed_native_cancellation_retires_bound_claim_without_entry() {
+    observe(true, Scenario::BoundCancel);
 }
 
 #[test]
@@ -186,7 +201,11 @@ fn observe(borrowed: bool, scenario: Scenario) {
     }
     if matches!(
         scenario,
-        Scenario::ManualRepair | Scenario::AckOnly | Scenario::Recovery | Scenario::BoundRecheck
+        Scenario::ManualRepair
+            | Scenario::AckOnly
+            | Scenario::Recovery
+            | Scenario::BoundRecheck
+            | Scenario::BoundCancel
     ) {
         restore.on_ok = None;
     }
@@ -297,7 +316,7 @@ fn observe(borrowed: bool, scenario: Scenario) {
     };
     for _ in 0..if matches!(
         scenario,
-        Scenario::Contention | Scenario::AckOnly | Scenario::BoundRecheck
+        Scenario::Contention | Scenario::AckOnly | Scenario::BoundRecheck | Scenario::BoundCancel
     ) {
         0
     } else {
@@ -322,7 +341,10 @@ fn observe(borrowed: bool, scenario: Scenario) {
         assert!(scheduler.inflight_effect(&effect_id).is_none());
     }
     let completed_instance = match scenario {
-        Scenario::Contention | Scenario::AckOnly | Scenario::BoundRecheck => "original",
+        Scenario::Contention
+        | Scenario::AckOnly
+        | Scenario::BoundRecheck
+        | Scenario::BoundCancel => "original",
         Scenario::Recovery => {
             table.handlers.insert("notify".into(), original_notify);
             scheduler = Scheduler::new(table.clone());
@@ -445,6 +467,18 @@ fn observe(borrowed: bool, scenario: Scenario) {
         return;
     }
     let deadline = Instant::now() + Duration::from_secs(20);
+    if matches!(scenario, Scenario::BoundCancel) {
+        cancellation::observe(
+            &store_path,
+            &resource,
+            &mut watcher,
+            &mut scheduler,
+            &mut runner,
+            &mut clock,
+            tick,
+        );
+        return;
+    }
     if matches!(scenario, Scenario::BoundRecheck) {
         // A claim tick cannot also authorize entry; the next decision must
         // validate the actual table again under the original healthy writer.

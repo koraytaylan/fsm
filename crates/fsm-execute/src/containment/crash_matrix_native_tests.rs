@@ -213,6 +213,8 @@ fn provisioned_contract_admission_matrix() {
         "contract-recovery-borrowed",
         "contract-bound-standalone",
         "contract-bound-borrowed",
+        "contract-cancel-standalone",
+        "contract-cancel-borrowed",
     ] {
         for kind in ["process", "mcp"] {
             scenario(
@@ -387,7 +389,11 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
     let mut command = Command::new("/usr/bin/python3");
     command.args(["-c", "import os,sys;os.setgroups([]);os.setgid(65534);os.setuid(65534);os.execv(sys.argv[1],sys.argv[1:])"])
         .arg(staging.join(artifact))
-        .args(["--exact", if behavior == "contract-bound-standalone" {
+        .args(["--exact", if behavior == "contract-cancel-standalone" {
+            "provisioned::standalone_native_cancellation_retires_bound_claim_without_entry"
+        } else if behavior == "contract-cancel-borrowed" {
+            "provisioned::borrowed_native_cancellation_retires_bound_claim_without_entry"
+        } else if behavior == "contract-bound-standalone" {
             "provisioned::standalone_native_bound_entry_refuses_stale_table_until_original_is_restored"
         } else if behavior == "contract-bound-borrowed" {
             "provisioned::borrowed_native_bound_entry_refuses_stale_table_until_original_is_restored"
@@ -640,6 +646,8 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                             | "contract-ack-only-borrowed"
                             | "contract-bound-standalone"
                             | "contract-bound-borrowed"
+                            | "contract-cancel-standalone"
+                            | "contract-cancel-borrowed"
                             | "contract-recovery-standalone"
                             | "contract-recovery-borrowed"
                             | "schedule-success"
@@ -687,6 +695,8 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                         | "contract-ack-only-borrowed"
                         | "contract-bound-standalone"
                         | "contract-bound-borrowed"
+                        | "contract-cancel-standalone"
+                        | "contract-cancel-borrowed"
                         | "contract-recovery-standalone"
                         | "contract-recovery-borrowed"
                         | "schedule-success"
@@ -883,6 +893,8 @@ fn verify(fixture: &Fixture, behavior: &str) {
                     | "contract-ack-only-borrowed"
                     | "contract-bound-standalone"
                     | "contract-bound-borrowed"
+                    | "contract-cancel-standalone"
+                    | "contract-cancel-borrowed"
                     | "schedule-success"
                     | "schedule-recovery"
             ) {

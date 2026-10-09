@@ -21,7 +21,7 @@ manual work, refuse changed receiver contracts after migration and preserve
 acknowledged recovery keys until repair. Prior guard sensitivity and scoped
 reviews retain their original ranges, indexed by frozen verdict
 `636348f8b670a0efa300617801dc592875fd261b9d4086e6d0f51f0a2d5e1163`.
-Thirty-six provisioned process/MCP axes remain unexecuted and eighteen protected Rust
+Forty provisioned process/MCP axes remain unexecuted and twenty protected Rust
 cases remain ignored locally; unprovisioned routing proves no native side-effect
 acceptance. Complete task 9103 inventory and plan-end gates remain outstanding;
 full-prefix reconstruction cost stays documented.
@@ -45,6 +45,10 @@ despite changed live context. A newly added, resolved invoked closure with an
 incompatible late child outcome must also refuse the original bound claim;
 repair preserves its invoke slot and replaces the child reference compatibly.
 The executable Store fixture independently verifies this refusal and repair.
+Bound cancellation now requires actual contained startup, authenticated closure
+while a competing writer remains held, absent entry permission and markers,
+then exactly one original settlement with no ack, outcome, retry or derived keys;
+later observations must leave the cancelled generation retired.
 Original ownership,
 unchanged refusal journals, marker absence and exact settlement/allocation
 counts are required before repair or writer release, as applicable. Thirteen
@@ -57,9 +61,9 @@ until provisioned plan-end CI.
 Five focused bound-entry tests pass, including private MCP replacement and
 nested missing arguments; feature-enabled executor all-target clippy and
 format/size/diff checks pass. Scoped review
-`c81fa4e98012027fee40e6c4822d424add7bb9133f0f104dbd35292eee64b44a`
-indexes the executable migration/closure fixture and preceding private MCP probes;
-the eighteen native Rust cases remain ignored locally.
+`12a64723a4a441c20985d5cedeafe9858b022a2c4650213bb676a47b59d9a089`
+indexes cancellation, the executable migration/closure fixture and preceding private MCP probes;
+the twenty native Rust cases remain ignored locally.
 Native producer launch failure now preserves its original bounded diagnostic
 and unobserved axes, retiring only a verified clear installed identity;
 review `53cfcd74bf056d8683a04a63a9c6a30e99978a3c8804211539c3af90f503aa52`

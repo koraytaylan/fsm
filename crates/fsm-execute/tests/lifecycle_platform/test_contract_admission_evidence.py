@@ -39,7 +39,11 @@ INVENTORY = (('contract', 'process', 'contract-standalone'),
              ('contract', 'process', 'contract-bound-standalone'),
              ('contract', 'mcp', 'contract-bound-standalone'),
              ('contract', 'process', 'contract-bound-borrowed'),
-             ('contract', 'mcp', 'contract-bound-borrowed'))
+             ('contract', 'mcp', 'contract-bound-borrowed'),
+             ('contract', 'process', 'contract-cancel-standalone'),
+             ('contract', 'mcp', 'contract-cancel-standalone'),
+             ('contract', 'process', 'contract-cancel-borrowed'),
+             ('contract', 'mcp', 'contract-cancel-borrowed'))
 
 
 class ContractAdmissionEvidence(unittest.TestCase):
@@ -49,7 +53,7 @@ class ContractAdmissionEvidence(unittest.TestCase):
 
     def test_exact_slice_does_not_complete_task_or_verify_executable_bytes(self):
         verdict = self.exercise()
-        self.assertEqual(verdict['cases'], 36)
+        self.assertEqual(verdict['cases'], 40)
         self.assertTrue(verdict['verified'])
         self.assertFalse(verdict['task_complete'])
         self.assertFalse(verdict['gate_released'])
