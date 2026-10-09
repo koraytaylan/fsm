@@ -3043,3 +3043,13 @@ or authorizes capacity release. Formats, public APIs and codes are unchanged.
 Private native preparation refusal diagnostics include bounded static phase
 names for inventory, facility readiness, cgroup creation and original leases;
 phase context changes no allocation, journal record, public error code or format.
+
+For a known missing native cgroup without a closing marker, preparation MAY
+wait within the same original pre-allocation budget only after validating a
+protected original claim binding whose complete domain matches the recorded
+domain and a protected launch handoff whose binding matches exactly. This
+covers natural exit before stop publishes closing. Missing, malformed or
+mismatched binding/handoff remains an immediate refusal. Waiting MUST release
+the authority lock and MUST NOT burn an allocation until the full inventory
+proves original closure; handoff and absence never establish closure. No public
+API, journal format or error code changes.

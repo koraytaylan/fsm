@@ -3,6 +3,7 @@
 use super::*;
 
 pub(super) fn run() {
+    missing_handoff_refuses_without_allocation();
     let mut fixture = Fixture::new();
     let domain = fixture.prepare();
     super::super::super::closing::begin(&fixture.directory, 1).unwrap();
@@ -55,5 +56,26 @@ pub(super) fn run() {
     fixture
         .groups
         .push((path, next.get("cgroup").unwrap().clone()));
+    fixture.cleanup().unwrap();
+}
+
+fn missing_handoff_refuses_without_allocation() {
+    let mut fixture = Fixture::new();
+    let domain = fixture.prepare();
+    let (binding, _) = claim_binding(&fixture, &NativeDomain::from_value(&domain).unwrap());
+    super::super::super::bind(&fixture.directory, &binding).unwrap();
+    super::super::super::closing::begin(&fixture.directory, 1).unwrap();
+    let marker = fixture.directory.join("closing-1.json");
+    let original = fs::read(&marker).unwrap();
+    fs::remove_dir(&fixture.groups[0].0).unwrap();
+    fs::remove_file(&marker).unwrap();
+    let before = fixture.counter();
+    let refused = prepare(&fixture.directory).unwrap_err();
+    assert!(
+        refused.starts_with("native preparation original inventory: retiring original handoff:")
+    );
+    assert_eq!(fixture.counter(), before);
+    assert!(!fixture.directory.join("allocation-2.json").exists());
+    fs::write(&marker, original).unwrap();
     fixture.cleanup().unwrap();
 }

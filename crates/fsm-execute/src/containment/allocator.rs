@@ -217,18 +217,10 @@ fn inventory(directory: &Path, origin: &Value, last: u64) -> Result<InventorySta
             let metadata = match fs::symlink_metadata(&path) {
                 Ok(metadata) => metadata,
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                    // A matched closing marker permits waiting, never a new
-                    // allocation or a conclusion that this domain is closed.
-                    let closing =
-                        read_value(&directory.join(format!("closing-{allocation}.json")), true)?;
-                    if closing
-                        != object([
-                            ("format", Value::Str("fsm.native-closing/1".into())),
-                            ("domain", domain),
-                        ])
-                    {
-                        return Err("closing allocation identity differs".into());
-                    }
+                    // Natural exit may remove the cgroup before stop publishes
+                    // closing. Original protected handoff permits only waiting;
+                    // neither handoff nor absence authorizes a new allocation.
+                    require_retiring_original(directory, allocation, &domain)?;
                     awaiting_closure = true;
                     continue;
                 }
@@ -267,6 +259,52 @@ fn inventory(directory: &Path, origin: &Value, last: u64) -> Result<InventorySta
     } else {
         InventoryStatus::Ready
     })
+}
+
+fn require_retiring_original(
+    directory: &Path,
+    allocation: u64,
+    domain: &Value,
+) -> Result<(), String> {
+    let marker = directory.join(format!("closing-{allocation}.json"));
+    match fs::symlink_metadata(&marker) {
+        Ok(_) => {
+            if read_value(&marker, true)?
+                != object([
+                    ("format", Value::Str("fsm.native-closing/1".into())),
+                    ("domain", domain.clone()),
+                ])
+            {
+                return Err("closing allocation identity differs".into());
+            }
+            return Ok(());
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(io(error)),
+    }
+    let binding = read_value(&directory.join(format!("binding-{allocation}.json")), true)
+        .map_err(|error| format!("retiring original binding: {error}"))?;
+    closed(&binding, &["format", "claim", "journal_claim"])?;
+    let claim = fsm_core::record::execution::Claim::from_value(
+        binding
+            .get("claim")
+            .ok_or("retiring original claim missing")?,
+    )
+    .map_err(|error| error.to_string())?;
+    if text(&binding, "format")? != "fsm.native-claim-binding/1"
+        || claim.domain().to_value() != *domain
+    {
+        return Err("retiring original binding differs".into());
+    }
+    let handoff = read_value(&directory.join(format!("handoff-{allocation}.json")), true)
+        .map_err(|error| format!("retiring original handoff: {error}"))?;
+    closed(&handoff, &["format", "binding", "gate"])?;
+    if text(&handoff, "format")? != "fsm.native-launch-handoff/1"
+        || handoff.get("binding") != Some(&binding)
+    {
+        return Err("retiring original handoff differs".into());
+    }
+    Ok(())
 }
 
 fn advance(directory: &Path, mut value: Value, next: u64) -> Result<(), String> {
