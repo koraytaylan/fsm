@@ -139,3 +139,53 @@ fn bound_service_entry_refuses_new_manual_disposition_before_consuming_permissio
         "exec/contract_unknown",
     );
 }
+
+#[test]
+fn bound_service_entry_refuses_cancelled_or_acknowledged_work_without_consuming_permission() {
+    for acknowledged in [false, true] {
+        let (mut store, mut owner, table) = bound_owner();
+        let mut clock = FixedClock::new(2000, 1);
+        if acknowledged {
+            let effect = owner.claim.effect().1.to_owned();
+            store
+                .ack_effect_outcome_on(
+                    &mut clock,
+                    "entry-instance",
+                    &effect,
+                    &crate::rid::ack_rid(&effect),
+                    "ok",
+                    None,
+                )
+                .unwrap();
+        } else {
+            store
+                .cancel_instance_reason_on(
+                    &mut clock,
+                    "entry-instance",
+                    "cancel",
+                    "operator cancelled before entry",
+                )
+                .unwrap();
+        }
+        let state = store.state.clone();
+        let records = store.records.clone();
+        for _ in 0..3 {
+            let error = owner
+                .apply(
+                    &mut store,
+                    &mut clock,
+                    &mut Pipeline,
+                    &AtomicBool::new(false),
+                    &table,
+                    None,
+                )
+                .unwrap_err();
+            assert_eq!(error.code, "exec/contract_unknown");
+            assert_eq!(store.records, records);
+            assert!(fsm_store::snapshot::store_states_eq(&state, &store.state));
+            assert!(!owner.entry_requested);
+            assert!(owner.execution.progress().retained);
+            assert_eq!(owner.execution.progress().phase, NativeRunPhase::Bound);
+        }
+    }
+}
