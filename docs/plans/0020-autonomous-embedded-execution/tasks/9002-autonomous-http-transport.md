@@ -233,3 +233,11 @@ Focused startup acceptance:
   errors retire the original HTTP session without stopping the shared owner.
   Full concurrent admission and active-handler expiry/DELETE acceptance still
   require closure; plan-end gates remain due and this task stays in progress.
+- Real-binary writer-mode HTTP acceptance now fills all 32 transport sessions,
+  observes HTTP 503 without a session ID on the thirty-third initialization,
+  verifies an existing session remains usable, and reclaims capacity after
+  DELETE while the retired ID returns HTTP 404. The original writer stays held,
+  the journal does not advance and verification remains healthy. The focused
+  case, CLI all-target clippy and format/size/diff checks pass. This establishes
+  transport session-count admission, not simultaneous host command-count
+  saturation; the remaining acceptance and plan-end gates still apply.

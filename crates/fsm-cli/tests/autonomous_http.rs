@@ -780,3 +780,54 @@ fn production_http_hosted_diagnostics_return_their_bounded_result() {
     assert!(matches!(Store::open(&directory), Err(error) if error.code == "store/lock"));
     client.executor();
 }
+
+#[test]
+fn production_http_session_count_refuses_the_thirty_third_and_reclaims_deleted_capacity() {
+    let (directory, store) = seeded("session-count");
+    let before = store.journal.last_seq;
+    drop(store);
+    let mut client = Client::start_mode(directory.clone(), Mode::Writer);
+    let mut sessions = std::collections::BTreeSet::new();
+    for _ in 0..32 {
+        client.session = None;
+        client.initialize();
+        assert!(sessions.insert(client.session.clone().unwrap()));
+    }
+    let mut refused = String::new();
+    streaming_post(client.address, None, r#"{"jsonrpc":"2.0","id":33,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}"#).read_to_string(&mut refused).unwrap();
+    assert!(refused.starts_with("HTTP/1.1 503"), "{refused}");
+    assert!(!refused.contains("Mcp-Session-Id:"), "{refused}");
+    assert_eq!(
+        Store::open_read_only(&directory).unwrap().journal.last_seq,
+        before
+    );
+    let original = sessions.first().unwrap().clone();
+    client.session = Some(original.clone());
+    assert!(
+        client
+            .post(r#"{"jsonrpc":"2.0","id":34,"method":"ping"}"#)
+            .get("result")
+            .is_some()
+    );
+    client.delete_session();
+    client.initialize();
+    assert!(!sessions.contains(client.session.as_ref().unwrap()));
+    let mut retired = String::new();
+    streaming_post(
+        client.address,
+        Some(&original),
+        r#"{"jsonrpc":"2.0","id":35,"method":"ping"}"#,
+    )
+    .read_to_string(&mut retired)
+    .unwrap();
+    assert!(retired.starts_with("HTTP/1.1 404"), "{retired}");
+    assert!(matches!(Store::open(&directory), Err(error) if error.code == "store/lock"));
+    assert_eq!(
+        Store::open_read_only(&directory).unwrap().journal.last_seq,
+        before
+    );
+    assert_eq!(
+        fsm_cli::journal_io::verify(&directory).health,
+        fsm_cli::journal_io::JournalHealth::Ok
+    );
+}
