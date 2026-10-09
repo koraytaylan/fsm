@@ -1079,7 +1079,8 @@ does not retain that execution slot; the original completion remains available
 for event reconciliation. Read-only refusal, uncertain closure, and a different
 claim leave the local reservation intact. This internal composition changes no
 public API, persisted bytes, hash domain, or published error code; fresh native
-admission and cold recovery between Ack and event remain incomplete.
+admission and cold recovery between Ack and event use the guarded owner and
+authenticated handoff paths specified below.
 
 Shared Linux tick ownership pins the physical durable store from its first
 verified watcher snapshot, including an empty owner set before the first
@@ -1103,8 +1104,9 @@ uncertain entry attempt cannot be repeated. Shared cancellation requests native
 transport cancellation and retains ownership rather than creating a legacy
 settlement. Unsupported platforms refuse startup with `exec/mode` and no
 automatic direct-child fallback. Persisted bytes, hash domains, and error codes
-are unchanged; default production host selection, bounded shutdown and cold post-ack recovery
-remain incomplete, and this handoff does not release production acceptance gates.
+are unchanged; supported production host selection, bounded shutdown and cold post-ack recovery
+use the original owner and authenticated handoff paths. Full integration gates
+remain separately required.
 
 Fresh Runner installation additionally MUST authenticate the claim namespace and
 authority generation against the protected registration for the physical store

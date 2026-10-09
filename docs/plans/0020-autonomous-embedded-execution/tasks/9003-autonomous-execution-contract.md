@@ -90,3 +90,10 @@ Focused progress:
   implemented transport contracts. Thirty focused discovery/document checks
   and format/size/diff pass; older recovery clauses still require source-backed
   review before the final plan freeze, and full gates have not started.
+- Source-backed review confirms guarded production launch in native_owners,
+  original-run reconciliation in service/reconciliation and authenticated
+  event-only recovery in native_handoffs. Superseded incomplete/provisional
+  recovery clauses now retain those implemented identity and authority checks;
+  crash-matrix references distinguish the completed plan 0022 range from the
+  upcoming plan 0020 integration gate. Thirty focused contract checks pass;
+  final documentation consistency and integration gates remain due.

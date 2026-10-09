@@ -2542,7 +2542,8 @@ NOT claim, settle, release capacity, or fall back to a direct child. Constructin
 another retained object MUST NOT be interpreted as authority to retry an
 uncertain run. Fresh shared-tick admission and original-run reconciliation use
 these guarded operations; task 9403 acceptance passes for provisioned
-Linux/systemd; the exhaustive 9404 crash matrix remains pending.
+Linux/systemd; the frozen 9404 crash matrix is recorded as complete in plan 0022;
+new transport integration gates remain required at plan 0020 completion.
 
 For installed-owner startup, observation MUST stop at `Bound` without requesting
 execution, even after repeated polls. `NativeExecution::launch_bound` MUST
@@ -2555,7 +2556,8 @@ execution or failed execution-helper startup MUST NOT permit another execution
 request; original ownership MUST remain retained. Recovery objects MUST NOT
 request execution through this method. The preexisting primitive constructor
 retains its separate observation-driven behavior; production fresh admission
-MUST use the installed-owner writer boundary and remains unimplemented.
+MUST use the installed-owner writer boundary; supported production owners
+perform this guarded launch through the retained original execution.
 
 The Root broker `close` operation MUST support a prepared allocation with no binding: under the authority lock it MUST refuse any binding or launch/handoff/manager submission material, including pending records, durably revoke admission, verify original domain identity and manager retirement, remove only the matching empty domain, and publish the original domain tombstone; it MUST NOT issue an execution closure receipt or authorize journal settlement, and cold retries MUST retain those checks.
 
@@ -2563,9 +2565,9 @@ The Root broker `discard-prepared` action MUST accept exactly a structurally val
 
 NativePreparedCleanup MUST retain the complete original domain and use only its original route with `discard-prepared`; poll MUST report success only after a successful exact-domain response and actual helper retirement and EOF, while cancellation, errors or helper reap alone MUST NOT imply domain closure, journal settlement or capacity release.
 
-Shared tick recovery MUST adopt unresolved original claims from the same verified read-only snapshot used for observation, independently of current handlers, cancelled instances or pending effects; the Runner MUST retain original identities and stopped evidence across missing observations, pin that retained state to the physical store directory, and refuse physical-store substitution before scheduling. Recovery MUST request only original completion, with at most one owned recovery transport active at a time; failed or retired transport MUST NOT authorize binding, launching, acknowledgement or capacity release. Shared Runner observation MUST continue bounded recovery transport polling and reaping when journal scanning fails. This is initial startup recovery wiring; production native admission, completion application and post-ack discovery remain provisional.
+Shared tick recovery MUST adopt unresolved original claims from the same verified read-only snapshot used for observation, independently of current handlers, cancelled instances or pending effects; the Runner MUST retain original identities and stopped evidence across missing observations, pin that retained state to the physical store directory, and refuse physical-store substitution before scheduling. Recovery MUST request only original completion, with at most one owned recovery transport active at a time; failed or retired transport MUST NOT authorize binding, launching, acknowledgement or capacity release. Shared Runner observation MUST continue bounded recovery transport polling and reaping when journal scanning fails. Production native admission, completion application and post-ack discovery MUST preserve these original-ownership checks.
 
-Shared native completion application MUST require a supported healthy durable writer and matching original physical-store proof, persist original stopped evidence and consume its exact disposition before any original-contract event. Helper readiness alone MUST NOT release capacity. After matching durable consumption, the host MUST exclude that owner from retained capacity, retain a declared but disabled/refused event handoff, and retry a disabled handoff only after a changed journal prefix; it MUST use the existing event request key and original checked contract, independently of current handlers. Each tick MUST apply at most one ready native owner, with fair rotation across ready identities; missing completion and writer/readonly refusal MUST retain ownership. This implements recovered-owner application only; native preparation/admission and authenticated post-ack cold discovery remain provisional.
+Shared native completion application MUST require a supported healthy durable writer and matching original physical-store proof, persist original stopped evidence and consume its exact disposition before any original-contract event. Helper readiness alone MUST NOT release capacity. After matching durable consumption, the host MUST exclude that owner from retained capacity, retain a declared but disabled/refused event handoff, and retry a disabled handoff only after a changed journal prefix; it MUST use the existing event request key and original checked contract, independently of current handlers. Each tick MUST apply at most one ready native owner, with fair rotation across ready identities; missing completion and writer/readonly refusal MUST retain ownership. Fresh admission and authenticated post-ack cold discovery MUST preserve the same original owner and checked-contract identity.
 
 ### Native local reservation after authenticated consumption
 
@@ -2576,7 +2578,8 @@ does not retain that execution slot; the original completion remains available
 for event reconciliation. Read-only refusal, uncertain closure, and a different
 claim leave the local reservation intact. This internal composition changes no
 public API, persisted bytes, hash domain, or published error code; fresh native
-admission and cold recovery between Ack and event remain incomplete.
+admission and cold recovery between Ack and event use the guarded owner and
+authenticated handoff paths specified below.
 
 Shared Linux tick ownership pins the physical durable store from its first
 verified watcher snapshot, including an empty owner set before the first
@@ -2600,8 +2603,9 @@ uncertain entry attempt cannot be repeated. Shared cancellation requests native
 transport cancellation and retains ownership rather than creating a legacy
 settlement. Unsupported platforms refuse startup with `exec/mode` and no
 automatic direct-child fallback. Persisted bytes, hash domains, and error codes
-are unchanged; default production host selection, bounded shutdown and cold post-ack recovery
-remain incomplete, and this handoff does not release production acceptance gates.
+are unchanged; supported production host selection, bounded shutdown and cold post-ack recovery
+use the original owner and authenticated handoff paths. Full integration gates
+remain separately required.
 
 Fresh Runner installation additionally MUST authenticate the claim namespace and
 authority generation against the protected registration for the physical store
@@ -2766,7 +2770,8 @@ Production `execute runs` implements the journal-only inspection portion;
 `execute reconcile` selects shared authenticated result recovery or guarded
 closure; startup recovery covers owned pre-run and runner-phase claims with the
 same original identity and closure checks; task 9403 acceptance passes for provisioned
-Linux/systemd; the exhaustive 9404 crash matrix remains pending.
+Linux/systemd; the frozen 9404 crash matrix is recorded as complete in plan 0022;
+new transport integration gates remain required at plan 0020 completion.
 The `fsm.execution-runs/1` report contains observed_seq, inventory_complete,
 inventory_limit (4096), and run-ID-ordered runs with run_id, instance_id,
 effect_id, backend, phase, native_evidence and next. The execution_ownership
@@ -2864,7 +2869,8 @@ An idle lease or missing lease is not closure proof; the planned reconciliation
 path still requires original binding, authority, physical store and authenticated
 closure checks. Missing lease material MUST NOT authorize fencing or settlement.
 This lease does not establish ownership before the runner starts; reconciliation
-of claim/binding phases remains unimplemented and cannot infer death from absence.
+of claim/binding phases MUST use the original authority, protected leases and
+authenticated closure checks and MUST NOT infer death from absence.
 The internal `reconcile-claimed` broker action MUST exclusively hold an existing
 protected runner lease through original-binding validation, fencing and closure;
 it MUST refuse a held or missing lease before any closure side effect, MUST NOT
@@ -2913,7 +2919,8 @@ reason only from the closed native response envelope; malformed responses MUST
 remain protocol refusals and no refusal may establish closure or settlement.
 This implements runner-phase and owned pre-run startup reconciliation;
 task 9403 acceptance passes for provisioned
-Linux/systemd; the exhaustive 9404 crash matrix remains pending.
+Linux/systemd; the frozen 9404 crash matrix is recorded as complete in plan 0022;
+new transport integration gates remain required at plan 0020 completion.
 
 An executor incarnation MUST distinguish its own admissions from journal claims
 retained only through observation or recovery. An observed claim alone MUST NOT
