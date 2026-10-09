@@ -3583,6 +3583,10 @@ one bounded command owner with owned arguments and immutable committed replies.
 HTTP sessions MUST retain separate protocol-state locks; cancellation and
 original-session retirement MUST bypass a session's request wait. DELETE MUST
 close only that original host session and MUST NOT stop the shared writer.
+Ordinary hosted tool calls MUST reach bounded host admission without waiting
+for a session's unanswered elicitation. They MUST use the original cancellation
+registry and MUST NOT consume the question waiter's reverse-response mailbox;
+elicitation and protocol-state changes retain the original session lock.
 Refusal by bounded host admission MUST return HTTP 503 before any refused
 operation mutates the journal, after existing security and session checks.
 Synchronous borrowed HTTP helpers retain their existing caller-clock behavior.

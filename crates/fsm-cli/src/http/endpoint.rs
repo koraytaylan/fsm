@@ -434,19 +434,41 @@ impl Endpoint {
         let io = std::cell::RefCell::new(SessionIo::new(&notifier, &mut reader));
 
         {
-            let mut live = state.live.lock_safe();
+            // Tools do not change protocol state; only elicitation owns the
+            // reverse mailbox. A second call must reach the original host's
+            // count/byte admission while that question remains unanswered.
+            let independent_tool = state.hosted.is_some()
+                && method == "tools/call"
+                && params
+                    .as_ref()
+                    .and_then(|parameters| parameters.get("name"))
+                    .and_then(Value::as_str)
+                    != Some("instance_elicit");
+            let mut tool_live = Live::default();
+            tool_live.cancellations = state.cancellations.clone();
+            tool_live.degraded_dir = self
+                .degraded
+                .as_ref()
+                .map(|(directory, _)| directory.clone());
+            let mut live_guard;
+            let live = if independent_tool {
+                &mut tool_live
+            } else {
+                live_guard = state.live.lock_safe();
+                &mut live_guard
+            };
             let mut initialized = true;
             if let Some(hosted) = &state.hosted {
                 hosted
                     .dispatch(
                         &notifier,
                         clock,
-                        &mut live,
+                        live,
                         id,
                         method,
                         params,
                         self.mode_note,
-                        &io,
+                        (!independent_tool).then_some(&io),
                         &feed_out,
                     )
                     .inspect_err(|_| {
@@ -459,7 +481,7 @@ impl Endpoint {
                         store,
                         clock,
                         &mut initialized,
-                        &mut live,
+                        live,
                         id,
                         method,
                         params,

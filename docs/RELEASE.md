@@ -1,5 +1,9 @@
 # Releasing
 
+Hosted HTTP ordinary tool calls no longer wait behind an unanswered question
+in the same session; they reach the existing count/byte admission directly,
+preserving cancellation and the question waiter's exclusive reverse mailbox.
+
 HTTP buffered output now bounds aggregate retained response allocation to 8 MiB,
 discards overflow, refuses suffix publication and transfers completed bytes
 without cloning the entire retained buffer; queue limits remain unchanged.

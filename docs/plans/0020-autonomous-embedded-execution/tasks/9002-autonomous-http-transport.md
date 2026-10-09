@@ -271,3 +271,12 @@ Focused startup acceptance:
   session-ID subprocess entry remains intentionally ignored in its parent run.
   This closes active-handler DELETE acceptance, not concurrent host command
   saturation or the plan-end full/platform gates; this task stays in progress.
+- Ordinary hosted tool calls now use a request-local protocol view with the
+  original cancellation registry and no reverse-mailbox reader, reaching host
+  admission while an elicitation in the same session remains unanswered.
+  The real question case now reads that same session before answering; disabling
+  only the independent-tool path fails its bounded socket read and restoration
+  passes. Ten real HTTP cases, CLI all-target clippy and format/size/diff checks
+  pass. Fixture startup serializes its reserve-to-bind gap after a parallel
+  connection-refusal failure; request execution remains concurrent. The exact
+  concurrent command saturation case and plan-end gates remain outstanding.

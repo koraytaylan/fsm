@@ -77,6 +77,12 @@ impl Client {
     }
 
     fn start_mode(directory: PathBuf, mode: Mode) -> Self {
+        // The CLI binds after spawn; serialize the reserve/release/startup gap
+        // so another fixture cannot reserve the same still-unbound port.
+        static STARTUP: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _startup = STARTUP
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let reservation = TcpListener::bind("127.0.0.1:0").unwrap();
         let address = reservation.local_addr().unwrap();
         drop(reservation);
@@ -577,6 +583,9 @@ fn production_http_emits_the_live_question_and_keeps_other_sessions_responsive()
     assert!(prefix.starts_with("HTTP/1.1 200"), "{prefix}");
     assert!(prefix.contains("Content-Type: text/event-stream"));
     let question_id = question.get("id").unwrap().clone();
+    let same_session_read = Instant::now();
+    client.post(r#"{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"instance_get","arguments":{"instance_id":"instance"}}}"#);
+    assert!(same_session_read.elapsed() < Duration::from_secs(2));
     client.session = None;
     client.initialize();
     let responsive = Instant::now();

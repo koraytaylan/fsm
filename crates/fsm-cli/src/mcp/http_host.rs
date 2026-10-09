@@ -109,7 +109,7 @@ impl HostedSession {
         method: &str,
         params: Option<Value>,
         mode_note: &'static str,
-        io: &'a RefCell<SessionIo<'a>>,
+        io: Option<&'a RefCell<SessionIo<'a>>>,
         feed: &'a Notifier,
     ) -> io::Result<()> {
         super::methods::handle_request_hosted(
@@ -123,7 +123,7 @@ impl HostedSession {
             method,
             params,
             mode_note,
-            Some(io),
+            io,
             Some(feed),
         )
     }

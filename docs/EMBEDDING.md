@@ -1,5 +1,10 @@
 # Embedding fsm as a library
 
+An unanswered HTTP elicitation holds its session's conversation state, while
+ordinary hosted tool calls in that same session still reach bounded host
+admission and can read or advance the workflow. Those calls share cancellation
+state and do not consume reverse answers intended for the original question.
+
 A buffered HTTP response retains at most 8 MiB of aggregate Vec capacity across
 all frames, separately from queued/in-flight output and serialization temporaries.
 Overflow discards the partial buffer and closes the session instead of publishing

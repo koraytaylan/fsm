@@ -1,5 +1,10 @@
 # API and version policy
 
+Ordinary hosted HTTP tool calls now reach the existing command admission while
+an elicitation in the same session waits, retaining the original cancellation
+registry and leaving its reverse mailbox to the question waiter. This private
+dispatch repair changes no public signatures, formats, error codes or versions.
+
 HTTP aggregate response buffers now enforce an 8-MiB retained allocation cap
 and refuse excess through existing I/O failure paths; incomplete responses are
 never published. This tighter output bound has a pre-1.0 minor-version consequence
