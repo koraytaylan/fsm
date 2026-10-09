@@ -6,6 +6,9 @@ use std::{
     process::{Command, Stdio},
 };
 
+#[path = "crash_matrix_contracts.rs"]
+mod contracts;
+
 #[derive(Clone, Copy)]
 struct Scenario {
     host: &'static str,
@@ -745,6 +748,7 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
         handler.insert("tool".into(), Value::Str("run".into()));
         handler.insert("arguments".into(), object([]));
     }
+    contracts::apply_policy(&mut handler, behavior);
     if behavior == "schedule-fairness" {
         let argv = match handler.get_mut("argv").unwrap() {
             Value::Arr(argv) => argv,

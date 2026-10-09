@@ -159,12 +159,16 @@ The first timeout case then refuses an invalid manually constructed zero-backoff
 fixture. Retry preparation now retains the parsed positive backoff, checks
 invalid warm/cold observations at eligibility, and requires repaired work to
 remain idle one millisecond before its durable due time before starting at it.
+Checkpoint `5131b76f` then reaches the timeout claim but cannot bind its changed
+policy against the original protected catalogue. Root staging now approves the
+exact timeout and ack-only policies before provisioning; an independently
+specified full-handler/fingerprint comparison passes all eight kind/path branches.
 Cancellation, bound-entry and recovery observers share readable-empty Root PID
 slots and strict missing candidate/result markers; repaired completion releases
 the complete original tree. Thirteen focused admission cases, two real portable
 barrier cases, 27 mocked producer/verifier cases and admission-target clippy pass,
-with format/size/diff checks. Frozen verdict
-`85bdcc02759aa80e2cae556ca7e739de72073543e62f1e878afb305ee7710501`
+with format/size/diff checks, and lifecycle-target clippy passes. Frozen verdict
+`80e24497d88f41bd1d5704c12bff795f843d29616b89a775124636d30a571d4c`
 indexes the actual failures and corrections; the remaining physical inventory,
 native sensitivity and plan-end gates remain open.
 
