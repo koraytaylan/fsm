@@ -59,6 +59,8 @@ enum Scenario {
     UnknownRepair,
     Fairness,
     Contention,
+    ManualRepair,
+    AckOnly,
 }
 
 #[test]
@@ -85,6 +87,30 @@ fn borrowed_native_timeout_reaps_original_tree_while_writer_is_held() {
     observe(true, Scenario::Contention);
 }
 
+#[test]
+#[ignore = "requires disposable native CI and exact staged process/MCP fixture"]
+fn standalone_native_manual_work_stays_pending_until_handler_is_supplied() {
+    observe(false, Scenario::ManualRepair);
+}
+
+#[test]
+#[ignore = "requires disposable native CI and exact staged process/MCP fixture"]
+fn standalone_native_no_outcome_handler_acks_without_synthetic_event() {
+    observe(false, Scenario::AckOnly);
+}
+
+#[test]
+#[ignore = "requires disposable native CI and exact staged process/MCP fixture"]
+fn borrowed_native_manual_work_stays_pending_until_handler_is_supplied() {
+    observe(true, Scenario::ManualRepair);
+}
+
+#[test]
+#[ignore = "requires disposable native CI and exact staged process/MCP fixture"]
+fn borrowed_native_no_outcome_handler_acks_without_synthetic_event() {
+    observe(true, Scenario::AckOnly);
+}
+
 fn observe(borrowed: bool, scenario: Scenario) {
     let manifest = manifest();
     let store_path = PathBuf::from(manifest.get("store").unwrap().as_str().unwrap());
@@ -96,7 +122,8 @@ fn observe(borrowed: bool, scenario: Scenario) {
             .unwrap();
     table.max_inflight = 1;
     table.max_inflight_per_instance = 1;
-    let mut restore = table.handlers["notify"].clone();
+    let original_notify = table.handlers["notify"].clone();
+    let mut restore = original_notify.clone();
     restore.effect = "restore".into();
     restore.on_ok = Some(Advance {
         event: "undeclared".into(),
@@ -126,6 +153,19 @@ fn observe(borrowed: bool, scenario: Scenario) {
         notify.timeout_ms = 5000;
         notify.retry.attempts = 1;
         notify.on_failed = notify.on_ok.clone();
+    }
+    if matches!(scenario, Scenario::ManualRepair | Scenario::AckOnly) {
+        restore.on_ok = None;
+    }
+    if matches!(scenario, Scenario::ManualRepair) {
+        table.handlers.remove("notify");
+        table.manual_effects.insert("notify".into());
+    }
+    if matches!(scenario, Scenario::AckOnly) {
+        let notify = table.handlers.get_mut("notify").unwrap();
+        notify.on_ok = None;
+        notify.on_failed = None;
+        notify.retry.attempts = 1;
     }
     table.handlers.insert("restore".into(), restore);
     let mut clock = FixedClock::new(2000, 0);
@@ -203,13 +243,20 @@ fn observe(borrowed: bool, scenario: Scenario) {
     } else {
         "error exec/contract_invalid"
     };
-    for _ in 0..if matches!(scenario, Scenario::Contention) {
+    for _ in 0..if matches!(scenario, Scenario::Contention | Scenario::AckOnly) {
         0
     } else {
         3
     } {
         let lines = tick(&mut watcher, &mut scheduler, &mut runner, &mut clock);
-        assert!(lines.iter().any(|line| line == diagnostic), "{lines:?}");
+        if matches!(scenario, Scenario::ManualRepair) {
+            assert!(
+                lines.iter().all(|line| !line.starts_with("error ")),
+                "{lines:?}"
+            );
+        } else {
+            assert!(lines.iter().any(|line| line == diagnostic), "{lines:?}");
+        }
         assert!(
             !resource.join("root-candidate").exists(),
             "incompatible later step started the first real handler"
@@ -220,7 +267,14 @@ fn observe(borrowed: bool, scenario: Scenario) {
         assert!(scheduler.inflight_effect(&effect_id).is_none());
     }
     let completed_instance = match scenario {
-        Scenario::Contention => "original",
+        Scenario::Contention | Scenario::AckOnly => "original",
+        Scenario::ManualRepair => {
+            assert!(table.manual_effects.remove("notify"));
+            table.handlers.insert("notify".into(), original_notify);
+            scheduler = Scheduler::new(table.clone());
+            watcher = Watcher::with_handlers(store_path.clone(), &table);
+            "original"
+        }
         Scenario::MissingArgumentRepair => {
             assert_eq!(
                 table
@@ -300,8 +354,13 @@ fn observe(borrowed: bool, scenario: Scenario) {
     loop {
         let lines = tick(&mut watcher, &mut scheduler, &mut runner, &mut clock);
         let current = Store::open_read_only(&store_path).unwrap();
-        if current.state.instances[completed_instance].status
-            == fsm_core::machine::Status::Completed
+        let instance = &current.state.instances[completed_instance];
+        let finished = if matches!(scenario, Scenario::AckOnly) {
+            instance.status == fsm_core::machine::Status::Running && instance.pending.is_empty()
+        } else {
+            instance.status == fsm_core::machine::Status::Completed
+        };
+        if finished
             && current.state.execution.unresolved().count() == 0
             && runner.local_native_claims().next().is_none()
         {
@@ -312,6 +371,32 @@ fn observe(borrowed: bool, scenario: Scenario) {
             "repaired handler did not settle and retire: {lines:?}"
         );
         std::thread::sleep(Duration::from_millis(5));
+    }
+    if matches!(scenario, Scenario::AckOnly) {
+        let current = Store::open_read_only(&store_path).unwrap();
+        assert_eq!(
+            current
+                .records
+                .iter()
+                .filter(|record| record.kind == fsm_core::record::RecordKind::EffectAcked)
+                .count(),
+            1
+        );
+        assert!(
+            current
+                .records
+                .iter()
+                .all(|record| record.kind != fsm_core::record::RecordKind::EventApplied)
+        );
+        let settled_records = current.records.clone();
+        drop(current);
+        for _ in 0..3 {
+            tick(&mut watcher, &mut scheduler, &mut runner, &mut clock);
+            assert_eq!(
+                Store::open_read_only(&store_path).unwrap().records,
+                settled_records
+            );
+        }
     }
     if matches!(scenario, Scenario::Fairness) {
         let current = Store::open_read_only(&store_path).unwrap();

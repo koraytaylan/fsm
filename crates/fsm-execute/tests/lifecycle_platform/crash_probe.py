@@ -46,7 +46,9 @@ CONTRACT_ADMISSION_CASES = tuple(('contract', kind, behavior)
                                                   'contract-fair-standalone', 'contract-fair-borrowed',
                                                   'contract-unknown-standalone', 'contract-unknown-borrowed',
                                                   'contract-argument-standalone', 'contract-argument-borrowed',
-                                                  'contract-contention-standalone', 'contract-contention-borrowed')
+                                                  'contract-contention-standalone', 'contract-contention-borrowed',
+                                                  'contract-manual-standalone', 'contract-manual-borrowed',
+                                                  'contract-ack-only-standalone', 'contract-ack-only-borrowed')
                                  for kind in ('process', 'mcp'))
 
 
