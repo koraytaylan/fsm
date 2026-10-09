@@ -71,6 +71,44 @@ fn provisioned_lifecycle_candidate_matrix() {
     fs::remove_dir_all(staging).unwrap();
 }
 
+#[test]
+#[ignore = "requires disposable native CI and exact staged private host artifacts"]
+fn provisioned_private_completion_owner_matrix() {
+    assert_eq!(
+        std::env::var("FSM_NATIVE_FIXTURE_DISPOSABLE").as_deref(),
+        Ok("1")
+    );
+    assert_eq!(fs::metadata("/proc/self").unwrap().uid(), 0);
+    let seed = format!("{}-{:?}", std::process::id(), std::time::SystemTime::now());
+    let nonce = fsm_core::sha256::to_hex(&fsm_core::sha256::sha256(seed.as_bytes()));
+    let staging = PathBuf::from(format!("/usr/libexec/fsm-crash-{}", &nonce[..24]));
+    fs::DirBuilder::new().mode(0o755).create(&staging).unwrap();
+    fs::set_permissions(&staging, fs::Permissions::from_mode(0o755)).unwrap();
+    for (name, variable) in [
+        ("host-test", "HOST"),
+        ("fixture", "FIXTURE"),
+        ("fsm", "CLI"),
+    ] {
+        super::workflow_cases::stage_artifact(
+            &staging.join(name),
+            &format!("FSM_CRASH_{variable}_ARTIFACT"),
+            &format!("FSM_CRASH_{variable}_SHA256"),
+        );
+    }
+    for kind in ["process", "mcp"] {
+        scenario(
+            &staging,
+            &nonce[..24],
+            Scenario {
+                host: "private",
+                kind,
+                behavior: "private-held",
+            },
+        );
+    }
+    fs::remove_dir_all(staging).unwrap();
+}
+
 fn scenario(staging: &Path, nonce: &str, case: Scenario) {
     let Scenario {
         host,
@@ -201,12 +239,22 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
     fs::set_permissions(&manifest, fs::Permissions::from_mode(0o444)).unwrap();
     let log_path = staging.join(format!("{host}-{kind}-{behavior}.log"));
     let log = fs::File::create(&log_path).unwrap();
-    let mut actor = Command::new("/usr/bin/python3")
-        .args(["-c", "import os,sys;os.setgroups([]);os.setgid(65534);os.setuid(65534);os.execv(sys.argv[1],sys.argv[1:])"])
-        .arg(staging.join("matrix-test"))
-        .args(["--exact", "native::production_candidate_result_crash_retains_original_tree_until_verified_closure", "--ignored", "--nocapture", "--color", "never"])
-        .env("FSM_LIFECYCLE_NATIVE_MANIFEST", &manifest).env("TMPDIR", &fixture.store)
-        .stdin(Stdio::null()).stdout(log.try_clone().unwrap()).stderr(log).spawn().unwrap();
+    let private = host == "private";
+    let mut command = Command::new("/usr/bin/python3");
+    command.args(["-c", "import os,sys;os.setgroups([]);os.setgid(65534);os.setuid(65534);os.execv(sys.argv[1],sys.argv[1:])"])
+        .arg(staging.join(if private { "host-test" } else { "matrix-test" }))
+        .args(["--exact", if private {
+            "mcp::host::tests::held_handlers::execution_host_real_held_handler_allows_read_mutation_and_stop_without_release"
+        } else {
+            "native::production_candidate_result_crash_retains_original_tree_until_verified_closure"
+        }, "--ignored", "--nocapture", "--color", "never"])
+        .env(if private { "FSM_COMPLETION_NATIVE_MANIFEST" } else { "FSM_LIFECYCLE_NATIVE_MANIFEST" }, &manifest)
+        .env("TMPDIR", &fixture.store)
+        .stdin(Stdio::null()).stdout(log.try_clone().unwrap()).stderr(log);
+    if private {
+        command.env("HOME", &home);
+    }
+    let mut actor = command.spawn().unwrap();
     let deadline = Instant::now() + Duration::from_secs(80);
     let mut supervisor_killed = false;
     let mut supervisor_restarted = false;
@@ -358,6 +406,7 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                             | "signal-int"
                             | "signal-term"
                             | "torn-tail"
+                            | "private-held"
                     ) {
                         "hold-result"
                     } else {
@@ -369,7 +418,17 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                 .collect(),
             ),
         ),
-        ("timeout_ms".into(), Value::Num("3000".into())),
+        (
+            "timeout_ms".into(),
+            Value::Num(
+                if behavior == "private-held" {
+                    "30000"
+                } else {
+                    "3000"
+                }
+                .into(),
+            ),
+        ),
         (
             "retry".into(),
             parse(
@@ -443,6 +502,7 @@ fn verify(fixture: &Fixture, behavior: &str) {
                     | "stopped-result"
                     | "acked-result"
                     | "event-result"
+                    | "private-held"
             ) {
                 1
             } else {
