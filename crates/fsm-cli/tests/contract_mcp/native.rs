@@ -220,6 +220,40 @@ fn refuse_unchecked_draft(
     historical
 }
 
+fn start(entry: &Value) -> Client {
+    let store = path(entry, "store");
+    let handlers = store.join("contract-handlers.json");
+    let mut command = Command::new(path(entry, "cli"));
+    command
+        .arg("--data-dir")
+        .arg(&store)
+        .args(["serve", "--execute", "--handlers"])
+        .arg(&handlers)
+        .env("HOME", path(entry, "home"))
+        .stderr(
+            fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(store.join("stderr"))
+                .unwrap(),
+        );
+    Client::spawn(command)
+}
+
+fn retire(client: &mut Client) {
+    drop(client.input.take());
+    let deadline = Instant::now() + Duration::from_secs(12);
+    loop {
+        if let Some(status) = client.child.try_wait().unwrap() {
+            assert!(status.success());
+            break;
+        }
+        assert!(Instant::now() < deadline, "native host must retire on EOF");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    client.reader.take().unwrap().join().unwrap();
+}
+
 pub(super) fn run() {
     let entry = manifest();
     let store = path(&entry, "store");
@@ -229,15 +263,7 @@ pub(super) fn run() {
         .expect("original protected operator table");
     let handlers = store.join("contract-handlers.json");
     fs::write(&handlers, canon_bytes(table)).unwrap();
-    let mut command = Command::new(path(&entry, "cli"));
-    command
-        .arg("--data-dir")
-        .arg(&store)
-        .args(["serve", "--execute", "--handlers"])
-        .arg(&handlers)
-        .env("HOME", path(&entry, "home"))
-        .stderr(fs::File::create(store.join("stderr")).unwrap());
-    let mut client = Client::spawn(command);
+    let mut client = start(&entry);
     let discovery = client.call(
         2,
         "resources/read",
@@ -341,6 +367,43 @@ pub(super) fn run() {
     assert!(!resource.join("work").exists());
     drop(snapshot);
     let historical = refuse_unchecked_draft(&mut client, &store, &resource);
+    let refused = Store::open_read_only(&store).unwrap();
+    let refused_records = refused.records.clone();
+    let refused_state = refused.state.clone();
+    drop(refused);
+    retire(&mut client);
+    let reopened = Store::open(&store).unwrap();
+    assert_eq!(reopened.records, refused_records);
+    assert!(fsm_store::snapshot::store_states_eq(
+        &refused_state,
+        &reopened.state
+    ));
+    drop(reopened);
+    client = start(&entry);
+    let after_restart = client.check(
+        26,
+        obj([("machine", Value::Str("unchecked_contract_draft".into()))]),
+    );
+    assert_eq!(
+        after_restart.get("status").and_then(Value::as_str),
+        Some("invalid")
+    );
+    validate_args(schema, &after_restart).unwrap();
+    for _ in 0..3 {
+        client.call(27, "ping", obj([]));
+        let current = Store::open_read_only(&store).unwrap();
+        assert_eq!(current.records, refused_records);
+        assert!(fsm_store::snapshot::store_states_eq(
+            &refused_state,
+            &current.state
+        ));
+        assert_eq!(
+            fsm_execute::effect::resolve(&current, &historical.effect_id).unwrap(),
+            historical
+        );
+        assert_eq!(fs::read_to_string(resource.join("calls")).unwrap(), "");
+        assert!(!resource.join("work").exists());
+    }
     let repair = repair_machine();
     let repaired = client.check(25, obj([("spec", repair.clone())]));
     assert_eq!(
@@ -398,7 +461,7 @@ pub(super) fn run() {
     );
     drop(current);
     // No client requests after repair: observe the actual journal while the
-    // original host autonomously executes, acknowledges and retires its handler.
+    // restarted host autonomously executes, acknowledges and retires its handler.
     let deadline = Instant::now() + Duration::from_secs(12);
     loop {
         let snapshot = Store::open_read_only(&store).unwrap();
@@ -449,20 +512,7 @@ pub(super) fn run() {
         fs::read_to_string(resource.join("work")).unwrap(),
         "first,second"
     );
-    drop(client.input.take());
-    let deadline = Instant::now() + Duration::from_secs(12);
-    loop {
-        if let Some(status) = client.child.try_wait().unwrap() {
-            assert!(status.success());
-            break;
-        }
-        assert!(
-            Instant::now() < deadline,
-            "original native owner must retire on EOF"
-        );
-        std::thread::sleep(Duration::from_millis(5));
-    }
-    client.reader.take().unwrap().join().unwrap();
+    retire(&mut client);
     let writer = Store::open(&store).unwrap();
     assert_eq!(writer.state.execution.unresolved().count(), 0);
 }
