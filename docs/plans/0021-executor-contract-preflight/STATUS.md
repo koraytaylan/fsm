@@ -13,6 +13,14 @@ Task frontmatter is authoritative; the coordinator owns registration and complet
 
 Progress: 2/6 tasks completed.
 
+Intermediate frozen range `bc22f34a..f8a68f58`: pre-claim, bound-entry and
+current-receiver outcome guards pass focused checks and guard sensitivity;
+the final recovery change passes 38 contract/pipeline/tick cases and executor
+all-target clippy. Self-review verdict digest
+`ebcc884667aacaf44ad2a7643a914a3ce314146ac515f91c67ac9a18e9cdbb90`.
+Task 9103 remains in progress: writer-held queueing, bounded analysis caching,
+complete service/native acceptance and plan-end gates remain outstanding.
+
 Manual Phase R binds the six-task bundle to validation base `15172d8298f271abfd0bd1d5b47617d1108ceefc` after plans 0022 and 0020 complete: closed frontmatter, repository-relative footprints and the acyclic local dependency graph pass, with uncreated deliverables explicitly inventoried; task-cache validation digest `4298d27510c4726206598590ca50efd51e0aeca49c5605aae9f004697820f1f7`. Task 9101 completes its focused inventory at `efcb4f9e`, with 67 stable effect/configuration/public-surface cases and focused lint/format/diff checks passing; self-review verdict `dfd37ee9a1867119e4c63a048ad58b1030b7db590fe118b95dcee1edff82f9a1`; task 9102 completes at `ed811ab6` with eleven focused outcome tests and self-review verdict `b9a671329f5a8177a34529118e6925015757c21b9a064f5d5371820bd71ac271`; task 9103 is in progress; prior independent preparation remains subject to current task acceptance, and admission/MCP/final acceptance remain incomplete. Full gates run at plan completion.
 
 Historical STATUS evidence is retained outside the repository in the task-cache
