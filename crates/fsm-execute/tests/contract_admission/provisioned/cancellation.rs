@@ -5,7 +5,6 @@ use super::*;
 pub(super) struct Fixture<'a> {
     pub store_path: &'a std::path::Path,
     pub resource: &'a std::path::Path,
-    pub table: &'a HandlerTable,
 }
 
 pub(super) fn observe(
@@ -19,7 +18,6 @@ pub(super) fn observe(
     let Fixture {
         store_path,
         resource,
-        table,
     } = fixture;
     let deadline = Instant::now() + Duration::from_secs(20);
     while runner.local_native_claims().next().is_none() {
@@ -32,16 +30,18 @@ pub(super) fn observe(
         std::thread::sleep(Duration::from_millis(5));
     }
     let claim = runner.local_native_claims().next().unwrap().clone();
-    // Binding must finish with the writer available, while the current invalid
-    // late outcome keeps the original claim from entering its handler.
-    let mut blocked_table = table.clone();
-    blocked_table.handlers.get_mut("restore").unwrap().on_ok = Some(Advance {
-        event: "undeclared".into(),
-        payload: Value::Obj(BTreeMap::new()),
-        stamps: Vec::new(),
-    });
-    *scheduler = Scheduler::new(blocked_table.clone());
-    *watcher = Watcher::with_handlers(store_path.to_path_buf(), &blocked_table);
+    // Preserve the original scheduler reservation: a replacement scheduler
+    // cannot issue cancellation for work it never reserved. The current receiver
+    // refuses entry while the protected helper finishes binding the original claim.
+    let mut migration_writer = open_writer(store_path, resource, deadline);
+    migrate_receiver(
+        &mut migration_writer,
+        clock,
+        "original",
+        "cancel-receiver",
+        true,
+    );
+    drop(migration_writer);
     let authority = PathBuf::from(manifest().get("authority").unwrap().as_str().unwrap());
     let domain = claim.domain().to_value();
     let allocation = domain.get("allocation").unwrap().as_num().unwrap();
@@ -69,17 +69,7 @@ pub(super) fn observe(
         );
         std::thread::sleep(Duration::from_millis(5));
     }
-    let mut competing = loop {
-        match Store::open(store_path) {
-            Ok(store) => break store,
-            Err(error) if error.code == "store/lock" => {
-                assert!(Instant::now() < deadline, "binding writer did not retire");
-                assert_no_entry(resource);
-                std::thread::sleep(Duration::from_millis(5));
-            }
-            Err(error) => panic!("competing writer failed: {error:?}"),
-        }
-    };
+    let mut competing = open_writer(store_path, resource, deadline);
     let claim_hash = competing.current_execution_claim_hash(&claim).unwrap();
     // Binding is Root-private; the independent coordinator checks its exact
     // claim and journal hash after this observer exits without granting access.
@@ -201,4 +191,22 @@ pub(super) fn observe(
         fsm_store::journal_io::verify(store_path).health,
         fsm_store::journal_io::JournalHealth::Ok
     );
+}
+
+fn open_writer(
+    store_path: &std::path::Path,
+    resource: &std::path::Path,
+    deadline: Instant,
+) -> Store {
+    loop {
+        match Store::open(store_path) {
+            Ok(store) => return store,
+            Err(error) if error.code == "store/lock" => {
+                assert!(Instant::now() < deadline, "binding writer did not retire");
+                assert_no_entry(resource);
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            Err(error) => panic!("competing writer failed: {error:?}"),
+        }
+    }
 }

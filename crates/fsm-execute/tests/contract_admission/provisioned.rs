@@ -489,7 +489,6 @@ fn observe(borrowed: bool, scenario: Scenario) {
             cancellation::Fixture {
                 store_path: &store_path,
                 resource: &resource,
-                table: &table,
             },
             &mut watcher,
             &mut scheduler,
