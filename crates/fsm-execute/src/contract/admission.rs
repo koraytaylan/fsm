@@ -84,6 +84,14 @@ pub(crate) fn check_pending_cached(
     table: &HandlerTable,
     cache: Option<&AdmissionCache>,
 ) -> Result<(), ExecError> {
+    check_membership(store, effect)?;
+    if resolve(store, &effect.effect_id).map_err(|_| stale())? != *effect {
+        return Err(stale());
+    }
+    check_reconstructed(store, effect, table, cache)
+}
+
+fn check_membership(store: &Store, effect: &PendingEffect) -> Result<(), ExecError> {
     if !store
         .state
         .instances
@@ -101,9 +109,18 @@ pub(crate) fn check_pending_cached(
     {
         return Err(unknown_definition());
     }
-    if resolve(store, &effect.effect_id).map_err(|_| stale())? != *effect {
-        return Err(stale());
-    }
+    Ok(())
+}
+
+// Only use evidence just reconstructed or compared against this immutable
+// Store; this helper still repeats live membership and concrete contract checks.
+fn check_reconstructed(
+    store: &Store,
+    effect: &PendingEffect,
+    table: &HandlerTable,
+    cache: Option<&AdmissionCache>,
+) -> Result<(), ExecError> {
+    check_membership(store, effect)?;
     let receiver = store
         .state
         .instance_machines
@@ -197,7 +214,9 @@ pub(crate) fn check_claimed(
     if effect.instance_id != instance {
         return Err(stale());
     }
-    check_pending_cached(store, &effect, table, cache)?;
+    // resolve above already reconstructed this effect from the same borrowed
+    // writer; folding the prefix a second time would establish no new evidence.
+    check_reconstructed(store, &effect, table, cache)?;
     let handler = table.handlers.get(&effect.effect_name).ok_or_else(stale)?;
     let (fingerprint, _) = handler.checked_contract()?;
     if claim.to_value().get("handler_fingerprint") != Some(&fsm_core::json::Value::Str(fingerprint))

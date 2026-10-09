@@ -3232,7 +3232,9 @@ keyed by analyzer format, emitter/receiver, the complete available definition
 catalogue and full private handler settings; cache hits still reconstruct
 pending effects and recheck membership, concrete arguments and receiving
 outcomes, and restart clears evidence. Concrete reconstruction still incurs the
-journal-prefix replay cost at each decision. No public signature, error code,
+journal-prefix replay cost at each decision; bound entry uses its freshly
+reconstructed effect without folding the same prefix twice, while supplied
+pending evidence still requires independent reconstruction. No public signature, error code,
 persisted format or version changes.
 
 Shared native ticks filter structural refusals before concurrency selection, then
