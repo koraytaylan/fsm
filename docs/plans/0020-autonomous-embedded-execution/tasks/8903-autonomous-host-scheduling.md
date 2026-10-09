@@ -150,3 +150,12 @@ faults and fixture-enabled all-target clippy also pass. This scoped verdict
 leaves logical timeout, completion fairness, interrupted acknowledgement,
 construction and full integration acceptance open; no landing OID is assigned
 and executable bytes were not independently compared.
+
+
+The scheduling inventory now stages process/MCP acknowledgement recovery: an
+original private owner is killed at the protected durable-acknowledgement cut,
+strict verification must retain one event handoff with no event applied, and a
+reopened owner must apply exactly one event without an RPC or handler relaunch.
+The observer compiles and independent producer/verifier faults pass; genuine
+runtime acceptance is pending disposable CI. This does not close the remaining
+logical timeout, completion fairness, construction or full integration inventory.

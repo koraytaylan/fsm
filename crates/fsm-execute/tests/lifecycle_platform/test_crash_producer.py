@@ -107,7 +107,7 @@ class Retirement(unittest.TestCase):
                 self.assertEqual(evidence['scope'], 'private-owner-scheduling' if scheduling else 'public-and-private-held-handlers' if private else 'pre-publication-collected-candidates-supervisor-death-domain-close-journal-cuts-host-claim-enrolled-authorization-and-repeated-noisy-hosts')
                 self.assertEqual(evidence['passed'], clear and not stages and not timeout and not missing and not changed)
                 self.assertFalse(evidence['gate_released'])
-                self.assertEqual(run.call_args_list[0].kwargs['timeout'], 600 if scheduling else 1200 if private else 3900)
+                self.assertEqual(run.call_args_list[0].kwargs['timeout'], 800 if scheduling else 1200 if private else 3900)
                 if private:
                     host_build.assert_called_once()
                     boundary_build.assert_called_once()
@@ -121,7 +121,7 @@ class Retirement(unittest.TestCase):
                     boundary_build.assert_not_called()
                     self.assertEqual(set(evidence['artifacts']), {'HOST', 'FIXTURE', 'CLI'})
                     self.assertFalse(evidence['task_complete'])
-                    self.assertEqual(len(evidence['cases']), 6)
+                    self.assertEqual(len(evidence['cases']), 8)
                     self.assertIn('GITHUB_ACTIONS=true', evidence['command'])
                     self.assertEqual(evidence['command'][-5],
                                      'authority::allocator::native_tests::crash_matrix::provisioned_private_scheduling_owner_matrix')

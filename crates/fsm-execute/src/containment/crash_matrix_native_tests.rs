@@ -148,6 +148,7 @@ fn provisioned_private_scheduling_owner_matrix() {
         "schedule-success",
         "schedule-retry",
         "schedule-compensation",
+        "schedule-recovery",
     ] {
         for kind in ["process", "mcp"] {
             scenario(
@@ -218,6 +219,7 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
     if let Some(cut) = behavior
         .strip_suffix("-result")
         .filter(|cut| matches!(*cut, "stopped" | "acked" | "event" | "claimed"))
+        .or_else(|| (behavior == "schedule-recovery").then_some("acked"))
     {
         let physical = fs::metadata(&fixture.store).unwrap();
         let request = fixture.directory.join("crash-journal-barrier.json");
@@ -307,6 +309,8 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
         .arg(staging.join(artifact))
         .args(["--exact", if behavior == "schedule-success" {
             "mcp::host::tests::held_handlers::autonomous_schedule_real_handler_success_without_another_command"
+        } else if behavior == "schedule-recovery" {
+            "mcp::host::tests::scheduling_recovery::autonomous_schedule_reopened_acknowledgement_advances_without_rpc"
         } else if behavior == "schedule-compensation" {
             "mcp::host::tests::scheduling_handlers::autonomous_schedule_real_compensation_completes_without_another_command"
         } else if behavior == "schedule-retry" {
@@ -501,6 +505,7 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                             | "schedule-success"
                             | "schedule-retry"
                             | "schedule-compensation"
+                            | "schedule-recovery"
                     ) {
                         "hold-result"
                     } else {
@@ -524,6 +529,7 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                         | "capacity-held"
                         | "private-output"
                         | "schedule-success"
+                        | "schedule-recovery"
                 ) {
                     "30000"
                 } else {
@@ -631,6 +637,7 @@ fn verify(fixture: &Fixture, behavior: &str) {
                     | "capacity-held"
                     | "private-output"
                     | "schedule-success"
+                    | "schedule-recovery"
             ) {
                 1
             } else {
