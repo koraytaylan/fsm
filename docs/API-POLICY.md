@@ -1769,3 +1769,11 @@ original protected authority identity after acquisition; acquisition, manager
 inspection and stop share that budget. Closure cannot substitute waiting for
 an unissued stop. Refusal or timeout remains uncertain, and persistent formats,
 public APIs and error codes are unchanged.
+
+Native preparation MUST wait before burning an allocation when a known domain
+has a missing cgroup and an exact original-domain durable closing marker but
+no closed tombstone. It MUST release the authority lock while waiting, retain
+the original two-second pre-allocation budget, and revalidate authority,
+registration, counter and full inventory on reacquisition. Missing or mismatched
+closing evidence remains an immediate refusal; waiting never proves closure
+or authorizes capacity release. Formats, public APIs and codes are unchanged.

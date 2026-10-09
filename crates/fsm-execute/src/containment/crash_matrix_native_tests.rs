@@ -145,6 +145,7 @@ fn provisioned_private_scheduling_owner_matrix() {
         );
     }
     super::closure_contention_cases::run();
+    super::allocation_closing_cases::run();
     for behavior in [
         "schedule-success",
         "schedule-retry",

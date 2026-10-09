@@ -30,6 +30,9 @@ mod closure_contention_cases;
 #[path = "prepared_contention_native_tests.rs"]
 mod prepared_contention_cases;
 
+#[path = "allocation_closing_native_tests.rs"]
+mod allocation_closing_cases;
+
 #[path = "allocation_contention_native_tests.rs"]
 mod allocation_contention_cases;
 
@@ -306,6 +309,7 @@ impl Drop for Fixture {
 #[ignore = "requires writable provisioned root cgroups"]
 fn empty_domain_preparation() {
     allocation_contention_cases::run();
+    allocation_closing_cases::run();
     prepared_contention_cases::run();
     closure_contention_cases::run();
     let mut fixture = Fixture::new();

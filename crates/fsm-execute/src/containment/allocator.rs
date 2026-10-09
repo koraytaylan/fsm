@@ -145,7 +145,13 @@ fn intent(origin: &Value, allocation: u64) -> Value {
     value
 }
 
-fn inventory(directory: &Path, origin: &Value, last: u64) -> Result<(), String> {
+enum InventoryStatus {
+    Ready,
+    Closing,
+}
+
+fn inventory(directory: &Path, origin: &Value, last: u64) -> Result<InventoryStatus, String> {
+    let mut awaiting_closure = false;
     let mut intents = 0;
     for (index, entry) in fs::read_dir(directory).map_err(io)?.enumerate() {
         if index >= 32768 {
@@ -208,7 +214,26 @@ fn inventory(directory: &Path, origin: &Value, last: u64) -> Result<(), String> 
                 return Err("closed native domain reappeared or differs".into());
             }
         } else {
-            let metadata = fs::symlink_metadata(&path).map_err(io)?;
+            let metadata = match fs::symlink_metadata(&path) {
+                Ok(metadata) => metadata,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    // A matched closing marker permits waiting, never a new
+                    // allocation or a conclusion that this domain is closed.
+                    let closing =
+                        read_value(&directory.join(format!("closing-{allocation}.json")), true)?;
+                    if closing
+                        != object([
+                            ("format", Value::Str("fsm.native-closing/1".into())),
+                            ("domain", domain),
+                        ])
+                    {
+                        return Err("closing allocation identity differs".into());
+                    }
+                    awaiting_closure = true;
+                    continue;
+                }
+                Err(error) => return Err(io(error)),
+            };
             if !metadata.is_dir()
                 || metadata.uid() != 0
                 || metadata.mode() & 0o022 != 0
@@ -237,7 +262,11 @@ fn inventory(directory: &Path, origin: &Value, last: u64) -> Result<(), String> 
             return Err("unknown native domain refuses allocation".into());
         }
     }
-    Ok(())
+    Ok(if awaiting_closure {
+        InventoryStatus::Closing
+    } else {
+        InventoryStatus::Ready
+    })
 }
 
 fn advance(directory: &Path, mut value: Value, next: u64) -> Result<(), String> {
@@ -301,43 +330,60 @@ fn prepare_with_owner(
     if !metadata.is_file() || metadata.uid() != 0 || metadata.mode() & 0o077 != 0 {
         return Err("authority lock is not protected".into());
     }
-    loop {
+    let (counter_value, last, origin) = loop {
+        loop {
+            if Instant::now() >= acquisition_deadline {
+                return Err("authority busy".into());
+            }
+            match lock.try_lock() {
+                Ok(()) => break,
+                Err(std::fs::TryLockError::WouldBlock) => {
+                    contention();
+                    std::thread::sleep(
+                        Duration::from_millis(5)
+                            .min(acquisition_deadline.saturating_duration_since(Instant::now())),
+                    );
+                }
+                Err(std::fs::TryLockError::Error(error)) => return Err(io(error)),
+            }
+        }
         if Instant::now() >= acquisition_deadline {
             return Err("authority busy".into());
         }
-        match lock.try_lock() {
-            Ok(()) => break,
-            Err(std::fs::TryLockError::WouldBlock) => {
+        protected_directory(directory)?;
+        let origin = origin(directory)?;
+        if origin != original {
+            return Err("authority identity differs".into());
+        }
+        let registration = read_value(&directory.join("store.json"), true)?;
+        closed(&registration, &["format", "path", "identity"])?;
+        let store_metadata =
+            fs::symlink_metadata(Path::new(text(&registration, "path")?)).map_err(io)?;
+        if text(&registration, "format")? != "fsm.native-store-registration/1"
+            || !store_metadata.is_dir()
+            || registration.get("identity") != Some(&identity(&store_metadata))
+        {
+            return Err("registered store identity differs".into());
+        }
+        let counter_value = read_value(&directory.join("counter.json"), true)?;
+        let last = counter(&counter_value, &origin)?;
+        match inventory(directory, &origin, last)? {
+            InventoryStatus::Ready => {
+                if Instant::now() >= acquisition_deadline {
+                    return Err("authority busy".into());
+                }
+                break (counter_value, last, origin);
+            }
+            InventoryStatus::Closing => {
+                lock.unlock().map_err(io)?;
                 contention();
                 std::thread::sleep(
                     Duration::from_millis(5)
                         .min(acquisition_deadline.saturating_duration_since(Instant::now())),
                 );
             }
-            Err(std::fs::TryLockError::Error(error)) => return Err(io(error)),
         }
-    }
-    if Instant::now() >= acquisition_deadline {
-        return Err("authority busy".into());
-    }
-    protected_directory(directory)?;
-    let origin = origin(directory)?;
-    if origin != original {
-        return Err("authority identity differs".into());
-    }
-    let registration = read_value(&directory.join("store.json"), true)?;
-    closed(&registration, &["format", "path", "identity"])?;
-    let store_metadata =
-        fs::symlink_metadata(Path::new(text(&registration, "path")?)).map_err(io)?;
-    if text(&registration, "format")? != "fsm.native-store-registration/1"
-        || !store_metadata.is_dir()
-        || registration.get("identity") != Some(&identity(&store_metadata))
-    {
-        return Err("registered store identity differs".into());
-    }
-    let counter_value = read_value(&directory.join("counter.json"), true)?;
-    let last = counter(&counter_value, &origin)?;
-    inventory(directory, &origin, last)?;
+    };
     let next = last
         .checked_add(1)
         .filter(|next| *next <= MAX_ALLOCATIONS)
