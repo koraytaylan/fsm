@@ -144,6 +144,7 @@ fn provisioned_private_scheduling_owner_matrix() {
             &format!("FSM_CRASH_{variable}_SHA256"),
         );
     }
+    super::closure_contention_cases::run();
     for behavior in [
         "schedule-success",
         "schedule-retry",

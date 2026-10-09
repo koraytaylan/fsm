@@ -9,6 +9,7 @@ pub(super) fn complete(
     binding: &Value,
     claim: &Claim,
     journal_claim: &str,
+    deadline: Instant,
 ) -> Result<(), String> {
     no_submission(directory, allocation)?;
     let unit = format!(
@@ -38,7 +39,6 @@ pub(super) fn complete(
         return Err("unlaunched revocation domain differs".into());
     }
     sync(&closing_path)?;
-    let deadline = Instant::now() + Duration::from_secs(2);
     if !manager::retired(&unit, deadline)? {
         return Err("unlaunched manager still owns unit or job".into());
     }

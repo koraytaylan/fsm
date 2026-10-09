@@ -1743,3 +1743,11 @@ uncertainty diagnostics through the existing operator output path, as
 admission-free observation already does; a short poll interval cannot hide
 those diagnostics by continually scheduling decisions. Diagnostic publication
 changes no claim, outcome, closure proof, journal bytes or error code.
+
+Completed native closure MUST tolerate only pre-mutation `authority busy`
+contention within one two-second budget sampled at request entry; acquisition
+and original-domain retirement share that budget. After acquiring the lock,
+it MUST revalidate the protected authority's original device/inode identity
+before reading closure material or mutating native state. Other refusals,
+identity changes and exhausted budgets remain uncertain and cannot settle a
+journal claim; public APIs, persistent formats and error codes are unchanged.

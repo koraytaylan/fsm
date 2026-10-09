@@ -24,6 +24,9 @@ mod exec_status_cases;
 #[path = "capture_native_tests.rs"]
 mod capture_cases;
 
+#[path = "closure_contention_native_tests.rs"]
+mod closure_contention_cases;
+
 #[path = "prepared_contention_native_tests.rs"]
 mod prepared_contention_cases;
 
@@ -304,6 +307,7 @@ impl Drop for Fixture {
 fn empty_domain_preparation() {
     allocation_contention_cases::run();
     prepared_contention_cases::run();
+    closure_contention_cases::run();
     let mut fixture = Fixture::new();
     let domain = fixture.prepare();
     assert_eq!(number(&domain, "allocation").unwrap(), 1);

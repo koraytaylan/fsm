@@ -49,16 +49,46 @@ pub(super) fn discard_prepared(directory: &Path, domain: &Value) -> Result<Value
 }
 
 pub(super) fn complete(directory: &Path, allocation: u64) -> Result<(), String> {
+    complete_with_contention_probe(directory, allocation, || {})
+}
+
+// A native fixture pauses only a refused acquisition; production preserves
+// the original deadline and authority, with no mutation before the lock.
+pub(super) fn complete_with_contention_probe(
+    directory: &Path,
+    allocation: u64,
+    mut contention: impl FnMut(),
+) -> Result<(), String> {
+    let deadline = Instant::now() + Duration::from_secs(2);
     protected_directory(directory)?;
-    let _lock = authority_lock(directory)?;
+    let original = super::identity(&fs::symlink_metadata(directory).map_err(io)?);
+    let _lock = loop {
+        if Instant::now() >= deadline {
+            return Err("closure authority deadline".into());
+        }
+        match authority_lock(directory) {
+            Ok(lock) => break lock,
+            // SPEC: retry acquisition only, before revocation or publication.
+            Err(error) if error == "authority busy" => {
+                contention();
+                std::thread::sleep(
+                    Duration::from_millis(5)
+                        .min(deadline.saturating_duration_since(Instant::now())),
+                );
+            }
+            Err(error) => return Err(error),
+        }
+    };
+    if Instant::now() >= deadline {
+        return Err("closure authority deadline".into());
+    }
+    protected_directory(directory)?;
+    if super::identity(&fs::symlink_metadata(directory).map_err(io)?) != original {
+        return Err("closure authority identity differs".into());
+    }
     let domain = closing::recorded_domain(directory, allocation)?;
     if absent(&directory.join(format!("binding-{allocation}.json")))? {
-        return prepared::complete(
-            directory,
-            allocation,
-            &domain,
-            Instant::now() + Duration::from_secs(2),
-        );
+        return prepared::complete(directory, allocation, &domain, deadline);
     }
     let binding = read_value(&directory.join(format!("binding-{allocation}.json")), true)?;
     closed(&binding, &["format", "claim", "journal_claim"])?;
@@ -87,6 +117,7 @@ pub(super) fn complete(directory: &Path, allocation: u64) -> Result<(), String> 
             &binding,
             &claim,
             journal_claim,
+            deadline,
         );
     }
     let handoff = read_value(&directory.join(format!("handoff-{allocation}.json")), true)?;
@@ -149,7 +180,6 @@ pub(super) fn complete(directory: &Path, allocation: u64) -> Result<(), String> 
     let groups = Path::new("/sys/fs/cgroup/system.slice");
     protected_directory(groups)?;
     let group = groups.join(&unit);
-    let deadline = Instant::now() + Duration::from_secs(2);
     loop {
         let mut manager_retired = manager::retired(&unit, deadline)?;
         if manager_retired {
