@@ -141,6 +141,30 @@ fn bound_service_entry_refuses_new_manual_disposition_before_consuming_permissio
 }
 
 #[test]
+fn bound_service_entry_refuses_private_mcp_replacement_and_missing_arguments() {
+    for (arguments, code) in [
+        (
+            r#"{"private":{"literal":"replacement"}}"#,
+            "exec/contract_unknown",
+        ),
+        (
+            r#"{"private":{"literal":"{absent}"}}"#,
+            "exec/contract_invalid",
+        ),
+    ] {
+        refuses_bound_entry(
+            |table| {
+                table.handlers.get_mut("notify").unwrap().kind = crate::config::HandlerKind::Mcp {
+                    tool: "perform".into(),
+                    arguments: parse(arguments.as_bytes(), &JsonLimits::DEFAULT).unwrap(),
+                };
+            },
+            code,
+        );
+    }
+}
+
+#[test]
 fn bound_service_entry_refuses_cancelled_or_acknowledged_work_without_consuming_permission() {
     for acknowledged in [false, true] {
         let (mut store, mut owner, table) = bound_owner();

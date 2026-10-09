@@ -492,17 +492,39 @@ fn observe(borrowed: bool, scenario: Scenario) {
             std::thread::sleep(Duration::from_millis(5));
         }
         drop(competing);
-        // First reject an incompatible executable closure, then a structurally
-        // compatible private argv change; neither can consume entry permission.
-        for code in ["error exec/contract_invalid", "error exec/contract_unknown"] {
+        // Structurally compatible private changes still cannot replace the
+        // original claim's handler fingerprint or consume entry permission.
+        for (code, private_arguments) in [
+            ("error exec/contract_invalid", false),
+            ("error exec/contract_unknown", false),
+            ("error exec/contract_unknown", true),
+        ] {
+            if private_arguments
+                && !matches!(
+                    original_table.handlers["notify"].kind,
+                    fsm_execute::config::HandlerKind::Mcp { .. }
+                )
+            {
+                continue;
+            }
             if code.ends_with("unknown") {
                 table = original_table.clone();
-                table
-                    .handlers
-                    .get_mut("notify")
-                    .unwrap()
-                    .argv
-                    .push("PRIVATE_STALE_NATIVE_ARGUMENT".into());
+                let handler = table.handlers.get_mut("notify").unwrap();
+                if private_arguments {
+                    let fsm_execute::config::HandlerKind::Mcp { arguments, .. } = &mut handler.kind
+                    else {
+                        unreachable!()
+                    };
+                    let Value::Obj(arguments) = arguments else {
+                        unreachable!()
+                    };
+                    arguments.insert(
+                        "private_contract_probe".into(),
+                        Value::Str("PRIVATE_STALE_MCP_LITERAL".into()),
+                    );
+                } else {
+                    handler.argv.push("PRIVATE_STALE_NATIVE_ARGUMENT".into());
+                }
                 scheduler = Scheduler::new(table.clone());
                 watcher = Watcher::with_handlers(store_path.clone(), &table);
             }

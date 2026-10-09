@@ -39,7 +39,7 @@ composition and chaos cases; verdict
 `eedbf3f61b365721543985fc1eadab72632c3e2511c5b8f0232ae554659bf0e9`.
 The provisioned inventory crosses both writer entry paths and process/MCP
 handlers for timeout cleanup under contention, manual repair, ack-only work,
-acknowledged recovery and bound-entry table replacement followed by receiver
+acknowledged recovery and bound-entry table/private MCP argument replacement followed by receiver
 migration and repair with historical pending identity preserved. Original ownership,
 unchanged refusal journals, marker absence and exact settlement/allocation
 counts are required before repair or writer release, as applicable. Thirteen
@@ -49,8 +49,11 @@ Content-addressed review
 `90ab973b4c9700178f0c340e58b5426d0ade914cfa61e072499f4ba3320033d5`
 indexes prior scoped native reviews; physical execution remains outstanding
 until provisioned plan-end CI.
-The executable migration fixture and compiled bound-entry sequence have scoped
-review `25523c4c5010fdc5e0b0cd194cdfffb33ca1963473f02add97cf61c5293110d6`;
+Five focused bound-entry tests pass, including private MCP replacement and
+nested missing arguments; feature-enabled executor all-target clippy and
+format/size/diff checks pass. Scoped review
+`50bdc5ebf06b92054cda30b4656b0b6cfee0934a675a33087d6052b143d21a6c`
+indexes the executable migration fixture and private MCP probes;
 the eighteen native Rust cases remain ignored locally.
 
 CLI focused range `62bdbd5d..2cd48842` passes ten real-binary contract cases,
