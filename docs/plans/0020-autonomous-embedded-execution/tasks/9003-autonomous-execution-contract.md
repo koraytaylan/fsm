@@ -27,8 +27,8 @@ touches:
   - docs/EMBEDDING.md
   - docs/RELEASE.md
   - README.md
-status: in_progress
-merged_as: ""
+status: done
+merged_as: "2bee3850a68eea0133005aed916f2de3288a9c24"
 ---
 # Autonomous Execution Contract
 
@@ -68,32 +68,20 @@ both transports actually run.
 
 - **Done when:** discovery, current user documentation, release notes, and production tests agree on autonomous stdio/HTTP execution and its versioned lifecycle contract, with the stable host gate green and no unrecorded integration prerequisite.
 
-Focused progress:
+Frozen acceptance:
 
-- The discovery-driven fixture now accepts only the supported executor resource
-  formats before interpreting mode or handler fields, explicitly refusing unknown,
-  missing and non-string formats. Its named regression, 28 executor/document
-  cases, CLI all-target clippy and format/size/diff checks pass. Current operator
-  guidance still contains stale inline-execution and pending HTTP-egress claims;
-  reconciliation and final plan integration gates remain outstanding.
-- README, execution-mode guidance, HTTP session guidance, SPEC, API-POLICY,
-  release notes and the ServeMode Rust documentation now describe supported
-  production stdio/HTTP autonomous ownership, server/session lifetimes and
-  implemented asynchronous HTTP output. Review removed superseded incomplete
-  HTTP ownership clauses; borrowed helpers remain explicitly request-driven.
-  A transport-document regression and 29 executor/document cases pass with CLI
-  all-target clippy and format/size/diff checks. The complete public-contract
-  audit and frozen plan-end integration gates remain outstanding.
-- The follow-up audit reconciled duplicated native-owner, hosted-method and
-  protocol-read paragraphs across SPEC, API-POLICY, EMBEDDING and RELEASE,
-  replacing obsolete production-selection and lifecycle-route claims with the
-  implemented transport contracts. Thirty focused discovery/document checks
-  and format/size/diff pass; older recovery clauses still require source-backed
-  review before the final plan freeze, and full gates have not started.
-- Source-backed review confirms guarded production launch in native_owners,
-  original-run reconciliation in service/reconciliation and authenticated
-  event-only recovery in native_handoffs. Superseded incomplete/provisional
-  recovery clauses now retain those implemented identity and authority checks;
-  crash-matrix references distinguish the completed plan 0022 range from the
-  upcoming plan 0020 integration gate. Thirty focused contract checks pass;
-  final documentation consistency and integration gates remain due.
+All five steps pass against the reviewed `32dc8711..2bee3850` range:
+truthful versioned discovery, explicit unknown-format refusal, current
+operator guidance, bounded transport/host lifetime contracts and quiet
+stdio/HTTP workflow execution. Complete CI 37969821437 passes all six
+Linux/macOS/Windows stable/MSRV gates, both Linux/systemd native jobs and
+zero-dependency acceptance at runtime source `08c059f5`; downstream embed
+acceptance passes in debug and release. Native reports verify original
+ownership, provisioning, shutdown, recovery and upgrade scenarios.
+The documentation-only successor `2bee3850` passes 26 focused guide checks,
+14 resource checks and actual stdio resource responses matching the current
+SPEC and EMBEDDING bytes; embedded document bytes differ from the gated
+binary, with no runtime-source change or executable byte comparison claimed.
+Final self-review found no unresolved task-scope defect; no independent
+reviewer or plan 0023 release/live-model acceptance is claimed.
+Task-cache verdict SHA-256: `bb797aa3d548751284cc59866a45c6ef740a3c81e04dc829cdafc519cdb0b361`.

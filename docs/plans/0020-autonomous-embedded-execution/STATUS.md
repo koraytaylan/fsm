@@ -1,4 +1,4 @@
-# Plan 0020 — Autonomous Embedded Execution — In progress
+# Plan 0020 — Autonomous Embedded Execution — Complete
 
 Task frontmatter is authoritative; the coordinator owns registration and completion.
 
@@ -10,9 +10,9 @@ Task frontmatter is authoritative; the coordinator owns registration and complet
 | [bounded-session-channels](tasks/8904-bounded-session-channels.md) | done | 25129d2dd238f717e9b2e4ec2e0c148fa4633c13 |
 | [autonomous-stdio-transport](tasks/9001-autonomous-stdio-transport.md) | done | 6cf1df2be0c2649191c786c2885e7e1f1b1fa2e9 |
 | [autonomous-http-transport](tasks/9002-autonomous-http-transport.md) | done | 32dc871170b3402c091a62274cfa88efe1cbc05e |
-| [autonomous-execution-contract](tasks/9003-autonomous-execution-contract.md) | in_progress | — |
+| [autonomous-execution-contract](tasks/9003-autonomous-execution-contract.md) | done | 2bee3850a68eea0133005aed916f2de3288a9c24 |
 
-Progress: 6/7 tasks completed.
+Progress: 7/7 tasks completed.
 
 Frozen 26c68220 closes 8901's written ownership inventory: all six stable/MSRV portable gates and both native jobs pass, with named debug/release ownership cases, verified 82-case containment matrices and twelve production workflow scenarios per toolchain. The independent frozen review has task-cache digest `24b207c7e2fd741f7d298a80c329778fad60d3c374787e5633a6300a18b16cc4`. Completion covers the owned command boundary; sibling completion, scheduling, channel and transport inventories remain separate. Plan 0022 separately completes its lifecycle inventory at `66c785ba`; final transport integration still requires plan 0020's own written acceptance.
 
@@ -88,6 +88,21 @@ Self-review verdict digest:
 Native scope remains Linux/systemd stable; no independent review, executable
 byte comparison or fresh full/platform gate is claimed. Task 9003 remains
 incomplete and full integration gates remain due at plan completion.
+
+Frozen `32dc8711..2bee3850` closes 9003 and the complete plan inventory in
+[CI 37969821437](https://github.com/koraytaylan/fsm/actions/runs/37969821437):
+all six portable stable/MSRV gates, both Linux/systemd native jobs and
+zero-dependency acceptance pass at runtime source `08c059f5`, including
+debug/release downstream embed acceptance and real quiet stdio/HTTP workflows.
+All 36 native report artifacts match the clean frozen source; intentional
+final-kill guard-neutralization failures are separately verified evidence.
+The documentation-only successor has focused guide/resource checks and
+actual stdio SPEC/EMBEDDING responses verified; its embedded document bytes
+differ, while runtime source is unchanged. Final task-scope self-review:
+`bb797aa3d548751284cc59866a45c6ef740a3c81e04dc829cdafc519cdb0b361`.
+No independent reviewer or executable byte comparison is claimed; native
+capability remains Linux/systemd and plan 0023 operational/live-model
+acceptance remains separate.
 
 Historical STATUS evidence is retained outside the repository in the task-cache
 plan-status-archives directory, addressed by SHA-256:
