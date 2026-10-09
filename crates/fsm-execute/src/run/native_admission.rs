@@ -563,7 +563,8 @@ mod tests {
 
     #[test]
     fn exhausted_worker_capacity_keeps_original_preparation_queued() {
-        let capacity = super::super::native_client::worker::exhaust_capacity();
+        let (_scope, capacity) = super::super::native_client::worker::exhaust_capacity();
+        let _startup = super::super::native_client::worker::refuse_fixture_startup();
         let (mut admissions, scheduler, effect) = reservation(Phase::Queued);
         admissions.start_queued(&AtomicBool::new(false));
         assert!(matches!(
@@ -574,6 +575,12 @@ mod tests {
         assert!(!admissions.uncertain());
         assert!(admissions.take_cleanup_diagnostic().is_none());
         drop(capacity);
+        admissions.start_queued(&AtomicBool::new(false));
+        assert!(matches!(
+            admissions.pending[&effect.effect_id].phase,
+            Phase::Preparing(_)
+        ));
+        assert_eq!(scheduler.inflight_effect(&effect.effect_id), Some(&effect));
     }
 
     #[test]

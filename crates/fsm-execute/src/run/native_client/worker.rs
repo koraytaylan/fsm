@@ -18,13 +18,20 @@ const RESPONSE_STORAGE: usize = 2 * 1024 * 1024;
 pub(crate) const CAPACITY_EXHAUSTED: &str = "native transport worker capacity exhausted";
 
 #[cfg(test)]
-pub(crate) fn exhaust_capacity() -> impl Sized {
+pub(crate) fn exhaust_capacity() -> (Scope, impl Sized) {
     let budget = Arc::new(Budget::default());
     let scope = Scope::enter(Some(&budget));
     let tickets = (0..WORKER_SLOTS)
         .map(|_| reserve_current().unwrap().unwrap())
         .collect::<Vec<_>>();
     (scope, tickets)
+}
+
+#[cfg(test)]
+pub(crate) fn refuse_fixture_startup() -> impl Sized {
+    super::startup::FixtureFactory::install(
+        |_| Err("fixture refused before helper creation".into()),
+    )
 }
 
 #[derive(Default)]

@@ -23,9 +23,13 @@ on both stable and MSRV in
 [CI 37863129424](https://github.com/koraytaylan/fsm/actions/runs/37863129424).
 Independent retained-artifact verdict:
 `568c9272b2fafe095aedb1b439b0bd33f41d0fb95b16ffe42e68d25f129250d7`.
-The required public `async_completion` target now compiles but awaits native
-execution; capacity, generation, settlement/recovery and full-gate requirements
-remain incomplete, so 8902 retains no landing OID.
+The public/private four-case CI wiring lands at `e86ad092` with independent
+evidence fault checks at `5f42f0da`; native execution remains unverified.
+Review found pre-dispatch capacity refusal stranding queued admission as unknown;
+`631e7496` preserves the queue, with a load-bearing 0/101/0 regression and focused
+clippy. This local reservation proof does not establish durable capacity or
+settlement acceptance; generation, recovery and full-gate requirements remain
+incomplete, so 8902 retains no landing OID.
 
 Historical STATUS evidence is retained outside the repository in the task-cache
 plan-status-archives directory, addressed by SHA-256:
