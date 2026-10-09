@@ -6,13 +6,13 @@ Task frontmatter is authoritative; the coordinator owns registration and complet
 |---|---|---|
 | [execution-host-ownership](tasks/8901-execution-host-ownership.md) | done | 26c682203df56c498132ab3881b48bd04cdbb46f |
 | [nonblocking-execution-completions](tasks/8902-nonblocking-execution-completions.md) | done | ee296852b5cdaad2d1f88781fe6a390248233240 |
-| [autonomous-host-scheduling](tasks/8903-autonomous-host-scheduling.md) | in_progress | — |
-| [bounded-session-channels](tasks/8904-bounded-session-channels.md) | planned | — |
+| [autonomous-host-scheduling](tasks/8903-autonomous-host-scheduling.md) | done | 6666a55b57a47bd2568bc5113231f76d7a0fdea6 |
+| [bounded-session-channels](tasks/8904-bounded-session-channels.md) | in_progress | — |
 | [autonomous-stdio-transport](tasks/9001-autonomous-stdio-transport.md) | planned | — |
 | [autonomous-http-transport](tasks/9002-autonomous-http-transport.md) | planned | — |
 | [autonomous-execution-contract](tasks/9003-autonomous-execution-contract.md) | planned | — |
 
-Progress: 2/7 tasks completed.
+Progress: 3/7 tasks completed.
 
 Frozen 26c68220 closes 8901's written ownership inventory: all six stable/MSRV portable gates and both native jobs pass, with named debug/release ownership cases, verified 82-case containment matrices and twelve production workflow scenarios per toolchain. The independent frozen review has task-cache digest `24b207c7e2fd741f7d298a80c329778fad60d3c374787e5633a6300a18b16cc4`. Completion covers the owned command boundary; sibling completion, scheduling, channel and transport inventories remain separate. Plan 0022 separately completes its lifecycle inventory at `66c785ba`; final transport integration still requires plan 0020's own written acceptance.
 
@@ -32,20 +32,22 @@ The eight-stage stable host report at `0bd1e14e` has digest
 `11d09f239210cfd4a4b7f71a7ba738902ed478da3ace92b5182684aa67dc5a4c`.
 Scheduling, channels and transport inventories remain separate and incomplete.
 
-Frozen `57f6b9bc` advances 8903's scoped scheduling acceptance in
-[CI 37929334249](https://github.com/koraytaylan/fsm/actions/runs/37929334249):
-both native toolchains pass fourteen genuine process/MCP cases covering
-success, retry, compensation, interrupted acknowledgement, restricted hosts,
-large-outbox fairness and nine original completions under continuously queued
-application reads. Original authority retirement and inventory contention
-checks pass; all nine completion settlements are accounted against response
-prefixes, followed by original shutdown and strict journal verification.
+Frozen `ee296852..6666a55b` closes 8903's focused scheduling inventory in
+[CI 37931177530](https://github.com/koraytaylan/fsm/actions/runs/37931177530):
+both native toolchains pass fourteen genuine process/MCP cases, including
+seven matched original results ready before owner resumption and all nine
+settlements under continuously queued application work. Nine local scheduling
+tests, exact command/decision guard sensitivity, affected CLI test-target
+clippy, formatting and frozen-range diff checks pass. The shared eight-tick
+owner loop and one-original-native-action-per-tick wiring establish the bound;
+the seven-inflight native fixture alone is not an exact eight/nine distinction.
 Independent verdict:
-`16b2bdcc02a95a9a55a8a5b407bd9f3a979ada9b5cb8c9164cccc2b265c35451`.
-This scoped verdict grants no task completion: readiness of the first-wave
-completion queue and the combined exact eight-turn proof still need review.
+`3475897e52a3d6f09290ba4c385cdc2cd6c46178ed8413357f59979a7fd9a41a`.
 Executable bytes were not independently compared; native scope remains
-Linux/systemd, and expensive integration gates are due at plan completion.
+Linux/systemd. Full stable host and portable integration gates remain due at
+plan completion under the explicit user cadence, with no current gate claim.
+Task 8904 now owns the unchanged bounded-session-channel inventory; stdio,
+HTTP and public contract tasks remain incomplete.
 
 Historical STATUS evidence is retained outside the repository in the task-cache
 plan-status-archives directory, addressed by SHA-256:

@@ -20,8 +20,8 @@ touches:
   - docs/EMBEDDING.md
   - docs/API-POLICY.md
   - docs/RELEASE.md
-status: in_progress
-merged_as: ""
+status: done
+merged_as: "6666a55b57a47bd2568bc5113231f76d7a0fdea6"
 ---
 # Autonomous Host Scheduling
 
@@ -103,32 +103,33 @@ Current acceptance evidence:
   Changing only `COMMAND_BATCH` to nine fails at exit 101; restoration passes.
   Retained verdict digest:
   `3dfecb0dedf93c1a5e96c9d675c27f464d3d41663321909e38a5fda04b7bcc07`.
-- Frozen `57f6b9bc` passes all fourteen genuine process/MCP scheduling cases on
-  stable and MSRV in [CI 37929334249](https://github.com/koraytaylan/fsm/actions/runs/37929334249).
-  Concurrent retirement now waits within the original acquisition budget for
-  the original authority; allocation waits for its original closed inventory
-  without retaining the authority lock. Protected closing or original binding
-  and handoff material permits waiting only, never replacement proof or early
-  capacity release. Disposable native checks exercise contention, timeout,
-  authority replacement and missing or malformed retirement material.
-  All nine original trees enter and settle in waves of seven under the existing
-  broker limit while 32 application reads remain queued; every settlement is
-  counted against application response prefixes, and original shutdown and
-  strict journal verification pass. Independent retained-report digest:
-  `16b2bdcc02a95a9a55a8a5b407bd9f3a979ada9b5cb8c9164cccc2b265c35451`.
+- Frozen `6666a55b` passes all fourteen genuine process/MCP scheduling cases on
+  stable and MSRV in [CI 37931177530](https://github.com/koraytaylan/fsm/actions/runs/37931177530).
+  All seven first-wave original closures and result attestations are ready
+  before the owner resumes, matched against the verified journal's original
+  claim hashes; the paused owner appends nothing during that observation.
+  All nine original trees then enter and settle in waves of seven under the
+  unchanged broker limit while 32 application reads remain queued. Every
+  settlement is counted against application response prefixes, followed by
+  original shutdown and strict journal verification. The shared owner loop's
+  exact eight-turn guard and one-original-native-action-per-tick wiring supply
+  the limit proof; the seven-inflight fixture alone does not distinguish eight
+  from nine turns. Host proof-worker observation remains asynchronous.
+  Independent retained-report digest:
+  `3475897e52a3d6f09290ba4c385cdc2cd6c46178ed8413357f59979a7fd9a41a`.
   Reports bind source, compiler, inventory and invocation; executable bytes
   were not independently compared. Native scope remains Linux/systemd.
-  Subsequent `1ae04d3b` only separates unchanged allocator binding fixtures;
-  focused authority-test compilation passes, with no new native execution claim.
+  Original authority contention, deadline, replacement and missing/malformed
+  retirement checks also pass without relaxing capacity or closure proof.
 
-Remaining acceptance: the native queue fixture releases real trees before
-resuming the owner, but does not first establish that all first-wave results
-are ready; its seven-inflight cap also means a settlement-count assertion alone
-cannot distinguish eight from nine owner turns. Strengthen the ready-result
-barrier and review the combined native wiring and exact shared-loop guard proof
-before assigning a landing OID. Expensive integration gates remain due at plan
-completion under the user's 2026-10-09 cadence. No task completion is claimed,
-and the original written inventory above is unchanged.
+Coordinator acceptance closes this task's implementation and focused inventory
+at `6666a55b`, combining nine passing local scheduling tests with fourteen
+verified native cases per toolchain and the retained exact-bound sensitivity
+checks above. The original steps and test inventory are unchanged. Full stable
+host and portable integration gates are explicitly deferred to the end of plan
+0020 under the user's 2026-10-09 cadence; this task verdict does not claim those
+unexecuted gates passed or complete the plan. Session channels and real stdio
+and HTTP transport acceptance remain separate inventories.
 
 Historical milestone prose is archived outside the repository by SHA-256:
 `7b97be7468f15d9bf316c331ce5ad18f36ebda9c722c8d501fcf84e23c92dc05`.
