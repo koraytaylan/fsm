@@ -44,7 +44,7 @@ migration and repair with historical pending identity and arguments preserved
 despite changed live context. Original ownership,
 unchanged refusal journals, marker absence and exact settlement/allocation
 counts are required before repair or writer release, as applicable. Thirteen
-focused admission and 25 mocked producer/verifier cases pass, with executor
+focused admission and 27 mocked producer/verifier cases pass, with executor
 feature-enabled all-target clippy and format/size/diff checks passing.
 Content-addressed review
 `90ab973b4c9700178f0c340e58b5426d0ade914cfa61e072499f4ba3320033d5`
@@ -56,6 +56,11 @@ format/size/diff checks pass. Scoped review
 `e6248708c6d2a38dd00c9546c84999288bcff2a7716d93bbccd7535b3695276a`
 indexes the executable migration fixture and private MCP probes;
 the eighteen native Rust cases remain ignored locally.
+Native producer launch failure now preserves its original bounded diagnostic
+and unobserved axes, retiring only a verified clear installed identity;
+review `53cfcd74bf056d8683a04a63a9c6a30e99978a3c8804211539c3af90f503aa52`
+also records the remaining physical restart/retry, invocation, cancellation and
+guard-sensitivity inventory.
 
 CLI focused range `62bdbd5d..2cd48842` passes ten real-binary contract cases,
 17 executor documentation cases and five legacy session cases, CLI all-target

@@ -41,7 +41,8 @@ class Retirement(unittest.TestCase):
             command.assert_not_called()
 
     def exercise(self, *, initial=True, clear=True, stages=False, timeout=False,
-                 missing=False, changed=False, export_error=False, private=False, scheduling=False, contract=False):
+                 missing=False, changed=False, export_error=False, private=False, scheduling=False, contract=False,
+                 launch_error=False):
         with tempfile.TemporaryDirectory(dir=os.environ['TMPDIR']) as scratch:
             directory = Path(scratch)
             artifact = directory / 'never-executed'
@@ -87,7 +88,7 @@ class Retirement(unittest.TestCase):
                 patch.object(probe.authority, 'authority_state_is_clear', side_effect=[initial, clear] if initial else [False]),
                 patch.object(probe, 'staging_paths', side_effect=[set(), {Path('/mock/stage')} if stages else set()]),
                 patch.object(probe.subprocess, 'check_output', side_effect=check_output) as checked,
-                patch.object(probe.subprocess, 'run', side_effect=[native, subprocess.CompletedProcess([], 0)]) as run,
+                patch.object(probe.subprocess, 'run', side_effect=[OSError('fixture launch failed') if launch_error else native, subprocess.CompletedProcess([], 0)]) as run,
                 patch.object(probe.workflow_failure_export, 'export', return_value=[],
                              side_effect=OSError('export unavailable') if export_error else None) as exported,
             ):
@@ -102,6 +103,9 @@ class Retirement(unittest.TestCase):
                         probe.main()
                     self.assertEqual(run.call_count, 1)
                     exported.assert_called_once()
+                elif launch_error:
+                    with self.assertRaisesRegex(OSError, 'fixture launch failed'):
+                        probe.main()
                 elif changed:
                     with self.assertRaises(AssertionError):
                         probe.main()
@@ -109,7 +113,7 @@ class Retirement(unittest.TestCase):
                     self.assertEqual(probe.main(), 1 if timeout or missing else 0)
                 evidence = json.loads(report.read_text())
                 self.assertEqual(evidence['scope'], 'native-contract-refusal-repair' if contract else 'private-owner-scheduling' if scheduling else 'public-and-private-held-handlers' if private else 'pre-publication-collected-candidates-supervisor-death-domain-close-journal-cuts-host-claim-enrolled-authorization-and-repeated-noisy-hosts')
-                self.assertEqual(evidence['passed'], clear and not stages and not timeout and not missing and not changed)
+                self.assertEqual(evidence['passed'], clear and not stages and not timeout and not missing and not changed and not launch_error)
                 self.assertFalse(evidence['gate_released'])
                 self.assertEqual(run.call_args_list[0].kwargs['timeout'], 900 if contract else 1400 if scheduling else 1200 if private else 3900)
                 if private:
@@ -142,7 +146,12 @@ class Retirement(unittest.TestCase):
                 else:
                     host_build.assert_not_called()
                     boundary_build.assert_not_called()
-                self.assertEqual(report.with_suffix('.log').read_bytes(), output + (b'partial' if timeout else b''))
+                if launch_error:
+                    self.assertEqual(evidence['error'], 'fixture launch failed')
+                    self.assertFalse(any(row['passed'] for row in evidence['cases']))
+                    self.assertFalse(report.with_suffix('.log').exists())
+                else:
+                    self.assertEqual(report.with_suffix('.log').read_bytes(), output + (b'partial' if timeout else b''))
                 if clear and not stages:
                     self.assertEqual(run.call_count, 2)
                     self.assertIn('remove', run.call_args.args[0])
@@ -161,6 +170,12 @@ class Retirement(unittest.TestCase):
 
     def test_contract_admission_timeout_preserves_failed_evidence(self):
         self.exercise(contract=True, timeout=True)
+
+    def test_contract_launch_failure_preserves_original_error_and_retires_authority(self):
+        self.exercise(contract=True, launch_error=True)
+
+    def test_contract_launch_failure_retains_authority_when_cleanup_is_unproven(self):
+        self.exercise(contract=True, launch_error=True, clear=False)
 
     def test_success_retires_only_the_installed_identity(self):
         self.exercise()

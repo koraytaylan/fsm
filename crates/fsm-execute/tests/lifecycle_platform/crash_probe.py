@@ -115,6 +115,7 @@ def main():
     if contract:
         report.update(schema='fsm.native-contract-admission/1',
                       scope='native-contract-refusal-repair', task_complete=False)
+    result = subprocess.CompletedProcess([], None, b'', b'')
     try:
         command = ['sudo', '-n', 'env', 'TMPDIR=' + os.environ['TMPDIR'],
                    'FSM_NATIVE_FIXTURE_DISPOSABLE=1',
@@ -133,6 +134,7 @@ def main():
                          if private else 'authority::allocator::native_tests::crash_matrix::provisioned_lifecycle_candidate_matrix'),
                         '--ignored', '--nocapture', '--color', 'never'])
         timeout = 900 if contract else 1400 if scheduling else 1200 if private else 3900
+        report.update(command=command, exit_code=None, timed_out=False)
         try:
             result = subprocess.run(command, cwd=repo, capture_output=True, timeout=timeout)
             report['timed_out'] = False
@@ -168,7 +170,8 @@ def main():
                             and all(row['passed'] for row in report['cases']))
         assert subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=repo, text=True).strip() == commit
         assert not subprocess.check_output(['git', 'status', '--porcelain', '--untracked-files=no'], cwd=repo)
-    except BaseException:
+    except BaseException as error:
+        report['error'] = str(error)[:512]
         if contract:
             report.update(cases=[dict(host=host, kind=kind, behavior=behavior,
                                      passed=result.stdout.splitlines().count(
