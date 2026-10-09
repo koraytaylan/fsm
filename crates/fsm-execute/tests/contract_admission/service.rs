@@ -164,6 +164,148 @@ fn acknowledged_service_recovery_preserves_refused_key_then_advances_once_withou
 
 struct Directory(PathBuf);
 
+#[test]
+fn migrated_receiver_invalidates_warm_service_evidence_without_replacing_historical_arguments() {
+    for borrowed in [false, true] {
+        let directory = Directory::new();
+        let (store, effect, mut table) = durable_fixture(&directory);
+        table.handlers.get_mut("work").unwrap().on_ok = Some(Advance {
+            event: "next".into(),
+            payload: Value::Obj(BTreeMap::new()),
+            stamps: Vec::new(),
+        });
+        let mut replacement = store.state.machines[&store.state.instance_machines["case-1"]]
+            .compiled
+            .spec
+            .to_value();
+        let Value::Obj(fields) = &mut replacement else {
+            unreachable!()
+        };
+        fields.insert("name".into(), Value::Str("replacement".into()));
+        let digest = fsm_core::hashes::digest_of(&store.state.instance_machines["case-1"]).unwrap();
+        fields.insert("supersedes".into(), parse(format!(
+            r#"{{"machine":"{digest}","states":{{"first":"first","later":"later"}},"context":{{"resource":"\"replacement\""}}}}"#
+        ).as_bytes(), &JsonLimits::DEFAULT).unwrap());
+        fields.insert(
+            "events".into(),
+            parse(
+                br#"[{"name":"next","fields":[{"name":"approved","ty":"bool"}]}]"#,
+                &JsonLimits::DEFAULT,
+            )
+            .unwrap(),
+        );
+        let before = store.records.clone();
+        drop(store);
+        let mut watcher = Watcher::with_handlers(directory.0.clone(), &table);
+        let mut scheduler = Scheduler::new(table.clone());
+        let mut runner = Runner::new_native().unwrap();
+        let mut clock = FixedClock::new(2000, 1);
+        let mut tick = |watcher: &mut Watcher, scheduler: &mut Scheduler, runner: &mut Runner| {
+            if borrowed {
+                let mut writer = Store::open(&directory.0).unwrap();
+                tick_with(
+                    watcher,
+                    scheduler,
+                    runner,
+                    &mut Pipeline,
+                    &mut writer,
+                    &mut clock,
+                    2000,
+                )
+            } else {
+                tick_reporting(
+                    watcher,
+                    scheduler,
+                    runner,
+                    &mut Pipeline,
+                    &directory.0,
+                    &mut clock,
+                    2000,
+                )
+                .lines
+            }
+        };
+        let warm = tick(&mut watcher, &mut scheduler, &mut runner);
+        assert!(
+            warm.iter().any(|line| line == "error exec/mode"),
+            "{warm:?}"
+        );
+        assert_eq!(Store::open_read_only(&directory.0).unwrap().records, before);
+        let mut store = Store::open(&directory.0).unwrap();
+        let historical = resolve(&store, &effect).unwrap();
+        let mut migration_clock = FixedClock::new(3000, 1);
+        store
+            .define_machine_on(&mut migration_clock, replacement, false, false)
+            .unwrap();
+        store
+            .migrate_instance_on(&mut migration_clock, "case-1", "replacement", "migration")
+            .unwrap();
+        let reconstructed = resolve(&store, &effect).unwrap();
+        assert_eq!(reconstructed, historical);
+        assert_eq!(
+            store.state.instances["case-1"].ctx["resource"],
+            Val::Str("replacement".into())
+        );
+        assert_eq!(reconstructed.args["resource"], Val::Str("original".into()));
+        assert_ne!(
+            reconstructed.emitting_machine_id,
+            store.state.instance_machines["case-1"]
+        );
+        let state = store.state.clone();
+        let records = store.records.clone();
+        drop(store);
+        for _ in 0..3 {
+            let lines = tick(&mut watcher, &mut scheduler, &mut runner);
+            assert!(
+                lines
+                    .iter()
+                    .any(|line| line == "error exec/contract_invalid"),
+                "{lines:?}"
+            );
+            assert!(
+                !lines.iter().any(|line| line.starts_with("native-preparing")
+                    || line.starts_with("native-claimed")
+                    || line.starts_with("native-launched"))
+            );
+            let snapshot = Store::open_read_only(&directory.0).unwrap();
+            assert_eq!(snapshot.records, records);
+            assert!(fsm_store::snapshot::store_states_eq(
+                &state,
+                &snapshot.state
+            ));
+            assert!(scheduler.inflight_effect(&effect).is_none());
+            assert!(runner.local_native_claims().next().is_none());
+        }
+        table
+            .handlers
+            .get_mut("work")
+            .unwrap()
+            .on_ok
+            .as_mut()
+            .unwrap()
+            .payload = Value::Obj(BTreeMap::from([("approved".into(), Value::Bool(true))]));
+        watcher = Watcher::with_handlers(directory.0.clone(), &table);
+        scheduler = Scheduler::new(table);
+        let repaired = tick(&mut watcher, &mut scheduler, &mut runner);
+        assert!(
+            repaired.iter().any(|line| line == "error exec/mode"),
+            "{repaired:?}"
+        );
+        assert!(
+            !repaired
+                .iter()
+                .any(|line| line == "error exec/contract_invalid")
+        );
+        let snapshot = Store::open_read_only(&directory.0).unwrap();
+        assert_eq!(snapshot.records, records);
+        assert_eq!(resolve(&snapshot, &effect).unwrap(), historical);
+        assert!(fsm_store::snapshot::store_states_eq(
+            &state,
+            &snapshot.state
+        ));
+    }
+}
+
 impl Directory {
     fn new() -> Self {
         static SEQUENCE: AtomicU64 = AtomicU64::new(0);
