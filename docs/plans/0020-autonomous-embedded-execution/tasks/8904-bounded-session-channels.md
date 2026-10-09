@@ -12,6 +12,8 @@ touches:
   - crates/fsm-cli/src/mcp/methods.rs
   - crates/fsm-cli/src/mcp/elicit.rs
   - crates/fsm-cli/src/mcp/cancel.rs
+  - crates/fsm-cli/src/mcp/serve/hosted.rs
+  - crates/fsm-store/src/journal_io/
   - crates/fsm-cli/src/mcp/progress.rs
   - crates/fsm-cli/src/mcp/watch.rs
   - crates/fsm-cli/src/mcp/tools/handlers/
@@ -20,8 +22,8 @@ touches:
   - docs/SPEC.md
   - docs/API-POLICY.md
   - docs/EMBEDDING.md
-status: in_progress
-merged_as: ""
+status: done
+merged_as: "25129d2dd238f717e9b2e4ec2e0c148fa4633c13"
 ---
 # Bounded Session Channels
 
@@ -134,5 +136,9 @@ Focused channel review:
   and verifies the committed event once. Removing only that feed binding fails
   the named regression at exit 101; restoring it passes all twenty-nine channel
   cases and the eighteen elicitation/cancellation and seven subscription cases.
-- Completion still requires consolidated frozen review of the original
-  inventory; no landing OID is assigned and full gates remain due at plan end.
+- Frozen self-review of `6666a55b..25129d2d` closes the original focused
+  inventory after repairing the publication and retirement findings, with no
+  further task-scope finding; task-cache verdict digest:
+  `fe569635e90f67cf49457be2beab4cd5eba679b5990152fcf23effd1c0d8bccb`.
+  This is a primary-agent review, not an independent reviewer claim; full
+  stable host and platform integration gates remain due at plan completion.

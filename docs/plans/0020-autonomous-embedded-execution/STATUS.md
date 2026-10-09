@@ -7,12 +7,12 @@ Task frontmatter is authoritative; the coordinator owns registration and complet
 | [execution-host-ownership](tasks/8901-execution-host-ownership.md) | done | 26c682203df56c498132ab3881b48bd04cdbb46f |
 | [nonblocking-execution-completions](tasks/8902-nonblocking-execution-completions.md) | done | ee296852b5cdaad2d1f88781fe6a390248233240 |
 | [autonomous-host-scheduling](tasks/8903-autonomous-host-scheduling.md) | done | 6666a55b57a47bd2568bc5113231f76d7a0fdea6 |
-| [bounded-session-channels](tasks/8904-bounded-session-channels.md) | in_progress | — |
+| [bounded-session-channels](tasks/8904-bounded-session-channels.md) | done | 25129d2dd238f717e9b2e4ec2e0c148fa4633c13 |
 | [autonomous-stdio-transport](tasks/9001-autonomous-stdio-transport.md) | planned | — |
 | [autonomous-http-transport](tasks/9002-autonomous-http-transport.md) | planned | — |
 | [autonomous-execution-contract](tasks/9003-autonomous-execution-contract.md) | planned | — |
 
-Progress: 3/7 tasks completed.
+Progress: 4/7 tasks completed.
 
 Frozen 26c68220 closes 8901's written ownership inventory: all six stable/MSRV portable gates and both native jobs pass, with named debug/release ownership cases, verified 82-case containment matrices and twelve production workflow scenarios per toolchain. The independent frozen review has task-cache digest `24b207c7e2fd741f7d298a80c329778fad60d3c374787e5633a6300a18b16cc4`. Completion covers the owned command boundary; sibling completion, scheduling, channel and transport inventories remain separate. Plan 0022 separately completes its lifecycle inventory at `66c785ba`; final transport integration still requires plan 0020's own written acceptance.
 
@@ -48,6 +48,17 @@ Linux/systemd. Full stable host and portable integration gates remain due at
 plan completion under the explicit user cadence, with no current gate claim.
 Task 8904 now owns the unchanged bounded-session-channel inventory; stdio,
 HTTP and public contract tasks remain incomplete.
+
+Frozen `6666a55b..25129d2d` closes 8904's original focused channel inventory:
+29 channel cases, eighteen elicitation/cancellation cases and seven subscription
+cases pass, with affected test-target clippy, formatting, frozen-range diff
+checks and named retirement/publication guard sensitivity. The review repaired
+separate-feed elicitation ordering and added production isolation proof for
+all three egress ceilings; its final self-review found no further task-scope
+defect. Task-cache verdict digest:
+`fe569635e90f67cf49457be2beab4cd5eba679b5990152fcf23effd1c0d8bccb`.
+No independent reviewer or fresh full/platform gate is claimed; plan-end gates
+and real-binary stdio/HTTP acceptance remain outstanding.
 
 Historical STATUS evidence is retained outside the repository in the task-cache
 plan-status-archives directory, addressed by SHA-256:
