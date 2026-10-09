@@ -27,6 +27,26 @@ struct LogicalClock(Arc<AtomicI64>);
 
 #[test]
 fn session_channels_saturated_output_closes_only_its_original_session() {
+    output_refusal_closes_only_original_session(OutputLimit::Count);
+}
+
+#[test]
+fn session_channels_retained_byte_overflow_closes_only_its_original_session() {
+    output_refusal_closes_only_original_session(OutputLimit::RetainedBytes);
+}
+
+#[test]
+fn session_channels_encoded_frame_overflow_closes_only_its_original_session() {
+    output_refusal_closes_only_original_session(OutputLimit::EncodedFrame);
+}
+
+enum OutputLimit {
+    Count,
+    RetainedBytes,
+    EncodedFrame,
+}
+
+fn output_refusal_closes_only_original_session(limit: OutputLimit) {
     let scratch = Scratch::new();
     let (owner, handle) = super::Owner::new(super::seeded(&scratch.0), FixedClock::new(2000, 0));
     let session = handle.session().unwrap();
@@ -57,10 +77,39 @@ fn session_channels_saturated_output_closes_only_its_original_session() {
     let retired = session
         .submit(super::command("machine_list", "{}"))
         .unwrap();
-    for _ in 1..64 {
-        notifier.send(&fsm_core::json::Value::Null).unwrap();
-    }
-    let overflow = notifier.send(&fsm_core::json::Value::Null).unwrap_err();
+    let overflow = match limit {
+        OutputLimit::Count => {
+            for _ in 1..64 {
+                notifier.send(&fsm_core::json::Value::Null).unwrap();
+            }
+            notifier.send(&fsm_core::json::Value::Null).unwrap_err()
+        }
+        OutputLimit::RetainedBytes => {
+            // The ping remains in flight with the expected protocol frame; fill
+            // the rest with two legal frames, leaving exactly one byte free.
+            let ping_bytes =
+                fsm_core::canon::canon_bytes(&value(r#"{"jsonrpc":"2.0","id":1,"result":{}}"#))
+                    .len()
+                    + 1;
+            const FRAME_BYTES: usize = 16 * 1024 * 1024;
+            notifier
+                .send(&fsm_core::json::Value::Str("x".repeat(FRAME_BYTES - 3)))
+                .unwrap();
+            notifier
+                .send(&fsm_core::json::Value::Str(
+                    "x".repeat(FRAME_BYTES - ping_bytes - 4),
+                ))
+                .unwrap();
+            notifier
+                .send(&fsm_core::json::Value::Num("0".into()))
+                .unwrap_err()
+        }
+        OutputLimit::EncodedFrame => notifier
+            .send(&fsm_core::json::Value::Str(
+                "x".repeat(16 * 1024 * 1024 - 2),
+            ))
+            .unwrap_err(),
+    };
     let closed = session.submit(super::command("machine_list", "{}")).err();
     let worker = std::thread::spawn(move || owner.run());
     let reply = healthy

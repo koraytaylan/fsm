@@ -1818,3 +1818,7 @@ internal registration captures only session/control handles and timeout.
 Hosted session adapters close and cancel their original generation, while
 stdio also requests original host shutdown without escalating a prior drain
 or extending its deadline. Graceful output close continues draining normally.
+
+Hosted elicitation settlement MUST retain the originating response guard on
+its separate feed stream as well as its response stream, until response enqueue
+finishes; unanswered questions continue allowing already committed updates.

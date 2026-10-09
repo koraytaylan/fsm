@@ -72,7 +72,7 @@ host or allocate an unbounded backlog.
 
 Focused channel review:
 
-- Twenty-six focused `session_channels` cases pass, including original native
+- Twenty-nine focused `session_channels` cases pass, including original native
   deadline progress and a second session response while actual output remains
   blocked, and replay through a replacement session after actual delivery
   failure without another journal append. Affected store/CLI test-target clippy and
@@ -123,5 +123,16 @@ Focused channel review:
   owned-stdio cases pass, including actual broken output with quiet input and
   verified writer release. Physical HTTP connection retirement remains part
   of task 9002's transport composition, not a claim of HTTP completion here.
+- Inventory review adds production session-isolation proof for retained-byte
+  and encoded-frame overflow, supplementing their exact boundary cases;
+  disabling only overflow retirement fails both regressions at exit 101.
+  Review also found that elicitation settlement guarded its response stream
+  but omitted a separate feed stream. The hosted adapter now binds that feed
+  to the original request's I/O scope, acquiring both guards only on settlement
+  and retaining them through response enqueue. The separate-feed case permits
+  already committed notifications while unanswered, defers settlement updates,
+  and verifies the committed event once. Removing only that feed binding fails
+  the named regression at exit 101; restoring it passes all twenty-nine channel
+  cases and the eighteen elicitation/cancellation and seven subscription cases.
 - Completion still requires consolidated frozen review of the original
   inventory; no landing OID is assigned and full gates remain due at plan end.

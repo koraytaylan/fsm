@@ -419,6 +419,17 @@ fn execution_host_session_channels_native_pass_holds_feed_until_deadline_commit_
 #[cfg(target_os = "linux")]
 #[test]
 fn execution_host_session_channels_elicitation_feed_runs_before_answer_and_defers_settlement() {
+    elicitation_feed_case(FeedTransport::ResponseStream);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn execution_host_session_channels_elicitation_separate_feed_defers_settlement() {
+    elicitation_feed_case(FeedTransport::SeparateStream);
+}
+
+#[cfg(target_os = "linux")]
+fn elicitation_feed_case(transport: FeedTransport) {
     use crate::mcp::{host::mailbox::Next, owned_input::OwnedInput};
     use fsm_core::{canon::canon_bytes, json::Value};
     use std::{
@@ -451,9 +462,22 @@ fn execution_host_session_channels_elicitation_feed_runs_before_answer_and_defer
     let sink = SharedSink::new();
     let (notifier, output) = Notifier::hosted_queued(Box::new(sink.writer())).unwrap();
     let adapter_output = notifier.clone_handle();
+    let events = SharedSink::new();
+    let (event_notifier, event_output) =
+        Notifier::hosted_queued(Box::new(events.writer())).unwrap();
+    let event_adapter = event_notifier.clone_handle();
+    let feed_notifier = match transport {
+        FeedTransport::ResponseStream => notifier.clone_handle(),
+        FeedTransport::SeparateStream => event_notifier.clone_handle(),
+    };
     let mut subscriptions = Subscriptions::default();
     subscriptions.subscribe("fsm://instance/inst-question");
-    let mut feed = Feed::new(&scratch.0, subscriptions, notifier.clone_handle(), before);
+    let mut feed = Feed::new(
+        &scratch.0,
+        subscriptions,
+        feed_notifier.clone_handle(),
+        before,
+    );
     let (mut client, server) = UnixStream::pair().unwrap();
     let (response_queued, observed) = mpsc::channel();
     let (release, resume) = mpsc::channel();
@@ -482,7 +506,10 @@ fn execution_host_session_channels_elicitation_feed_runs_before_answer_and_defer
                 )),
                 "elicitation publication case",
                 Some(&io),
-                None,
+                match transport {
+                    FeedTransport::ResponseStream => None,
+                    FeedTransport::SeparateStream => Some(&event_adapter),
+                },
             );
             response_queued.send(()).unwrap();
             resume.recv_timeout(Duration::from_secs(5)).unwrap();
@@ -508,7 +535,7 @@ fn execution_host_session_channels_elicitation_feed_runs_before_answer_and_defer
             assert!(Instant::now() < deadline, "original question missing");
             std::thread::sleep(Duration::from_millis(1));
         };
-    let waiting_unguarded = !notifier.publication_pending();
+    let waiting_unguarded = !feed_notifier.publication_pending();
     owner
         .store
         .create_instance_ctx_on(
@@ -539,7 +566,7 @@ fn execution_host_session_channels_elicitation_feed_runs_before_answer_and_defer
     else {
         panic!("original settlement missing")
     };
-    let settling_guarded = notifier.publication_pending();
+    let settling_guarded = feed_notifier.publication_pending();
     owner.apply(settlement);
     observed.recv_timeout(Duration::from_secs(5)).unwrap();
     let committed = Store::open_read_only(&scratch.0).unwrap().journal.last_seq;
@@ -547,13 +574,14 @@ fn execution_host_session_channels_elicitation_feed_runs_before_answer_and_defer
     let held_watermark = feed.watermark();
     release.send(()).unwrap();
     let reply = caller.join().unwrap();
-    let released = !notifier.publication_pending();
+    let released = !feed_notifier.publication_pending();
     let published = feed.poll_once();
     handle.stop();
     owner.run();
     output.close();
+    event_output.close();
     let deadline = Instant::now() + Duration::from_secs(5);
-    while !output.drained() && Instant::now() < deadline {
+    while (!output.drained() || !event_output.drained()) && Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(1));
     }
     assert!(waiting_unguarded && settling_guarded && released && reply.is_ok());
@@ -570,13 +598,30 @@ fn execution_host_session_channels_elicitation_feed_runs_before_answer_and_defer
         .iter()
         .position(|frame| frame.get("id") == Some(&value("4")))
         .unwrap();
-    let update = frames
-        .iter()
-        .position(|frame| {
-            frame.get("method").and_then(Value::as_str) == Some("notifications/resources/updated")
-        })
-        .unwrap();
-    assert!(response < update);
+    let update = frames.iter().position(|frame| {
+        frame.get("method").and_then(Value::as_str) == Some("notifications/resources/updated")
+    });
+    match transport {
+        FeedTransport::ResponseStream => assert!(response < update.unwrap()),
+        FeedTransport::SeparateStream => {
+            assert!(
+                !frames
+                    .iter()
+                    .any(|frame| frame.get("method").and_then(Value::as_str)
+                        == Some("notifications/resources/updated"))
+            );
+            let events = events.text();
+            assert_eq!(
+                events
+                    .lines()
+                    .map(value)
+                    .filter(|frame| frame.get("method").and_then(Value::as_str)
+                        == Some("notifications/resources/updated"))
+                    .count(),
+                1
+            );
+        }
+    }
     assert_ne!(
         frames[response]
             .get("result")

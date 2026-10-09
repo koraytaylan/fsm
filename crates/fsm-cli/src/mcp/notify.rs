@@ -373,6 +373,8 @@ pub struct SessionIo<'a> {
     input: &'a mut dyn std::io::BufRead,
     pending: Option<&'a mut pending_input::PendingInput>,
     publication: Option<PublicationGuard>,
+    feed_publication: Option<Arc<AtomicU64>>,
+    feed_guard: Option<PublicationGuard>,
     #[cfg(target_os = "linux")]
     wait_warnings: Option<(&'a mut diagnostic_output::DiagnosticOutput, &'a mut bool)>,
 }
@@ -385,6 +387,8 @@ impl<'a> SessionIo<'a> {
             input,
             pending: None,
             publication: None,
+            feed_publication: None,
+            feed_guard: None,
             #[cfg(target_os = "linux")]
             wait_warnings: None,
         }
@@ -400,6 +404,8 @@ impl<'a> SessionIo<'a> {
             input,
             pending: Some(pending),
             publication: None,
+            feed_publication: None,
+            feed_guard: None,
             #[cfg(target_os = "linux")]
             wait_warnings: None,
         }
@@ -442,6 +448,18 @@ impl<'a> SessionIo<'a> {
         if self.publication.is_none() {
             self.publication = self.notifier.publication_guard();
         }
+        if self.feed_guard.is_none()
+            && let Some(publication) = &self.feed_publication
+        {
+            publication.fetch_add(1, Ordering::AcqRel);
+            self.feed_guard = Some(PublicationGuard(Arc::clone(publication)));
+        }
+    }
+
+    pub(crate) fn bind_feed_publication(&mut self, feed: Option<&Notifier>) {
+        self.feed_publication = feed
+            .filter(|feed| matches!(feed.out, OutputMode::Hosted(_)))
+            .map(|feed| Arc::clone(&feed.publication));
     }
 
     pub(crate) fn has_owned_wait(&self) -> bool {

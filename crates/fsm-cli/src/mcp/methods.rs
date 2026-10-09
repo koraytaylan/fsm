@@ -81,6 +81,9 @@ pub(in crate::mcp) fn handle_request_hosted<'a>(
     feed_out: Option<&Notifier>,
 ) -> std::io::Result<()> {
     let refusal_id = id.clone();
+    if let Some(input) = io {
+        input.borrow_mut().bind_feed_publication(feed_out);
+    }
     output.bind_committed_prefix(session.committed_prefix());
     let closing = session.clone();
     output.on_hosted_failure(move || closing.close());
