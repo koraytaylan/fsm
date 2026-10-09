@@ -156,6 +156,16 @@ The scheduling inventory now stages process/MCP acknowledgement recovery: an
 original private owner is killed at the protected durable-acknowledgement cut,
 strict verification must retain one event handoff with no event applied, and a
 reopened owner must apply exactly one event without an RPC or handler relaunch.
-The observer compiles and independent producer/verifier faults pass; genuine
-runtime acceptance is pending disposable CI. This does not close the remaining
-logical timeout, completion fairness, construction or full integration inventory.
+Frozen `c7ac31b0` passes all eight scheduling cases on both toolchains in
+[CI 37919434760](https://github.com/koraytaylan/fsm/actions/runs/37919434760),
+independent retained-report digest
+`123ad9e401cd766ddc1db138e29294c22005a1098310fb23cf15d9d802cdd963`.
+Both original owners are killed after one durable acknowledgement and before
+any event; successors append exactly one event at logical timestamp 2000,
+retire the outstanding handoff and do not claim or launch another handler.
+Strict journal verification passes before and after recovery. Exact timeout,
+completion fairness, construction and full integration acceptance remain open;
+native preparation deliberately parks the scheduler timeout at `i64::MAX`,
+because the authority times actual handler entry independently of host logical
+time. This verified recovery slice assigns no landing OID and makes no
+independent staged-byte comparison claim.
