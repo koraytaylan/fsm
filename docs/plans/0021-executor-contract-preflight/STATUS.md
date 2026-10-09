@@ -31,6 +31,13 @@ process/MCP refusal and repair into disposable CI; six portable contract cases,
 protected Rust cases remain ignored locally and all four genuine native axes
 remain unexecuted; self-review digest
 `8f2e9bfceaf0648827cee7b6693e5e2cdae9e2718a1f9dc7fcb33a2c0ed51f5c`.
+Fairness range `8b0ce89f..4321a8bb` reproduces and fixes one-slot starvation
+through both service entries; eight contract/service, eight tick, five cache and
+25 mocked evidence cases pass with focused clippy/format/size and selection-guard
+sensitivity; self-review digest
+`4152752c2dd57d2a9dce99cb3ae057125cfdfc8f6fe69bdb726b57952e898afa`.
+The expanded native inventory has eight unexecuted axes and four protected Rust
+cases ignored locally; runtime acceptance remains due at plan end.
 Task 9103 remains in progress: complete dispatch/service/native acceptance and
 plan-end gates remain outstanding; concrete reconstruction retains its documented
 journal-prefix replay cost.
