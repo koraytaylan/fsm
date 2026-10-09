@@ -2841,12 +2841,13 @@ HTTP reverse-response POSTs receive 503 when their session mailbox has 64
 queued messages or would exceed 32 MiB of charged payload storage (including
 owned capacities and conservative structural/encoding allowances); admitted
 responses remain available. DELETE still closes at saturation. This bounds
-the mailbox queue; shared host/output budgets and interactive streaming remain
-unfinished. Direct Mailbox::post callers close the mailbox on failed admission.
+the mailbox queue; the production HTTP contracts separately bound shared
+host/output admission and interactive streaming. Direct Mailbox::post callers
+close the mailbox on failed admission.
 
-The staged private CLI execution host now reserves cancellation controls per
-admitted request and generation, including at application saturation; it is
-not yet constructed by either transport. Existing coarse-loop tool dispatch
+The production CLI execution host reserves cancellation controls per admitted
+request and generation, including at application saturation, for both transports.
+Existing coarse-loop tool dispatch
 also checks its cancellation flag without requiring progress metadata. A
 never-dispatched cancelled request produces no response or Store mutation;
 cancellation does not revoke a durable workflow already created.
@@ -2885,9 +2886,10 @@ input/output workers. Quiet byte input permits deadline progress; EOF and
 explicit control preserve the original shutdown deadline. A blocked output
 worker cannot keep the writer, and failed/unfinished delivery remains explicit;
 a live uncertain owner is retained instead of joined after its deadline. This
-is private integration evidence, with no production backend selection, public
-signature/error/wire-version/journal/hash/dependency/MSRV change; interactive
-and progress forwarding, complete egress and versioned discovery remain open.
+composition is selected by supported production stdio, with interactive
+continuations, progress forwarding, bounded egress and autonomous discovery
+described by the production contract; this composition changes no journal/hash
+format, dependency or MSRV.
 
 The private hosted adapter's admitted-response wait also observes original
 session close, failed protocol output and native lifecycle stop at finite

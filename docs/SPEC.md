@@ -3356,8 +3356,9 @@ A quiet HTTP reverse-response mailbox poll MUST remain idle rather than imply
 client EOF; reverse waiting MUST return to its deadline check between idle
 polls. Closing an original session MUST close its mailbox and wake its waiters
 before acquiring session execution state; late responses MUST NOT reopen that
-mailbox. This does not establish autonomous HTTP ownership, bounded mailbox
-admission or reverse-request streaming, which remain implementation obligations.
+mailbox. This isolated mailbox guarantee does not itself establish the separate
+production HTTP ownership, bounded admission and reverse-request streaming
+contracts specified below.
 
 HTTP reverse-response admission MUST bound each original mailbox to 64 queued
 messages and 32 MiB of charged owned payload bytes; count/byte exhaustion MUST
@@ -3449,8 +3450,8 @@ return the existing JSON-RPC server-busy code -32004 before dispatch; output
 backpressure after a commit MUST NOT be reported as admission refusal. A
 pre-dispatch cancelled hosted request MUST remain unanswered with its journal
 key unclaimed; closed host admission MUST terminate the original session.
-This private entry is not yet selected by production transports; interactive
-continuations, progress forwarding and complete egress admission remain open.
+Supported production transports select this hosted entry with interactive
+continuations, progress forwarding and bounded egress admission.
 
 The staged owned stdio composition MUST reuse the existing capped byte framing
 and shared method handler, with a session store facade that supplies no Store

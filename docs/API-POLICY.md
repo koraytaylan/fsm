@@ -1589,9 +1589,10 @@ input/output workers. Quiet byte input permits deadline progress; EOF and
 explicit control preserve the original shutdown deadline. A blocked output
 worker cannot keep the writer, and failed/unfinished delivery remains explicit;
 a live uncertain owner is retained instead of joined after its deadline. This
-is private integration evidence, with no production backend selection, public
-signature/error/wire-version/journal/hash/dependency/MSRV change; interactive
-and progress forwarding, complete egress and versioned discovery remain open.
+composition is selected by supported production stdio, with interactive
+continuations, progress forwarding, bounded egress and autonomous discovery
+described by the production contract; this composition changes no journal/hash
+format, dependency or MSRV.
 
 The private hosted adapter's admitted-response wait also observes original
 session close, failed protocol output and native lifecycle stop at finite
