@@ -31,6 +31,19 @@ impl Http {
         response
     }
     pub(super) fn post(&mut self, request: &Value) -> Value {
+        if self.session.is_none()
+            && request.get("method").and_then(Value::as_str) != Some("initialize")
+        {
+            self.post(&object([
+                ("jsonrpc", string("2.0")),
+                ("id", string("http-reconnect")),
+                ("method", string("initialize")),
+                (
+                    "params",
+                    value(r#"{"protocolVersion":"2025-06-18","capabilities":{}}"#),
+                ),
+            ]));
+        }
         let response = self.exchange("POST", &canon_bytes(request));
         if self.session.is_none() {
             self.session = Some(
@@ -162,4 +175,59 @@ fn native_http_success_retry_and_compensation_with_zero_sessions() {
         "active",
         ExecutionMode::Http,
     );
+}
+
+#[test]
+fn http_fixture_reinitializes_after_delete_before_observing_history() {
+    use fsm_cli::http::{
+        endpoint::{Endpoint, EndpointHandler},
+        server::Handler,
+    };
+    use std::sync::Arc;
+    let endpoint = Arc::new(Endpoint::new("/mcp", None, ""));
+    let session = endpoint.sessions().open("2025-06-18", 1000).unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    let served = Arc::clone(&endpoint);
+    listener.set_nonblocking(true).unwrap();
+    let worker = std::thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        for _ in 0..3 {
+            let socket = loop {
+                match listener.accept() {
+                    Ok((socket, _)) => break socket,
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        assert!(Instant::now() < deadline, "fixture requests timed out");
+                        std::thread::sleep(Duration::from_millis(5));
+                    }
+                    Err(error) => panic!("fixture accept: {error}"),
+                }
+            };
+            socket
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .unwrap();
+            let writer = socket.try_clone().unwrap();
+            EndpointHandler::new(Arc::clone(&served))
+                .handle_socket(&mut BufReader::new(socket), writer)
+                .unwrap();
+        }
+    });
+    let mut http = Http {
+        address,
+        session: Some(session.clone()),
+        home: PathBuf::new(),
+        store: PathBuf::new(),
+    };
+    http.delete_session();
+    assert!(http.session.is_none());
+    let response = http.post(&object([
+        ("jsonrpc", string("2.0")),
+        ("id", string("observe")),
+        ("method", string("ping")),
+    ]));
+    worker.join().unwrap();
+    assert_eq!(response.get("id"), Some(&string("observe")));
+    assert!(response.get("result").is_some());
+    assert_ne!(http.session.as_deref(), Some(session.as_str()));
+    assert_eq!(endpoint.sessions().len(1000), 1);
 }

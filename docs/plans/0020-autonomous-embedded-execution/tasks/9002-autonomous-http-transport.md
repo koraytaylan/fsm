@@ -200,5 +200,11 @@ Focused startup acceptance:
   through read-only storage and retires through original local drain control.
   Fixture and root-runner compilation, CLI all-target clippy and ten mocked
   evidence-producer checks pass; these checks do not establish native acceptance.
-  The focused provisioned group must pass before its workflows can count toward
-  task completion; no installed handler has been executed locally.
+  Frozen native candidate 3c1e490b failed: the fixture read history after DELETE
+  without reinitializing its session. Verified failed-report digest in the task
+  cache is bfd123562d069169d6110433f619e01d8aa1ccf44941c5b664a2cc3c4bc53f7f.
+  The corrected adapter reinitializes only after zero-session observation;
+  its socket regression reproduces HTTP 400 when that guard is removed and
+  passes after restoration, with focused clippy and format/size/diff checks.
+  The provisioned group must still pass before native acceptance can count;
+  no installed handler has been executed locally.
