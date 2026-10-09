@@ -27,6 +27,8 @@ pub(super) const SESSION_BYTES: usize = 16 * 1024 * 1024;
 pub(super) struct SessionState {
     pub generation: u64,
     open: AtomicBool,
+    #[cfg(test)]
+    pub(super) diagnostic_hold: Mutex<Option<(mpsc::Sender<CancelFlag>, mpsc::Receiver<()>)>>,
 }
 
 impl SessionState {
@@ -157,6 +159,8 @@ impl Mailbox {
         Ok(Arc::new(SessionState {
             generation: state.last_generation,
             open: AtomicBool::new(true),
+            #[cfg(test)]
+            diagnostic_hold: Mutex::new(None),
         }))
     }
 

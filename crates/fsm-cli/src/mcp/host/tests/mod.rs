@@ -21,6 +21,8 @@ mod scheduling_recovery;
 #[cfg(target_os = "linux")]
 mod session_channels;
 #[cfg(target_os = "linux")]
+mod session_diagnostics;
+#[cfg(target_os = "linux")]
 mod stdio;
 #[cfg(target_os = "linux")]
 mod stdio_interaction;

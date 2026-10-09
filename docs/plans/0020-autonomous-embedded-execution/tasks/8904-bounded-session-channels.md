@@ -72,7 +72,7 @@ host or allocate an unbounded backlog.
 
 Focused channel review:
 
-- Twenty focused `session_channels` cases pass, including original native
+- Twenty-two focused `session_channels` cases pass, including original native
   deadline progress and a second session response while actual output remains
   blocked, and replay through a replacement session after actual delivery
   failure without another journal append. Affected CLI test-target clippy and
@@ -90,9 +90,14 @@ Focused channel review:
   host slot while all other application slots remain occupied; original-session
   cancellation reaches it without admitting another application command,
   returns `req/cancelled`, and releases exactly one slot after actual return.
-  Another session cannot cancel that request. Owned-input diagnostic lifetime
-  acceptance still requires review before completion.
+  Another session cannot cancel that request. Actual owned-input ping and
+  cancellation reach a paused original diagnostic at full application capacity;
+  EOF retires its adapter and cancels the original work before the worker
+  returns. The barrier is session-scoped and test-only, before read-only store
+  opening, and does not replace the worker outcome. Disabling only diagnostic
+  owned-input routing fails both named lifetime cases at exit 101; restoring
+  it passes all twenty-two channel cases.
 - The three exact count/retained-byte/encoded-frame egress boundary cases and
   all eighteen existing elicitation/cancellation integration cases pass.
-  Completion still requires the publication-order and owned-input diagnostic
-  lifetime inventories to be reviewed together; no landing OID is assigned.
+  Completion still requires the original publication-order inventory to be
+  reviewed against actual durability boundaries; no landing OID is assigned.

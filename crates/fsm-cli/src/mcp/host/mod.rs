@@ -327,6 +327,16 @@ impl mailbox::Admitted {
         data_dir: &std::path::Path,
         clock: &mut dyn Clock,
     ) -> Result<Value, ErrorObj> {
+        #[cfg(test)]
+        {
+            let hold = self.session.diagnostic_hold.lock().unwrap().take();
+            if let Some((entered, release)) = hold {
+                entered.send(self.cancel.clone()).unwrap();
+                release
+                    .recv_timeout(std::time::Duration::from_secs(5))
+                    .expect("diagnostic acceptance barrier release missing");
+            }
+        }
         if !self.session.is_open() || self.cancel.cancelled() {
             return Err(super::cancel::CancelFlag::refusal());
         }
