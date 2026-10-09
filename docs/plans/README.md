@@ -23,4 +23,6 @@ Before a generated blueprint is published, a critic model judges each task as a 
 
 Task lifecycle fields, landing OIDs, plan progress/integration evidence, and the root roll-up are coordinator-owned. Volatile checkpoints live outside the repository and cannot establish completion. A committed bundle is `Unregistered` until exact Phase R binds its validation base; after registration, dependency-ready ungated tasks are `Ready`. Working-tree-only bundles are `AwaitingCommit`.
 
+Small implementation changes use focused tests; expensive workspace and platform gates run at the end of each plan against a frozen committed integration range. Intermediate task evidence records the checks actually executed and cannot claim an unexecuted gate passed. This cadence follows the user's instruction of 2026-10-09.
+
 Historical monolithic task-list plans are inert records, not executable inputs. Do not create a fallback or mixed-format plan.
