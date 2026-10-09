@@ -33,6 +33,14 @@ the named recovery case fail, and restored suites pass. Frozen verdict
 indexes the prior admission review; six provisioned cases remain ignored, and
 unprovisioned recovery routing does not establish native side-effect acceptance.
 
+Migration range `ad380abe..f2d81c29` exercises warmed service evidence through
+both writer entries after receiver/context migration: incompatible outcomes
+refuse without mutation, historical pending arguments survive, and corrected
+configuration restores eligibility. Eleven admission and nine historical-effect
+cases, executor feature-enabled all-target clippy and format/size/diff checks
+pass; frozen review `34d1d6c54e2da29ec54357ff1e2758d5d4a106e8a879cb63bab71566546c6a6a`
+indexes the recovery verdict; genuine native acceptance and task closure remain open.
+
 CLI focused range `62bdbd5d..2cd48842` passes ten real-binary contract cases,
 17 executor documentation cases and five legacy session cases, CLI all-target
 clippy, format/size checks and control-option guard sensitivity; self-review
