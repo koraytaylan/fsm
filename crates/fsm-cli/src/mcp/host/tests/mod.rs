@@ -1,5 +1,6 @@
 //! Independent callers drive the same private owner and admitted envelopes.
 mod acceptance_owner;
+mod executor_contract_context;
 #[cfg(target_os = "linux")]
 mod held_handlers;
 mod publication;

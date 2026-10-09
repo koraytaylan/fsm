@@ -89,6 +89,7 @@ impl<C: Clock> NativeOwner<C> {
         ));
         let handle = Handle {
             mailbox: Arc::clone(&mailbox),
+            operator_handlers: Some(Arc::new(driver.handler_table().clone())),
             native_stop: Some((driver.control(), shutdown_timeout_ms)),
         };
         Ok((

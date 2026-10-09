@@ -62,12 +62,28 @@ pub(super) enum AdmissionError {
 #[derive(Clone)]
 pub(super) struct Session {
     mailbox: Arc<Mailbox>,
+    operator_handlers: Option<Arc<fsm_execute::config::HandlerTable>>,
     original: Arc<mailbox::SessionState>,
     #[cfg(target_os = "linux")]
     native_control: Option<fsm_execute::service::ExecutorControl>,
 }
 
 impl Session {
+    /// Private host evidence for draft analysis, never a transport response.
+    pub(in crate::mcp) fn operator_handlers(&self) -> Option<&fsm_execute::config::HandlerTable> {
+        if !self.original.is_open() || self.mailbox.is_stopped() {
+            return None;
+        }
+        #[cfg(target_os = "linux")]
+        if self.native_control.as_ref().is_some_and(|control| {
+            let report = control.report();
+            report.admission_closed || report.phase != fsm_execute::service::ExecutorPhase::Running
+        }) {
+            return None;
+        }
+        self.operator_handlers.as_deref()
+    }
+
     #[cfg(test)]
     pub(in crate::mcp) fn pause_response(&self) {
         let hold = self.original.response_hold.lock().unwrap().take();
@@ -163,6 +179,7 @@ impl Session {
 #[derive(Clone)]
 pub(super) struct Handle {
     mailbox: Arc<Mailbox>,
+    operator_handlers: Option<Arc<fsm_execute::config::HandlerTable>>,
     #[cfg(target_os = "linux")]
     native_stop: Option<(fsm_execute::service::ExecutorControl, i64)>,
 }
@@ -172,6 +189,7 @@ impl Handle {
         let original = self.mailbox.session()?;
         Ok(Session {
             mailbox: Arc::clone(&self.mailbox),
+            operator_handlers: self.operator_handlers.clone(),
             original,
             #[cfg(target_os = "linux")]
             native_control: self
@@ -210,6 +228,7 @@ impl<C: Clock> Owner<C> {
         ));
         let handle = Handle {
             mailbox: Arc::clone(&mailbox),
+            operator_handlers: None,
             #[cfg(target_os = "linux")]
             native_stop: None,
         };
