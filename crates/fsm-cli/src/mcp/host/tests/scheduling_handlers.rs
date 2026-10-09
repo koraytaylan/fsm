@@ -516,7 +516,17 @@ fn autonomous_schedule_ready_completions_yield_to_admitted_application_within_ei
         .state
         .execution
         .unresolved()
-        .map(|(claim, _)| claim.clone())
+        .map(|(claim, _)| {
+            (
+                claim.clone(),
+                before
+                    .state
+                    .execution
+                    .claim_record_hash(claim)
+                    .unwrap()
+                    .to_owned(),
+            )
+        })
         .collect::<Vec<_>>();
     drop(before);
     let sessions = (0..4)
@@ -654,9 +664,9 @@ fn autonomous_schedule_ready_completions_yield_to_admitted_application_within_ei
 }
 
 /// Observe authenticated original closure and result material without settling it.
-fn wait_for_original_results(claims: &[fsm_core::record::execution::Claim]) {
+fn wait_for_original_results(claims: &[(fsm_core::record::execution::Claim, String)]) {
     let watchdog = Instant::now() + Duration::from_secs(20);
-    for claim in claims {
+    for (claim, journal_claim) in claims {
         let domain = claim.domain().to_value();
         let directory = PathBuf::from("/var/lib/fsm-containment")
             .join(domain.get("namespace").unwrap().as_str().unwrap())
@@ -682,10 +692,6 @@ fn wait_for_original_results(claims: &[fsm_core::record::execution::Claim]) {
             );
             std::thread::sleep(Duration::from_millis(5));
         };
-        let binding = value(
-            &fs::read_to_string(directory.join(format!("binding-{allocation}.json"))).unwrap(),
-        );
-        let journal_claim = binding.get("journal_claim").unwrap().as_str().unwrap();
         let receipt = directory.join(format!("closure-{allocation}-{}.json", claim.run_id()));
         let proof = fsm_store::store::VerifiedClosure::read(&receipt).unwrap();
         assert!(proof.matches_claim(claim, journal_claim));
@@ -696,7 +702,7 @@ fn wait_for_original_results(claims: &[fsm_core::record::execution::Claim]) {
         assert_eq!(attestation.get("domain"), Some(&domain));
         assert_eq!(
             attestation.get("journal_claim").unwrap().as_str(),
-            Some(journal_claim)
+            Some(journal_claim.as_str())
         );
         assert_eq!(
             attestation.get("run_id").unwrap().as_num(),
