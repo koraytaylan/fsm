@@ -23,6 +23,16 @@ The current native inventory has twelve unexecuted process/MCP axes and six
 protected Rust cases ignored locally; complete task 9103 acceptance and plan-end
 gates remain outstanding, with journal-prefix reconstruction cost documented.
 
+Recovery range `49e2c0c4..64ba1e25` verifies both production service writer
+entries refuse an incompatible acknowledged outcome without mutation, then
+repair and advance exactly once without selecting the acknowledged handler.
+Ten admission and fifteen pipeline cases, executor feature-enabled all-target
+clippy and format/size/diff checks pass; removing only the outcome guard makes
+the named recovery case fail, and restored suites pass. Frozen verdict
+`fdbaff3bd6b77b65c3a5335ebf6e2b19b657c533dd5e702e3c98419ef92ba9d3`
+indexes the prior admission review; six provisioned cases remain ignored, and
+unprovisioned recovery routing does not establish native side-effect acceptance.
+
 CLI focused range `62bdbd5d..2cd48842` passes ten real-binary contract cases,
 17 executor documentation cases and five legacy session cases, CLI all-target
 clippy, format/size checks and control-option guard sensitivity; self-review
