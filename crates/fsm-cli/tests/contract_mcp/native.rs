@@ -117,32 +117,69 @@ fn invalid_machine() -> Value {
     spec
 }
 
-fn refuse_unchecked_draft(
-    client: &mut Client,
-    store: &std::path::Path,
-    resource: &std::path::Path,
-) {
+fn unchecked_machine() -> Value {
     let mut invalid = invalid_machine();
     let Value::Obj(fields) = &mut invalid else {
         unreachable!()
     };
     fields.insert("name".into(), Value::Str("unchecked_contract_draft".into()));
+    invalid
+}
+
+fn repair_machine() -> Value {
+    let identity = fsm_core::hashes::machine_id(&unchecked_machine());
+    let digest = fsm_core::hashes::digest_of(&identity).unwrap();
+    let mut repaired = machine();
+    let Value::Obj(fields) = &mut repaired else {
+        unreachable!()
+    };
+    fields.insert(
+        "supersedes".into(),
+        obj([
+            ("machine", Value::Str(digest.into())),
+            (
+                "states",
+                obj([
+                    ("idle", Value::Str("idle".into())),
+                    ("working", Value::Str("working".into())),
+                    ("suspending", Value::Str("suspending".into())),
+                    ("performing", Value::Str("performing".into())),
+                    ("recovering", Value::Str("recovering".into())),
+                ]),
+            ),
+            (
+                "context",
+                obj([
+                    ("resource", Value::Str("ctx.resource".into())),
+                    ("run", Value::Str("ctx.run".into())),
+                ]),
+            ),
+        ]),
+    );
+    repaired
+}
+
+fn refuse_unchecked_draft(
+    client: &mut Client,
+    store: &std::path::Path,
+    resource: &std::path::Path,
+) -> fsm_execute::effect::PendingEffect {
     for (identifier, name, arguments) in [
-        (20, "machine_create", obj([("spec", invalid)])),
+        (20, "machine_create", obj([("spec", unchecked_machine())])),
         (
             21,
             "instance_create",
             obj([
                 ("machine", Value::Str("unchecked_contract_draft".into())),
-                ("request_id", Value::Str("contract-refusal".into())),
+                ("request_id", Value::Str("contract-run".into())),
             ]),
         ),
         (
             22,
             "instance_send",
             obj([
-                ("instance_id", Value::Str("inst-contract-refusal".into())),
-                ("request_id", Value::Str("contract-refusal-begin".into())),
+                ("instance_id", Value::Str("inst-contract-run".into())),
+                ("request_id", Value::Str("contract-begin".into())),
                 ("event", obj([("name", Value::Str("begin".into()))])),
             ]),
         ),
@@ -161,8 +198,11 @@ fn refuse_unchecked_draft(
     let original = Store::open_read_only(store).unwrap();
     let records = original.records.clone();
     let state = original.state.clone();
-    assert_eq!(state.instances["inst-contract-refusal"].pending.len(), 1);
+    assert_eq!(state.instances["inst-contract-run"].pending.len(), 1);
     assert_eq!(state.execution.unresolved().count(), 0);
+    let historical =
+        fsm_execute::effect::resolve(&original, &state.instances["inst-contract-run"].pending[0])
+            .unwrap();
     drop(original);
     let deadline = Instant::now() + Duration::from_secs(1);
     while Instant::now() < deadline {
@@ -177,25 +217,7 @@ fn refuse_unchecked_draft(
         assert!(!resource.join("work").exists());
         std::thread::sleep(Duration::from_millis(10));
     }
-    let cancelled = client.call(
-        24,
-        "tools/call",
-        obj([
-            ("name", Value::Str("instance_cancel".into())),
-            (
-                "arguments",
-                obj([
-                    ("instance_id", Value::Str("inst-contract-refusal".into())),
-                    ("request_id", Value::Str("contract-refusal-cancel".into())),
-                ]),
-            ),
-        ]),
-    );
-    assert_ne!(
-        cancelled.get("isError"),
-        Some(&Value::Bool(true)),
-        "{cancelled:?}"
-    );
+    historical
 }
 
 pub(super) fn run() {
@@ -318,13 +340,20 @@ pub(super) fn run() {
     assert_eq!(fs::read_to_string(resource.join("calls")).unwrap(), "");
     assert!(!resource.join("work").exists());
     drop(snapshot);
-    refuse_unchecked_draft(&mut client, &store, &resource);
+    let historical = refuse_unchecked_draft(&mut client, &store, &resource);
+    let repair = repair_machine();
+    let repaired = client.check(25, obj([("spec", repair.clone())]));
+    assert_eq!(
+        repaired.get("status").and_then(Value::as_str),
+        Some("compatible")
+    );
+    validate_args(schema, &repaired).unwrap();
     let create = client.call(
         6,
         "tools/call",
         obj([
             ("name", Value::Str("machine_create".into())),
-            ("arguments", obj([("spec", machine())])),
+            ("arguments", obj([("spec", repair)])),
         ]),
     );
     assert_ne!(create.get("isError"), Some(&Value::Bool(true)));
@@ -338,36 +367,37 @@ pub(super) fn run() {
         Store::open_read_only(&store).unwrap().records,
         stored_records
     );
-    client.call(
+    let migrated = client.call(
         8,
         "tools/call",
         obj([
-            ("name", Value::Str("instance_create".into())),
-            (
-                "arguments",
-                obj([
-                    ("machine", Value::Str("native_contract_draft".into())),
-                    ("request_id", Value::Str("contract-run".into())),
-                ]),
-            ),
-        ]),
-    );
-    client.call(
-        9,
-        "tools/call",
-        obj([
-            ("name", Value::Str("instance_send".into())),
+            ("name", Value::Str("instance_migrate".into())),
             (
                 "arguments",
                 obj([
                     ("instance_id", Value::Str("inst-contract-run".into())),
-                    ("request_id", Value::Str("contract-begin".into())),
-                    ("event", obj([("name", Value::Str("begin".into()))])),
+                    ("to_machine", Value::Str("native_contract_draft".into())),
+                    ("request_id", Value::Str("contract-repair".into())),
                 ]),
             ),
         ]),
     );
-    // No client requests after triggering: observe the actual journal while the
+    assert_ne!(
+        migrated.get("isError"),
+        Some(&Value::Bool(true)),
+        "{migrated:?}"
+    );
+    let current = Store::open_read_only(&store).unwrap();
+    assert_eq!(
+        fsm_execute::effect::resolve(&current, &historical.effect_id).unwrap(),
+        historical
+    );
+    assert_ne!(
+        current.state.instance_machines["inst-contract-run"],
+        historical.emitting_machine_id
+    );
+    drop(current);
+    // No client requests after repair: observe the actual journal while the
     // original host autonomously executes, acknowledges and retires its handler.
     let deadline = Instant::now() + Duration::from_secs(12);
     loop {
@@ -437,8 +467,7 @@ pub(super) fn run() {
     assert_eq!(writer.state.execution.unresolved().count(), 0);
 }
 
-#[test]
-fn authored_native_pair_has_an_independent_missing_argument_and_repair() {
+fn independent_table() -> fsm_execute::config::HandlerTable {
     let mut table = fsm_execute::config::HandlerTable::parse(r#"{"format":"fsm.handlers/1","handlers":[{
         "effect":"check_prerequisite","argv":["/PRIVATE_STAGED_HELPER","handler-resource={resource}","handler-run={run}"],"timeout_ms":1000,
         "on_ok":{"event":"check_prerequisite_ok"},"on_failed":{"event":"check_prerequisite_failed"}
@@ -450,6 +479,12 @@ fn authored_native_pair_has_an_independent_missing_argument_and_repair() {
         handler.on_failed.as_mut().unwrap().event = format!("{effect}_failed");
         table.handlers.insert(effect.into(), handler);
     }
+    table
+}
+
+#[test]
+fn authored_native_pair_has_an_independent_missing_argument_and_repair() {
+    let table = independent_table();
     for (spec, expected) in [(invalid_machine(), "invalid"), (machine(), "compatible")] {
         let machine = fsm_core::spec::compile_accepted(&spec).unwrap();
         let result = fsm_execute::contract::analyze_contract(
@@ -476,4 +511,94 @@ fn authored_native_pair_has_an_independent_missing_argument_and_repair() {
             assert!(findings.is_empty());
         }
     }
+}
+
+#[test]
+fn staged_receiver_repair_preserves_the_original_pending_operation() {
+    let mut store = Store::open_memory().unwrap();
+    let mut clock = fsm_store::clock::FixedClock::new(1000, 1);
+    store
+        .define_machine_on(&mut clock, unchecked_machine(), false, false)
+        .unwrap();
+    store
+        .create_instance_ctx_on(
+            &mut clock,
+            "unchecked_contract_draft",
+            "original",
+            "create",
+            None,
+            &BTreeMap::new(),
+            &[],
+        )
+        .unwrap();
+    store
+        .send_event_stamp_on(
+            &mut clock,
+            "original",
+            "begin",
+            &mut obj([]),
+            "begin",
+            None,
+            &[],
+        )
+        .unwrap();
+    let pending = store.state.instances["original"].pending.clone();
+    let historical = fsm_execute::effect::resolve(&store, &pending[0]).unwrap();
+    let table = independent_table();
+    assert_eq!(
+        fsm_execute::contract::check_pending(&store, &historical, &table)
+            .unwrap_err()
+            .code,
+        "exec/contract_invalid"
+    );
+    store
+        .define_machine_on(&mut clock, repair_machine(), false, false)
+        .unwrap();
+    store
+        .migrate_instance_on(&mut clock, "original", "native_contract_draft", "repair")
+        .unwrap();
+    assert_eq!(store.state.instances["original"].pending, pending);
+    assert_eq!(
+        fsm_execute::effect::resolve(&store, &pending[0]).unwrap(),
+        historical
+    );
+    assert_ne!(
+        historical.emitting_machine_id,
+        store.state.instance_machines["original"]
+    );
+    fsm_execute::contract::check_pending(&store, &historical, &table).unwrap();
+    for operation in ["check_prerequisite", "suspend", "perform_work", "restore"] {
+        let effect =
+            fsm_execute::effect::resolve(&store, &store.state.instances["original"].pending[0])
+                .unwrap();
+        assert_eq!(effect.effect_name, operation);
+        fsm_execute::contract::check_pending(&store, &effect, &table).unwrap();
+        store
+            .ack_effect_outcome_on(
+                &mut clock,
+                "original",
+                &effect.effect_id,
+                &fsm_execute::rid::ack_rid(&effect.effect_id),
+                "ok",
+                None,
+            )
+            .unwrap();
+        let event = format!("{operation}_ok");
+        store
+            .send_event_stamp_on(
+                &mut clock,
+                "original",
+                &event,
+                &mut obj([]),
+                &fsm_execute::rid::event_rid(&effect.effect_id, &event),
+                None,
+                &[],
+            )
+            .unwrap();
+    }
+    assert_eq!(
+        store.state.instances["original"].status,
+        fsm_core::machine::Status::Completed
+    );
+    assert!(store.state.instances["original"].pending.is_empty());
 }

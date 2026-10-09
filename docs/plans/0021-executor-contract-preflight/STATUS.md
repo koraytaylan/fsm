@@ -92,11 +92,13 @@ Native MCP preparation extends the existing protected original-host case through
 prerequisite, suspension, work and restore, with exact ordered calls, published
 work, restored phase and four original closures required. An unchecked draft
 missing a late restore argument must preserve its pending work, entire store
-and absent side effects before cancellation and corrected workflow creation.
-Six focused Rust cases and 22 mocked artifact/producer cases pass, with
+and absent side effects, then migrate the same instance to a checked repair
+without replacing its historical pending operation. The executed Store fixture
+also completes all four corrected outcome transitions. Seven focused Rust cases
+and 22 mocked artifact/producer cases pass, with
 feature-enabled CLI/executor all-target clippy and format/size/diff checks;
 the genuine native case remains ignored locally and unexecuted. Scoped review
-`0653f1a2824127b25a9995362330af3f6e6309c524487ba2f484871591b62391`
+`f351f6a2ec7e0a014b4794016cf8c22c08481fba1922446ddebdcf77dee37693`
 indexes the preceding MCP verdict; tasks 9202/9203 and plan-end acceptance remain open.
 
 Cross-surface acceptance preparation adds independently specified staged
