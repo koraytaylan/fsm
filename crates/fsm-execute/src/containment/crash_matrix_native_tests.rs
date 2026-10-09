@@ -86,6 +86,7 @@ fn provisioned_private_completion_owner_matrix() {
     fs::set_permissions(&staging, fs::Permissions::from_mode(0o755)).unwrap();
     for (name, variable) in [
         ("host-test", "HOST"),
+        ("boundary-test", "BOUNDARY"),
         ("fixture", "FIXTURE"),
         ("fsm", "CLI"),
     ] {
@@ -95,16 +96,18 @@ fn provisioned_private_completion_owner_matrix() {
             &format!("FSM_CRASH_{variable}_SHA256"),
         );
     }
-    for kind in ["process", "mcp"] {
-        scenario(
-            &staging,
-            &nonce[..24],
-            Scenario {
-                host: "private",
-                kind,
-                behavior: "private-held",
-            },
-        );
+    for (host, behavior) in [("private", "private-held"), ("boundary", "boundary-held")] {
+        for kind in ["process", "mcp"] {
+            scenario(
+                &staging,
+                &nonce[..24],
+                Scenario {
+                    host,
+                    kind,
+                    behavior,
+                },
+            );
+        }
     }
     fs::remove_dir_all(staging).unwrap();
 }
@@ -240,18 +243,28 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
     let log_path = staging.join(format!("{host}-{kind}-{behavior}.log"));
     let log = fs::File::create(&log_path).unwrap();
     let private = host == "private";
+    let completion = private || host == "boundary";
+    let artifact = match host {
+        "private" => "host-test",
+        "boundary" => "boundary-test",
+        _ => "matrix-test",
+    };
     let mut command = Command::new("/usr/bin/python3");
     command.args(["-c", "import os,sys;os.setgroups([]);os.setgid(65534);os.setuid(65534);os.execv(sys.argv[1],sys.argv[1:])"])
-        .arg(staging.join(if private { "host-test" } else { "matrix-test" }))
+        .arg(staging.join(artifact))
         .args(["--exact", if private {
             "mcp::host::tests::held_handlers::execution_host_real_held_handler_allows_read_mutation_and_stop_without_release"
+        } else if host == "boundary" && kind == "process" {
+            "native::async_completion_process_dispatch_poll_and_stop_do_not_wait_for_release"
+        } else if host == "boundary" {
+            "native::async_completion_mcp_dispatch_poll_and_stop_do_not_wait_for_release"
         } else {
             "native::production_candidate_result_crash_retains_original_tree_until_verified_closure"
         }, "--ignored", "--nocapture", "--color", "never"])
-        .env(if private { "FSM_COMPLETION_NATIVE_MANIFEST" } else { "FSM_LIFECYCLE_NATIVE_MANIFEST" }, &manifest)
+        .env(if completion { "FSM_COMPLETION_NATIVE_MANIFEST" } else { "FSM_LIFECYCLE_NATIVE_MANIFEST" }, &manifest)
         .env("TMPDIR", &fixture.store)
         .stdin(Stdio::null()).stdout(log.try_clone().unwrap()).stderr(log);
-    if private {
+    if completion {
         command.env("HOME", &home);
     }
     let mut actor = command.spawn().unwrap();
@@ -407,6 +420,7 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                             | "signal-term"
                             | "torn-tail"
                             | "private-held"
+                            | "boundary-held"
                     ) {
                         "hold-result"
                     } else {
@@ -421,7 +435,7 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
         (
             "timeout_ms".into(),
             Value::Num(
-                if behavior == "private-held" {
+                if matches!(behavior, "private-held" | "boundary-held") {
                     "30000"
                 } else {
                     "3000"
@@ -503,6 +517,7 @@ fn verify(fixture: &Fixture, behavior: &str) {
                     | "acked-result"
                     | "event-result"
                     | "private-held"
+                    | "boundary-held"
             ) {
                 1
             } else {

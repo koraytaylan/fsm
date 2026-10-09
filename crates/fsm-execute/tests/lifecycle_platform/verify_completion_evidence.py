@@ -19,7 +19,7 @@ def verify(repo, directory, commit, rustc):
     report = json.loads(encoded)
     common(report, commit, rustc)
     require(report['schema'] == 'fsm.native-completion-owner/1'
-            and report['scope'] == 'private-owner-held-handlers'
+            and report['scope'] == 'public-and-private-held-handlers'
             and report['task_complete'] is False, 'unexpected completion scope')
     require(report['passed'] is True and report['timed_out'] is False
             and type(report['exit_code']) is int and report['exit_code'] == 0,
@@ -33,7 +33,7 @@ def verify(repo, directory, commit, rustc):
             'private host inventory differs')
     require(digest(report['authority_sha256']) and digest(report['fixture_sha256'])
             and report['cli_strip'] == 'debuginfo', 'native executable identity missing')
-    require(set(report['artifacts']) == {'HOST', 'FIXTURE', 'CLI'}
+    require(set(report['artifacts']) == {'HOST', 'BOUNDARY', 'FIXTURE', 'CLI'}
             and all(digest(row['sha256']) and isinstance(row['path'], str) and row['path']
                     for row in report['artifacts'].values()), 'staged artifact identity missing')
     command = report['command']

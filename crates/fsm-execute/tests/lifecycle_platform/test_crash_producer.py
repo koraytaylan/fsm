@@ -59,6 +59,7 @@ class Retirement(unittest.TestCase):
                 patch.object(probe.authority, 'build_authority', return_value=artifact),
                 patch.object(probe, 'build_crash_artifacts', return_value={name: artifact for name in ('TEST', 'FIXTURE', 'CLI')}),
                 patch.object(probe, 'build_host_test', return_value=artifact) as host_build,
+                patch.object(probe, 'build_boundary_test', return_value=artifact) as boundary_build,
                 patch.object(probe.authority, 'authority_state_is_clear', side_effect=[initial, clear] if initial else [False]),
                 patch.object(probe, 'staging_paths', side_effect=[set(), {Path('/mock/stage')} if stages else set()]),
                 patch.object(probe.subprocess, 'check_output', side_effect=check_output) as checked,
@@ -83,19 +84,21 @@ class Retirement(unittest.TestCase):
                 else:
                     self.assertEqual(probe.main(), 1 if timeout or missing else 0)
                 evidence = json.loads(report.read_text())
-                self.assertEqual(evidence['scope'], 'private-owner-held-handlers' if private else 'pre-publication-collected-candidates-supervisor-death-domain-close-journal-cuts-host-claim-enrolled-authorization-and-repeated-noisy-hosts')
+                self.assertEqual(evidence['scope'], 'public-and-private-held-handlers' if private else 'pre-publication-collected-candidates-supervisor-death-domain-close-journal-cuts-host-claim-enrolled-authorization-and-repeated-noisy-hosts')
                 self.assertEqual(evidence['passed'], clear and not stages and not timeout and not missing and not changed)
                 self.assertFalse(evidence['gate_released'])
-                self.assertEqual(run.call_args_list[0].kwargs['timeout'], 200 if private else 3900)
+                self.assertEqual(run.call_args_list[0].kwargs['timeout'], 400 if private else 3900)
                 if private:
                     host_build.assert_called_once()
-                    self.assertEqual(set(evidence['artifacts']), {'HOST', 'FIXTURE', 'CLI'})
+                    boundary_build.assert_called_once()
+                    self.assertEqual(set(evidence['artifacts']), {'HOST', 'BOUNDARY', 'FIXTURE', 'CLI'})
                     self.assertFalse(evidence['task_complete'])
                     self.assertIn('GITHUB_ACTIONS=true', evidence['command'])
                     self.assertEqual(evidence['command'][-5],
                                      'authority::allocator::native_tests::crash_matrix::provisioned_private_completion_owner_matrix')
                 else:
                     host_build.assert_not_called()
+                    boundary_build.assert_not_called()
                 self.assertEqual(report.with_suffix('.log').read_bytes(), output + (b'partial' if timeout else b''))
                 if clear and not stages:
                     self.assertEqual(run.call_count, 2)

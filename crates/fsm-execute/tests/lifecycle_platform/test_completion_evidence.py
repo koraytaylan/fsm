@@ -10,7 +10,8 @@ from unittest.mock import patch
 import verify_completion_evidence as verifier
 
 
-INVENTORY = (('private', 'process', 'private-held'), ('private', 'mcp', 'private-held'))
+INVENTORY = (('private', 'process', 'private-held'), ('private', 'mcp', 'private-held'),
+             ('boundary', 'process', 'boundary-held'), ('boundary', 'mcp', 'boundary-held'))
 COMMIT = 'a' * 40
 RUSTC = 'fixture compiler'
 
@@ -18,7 +19,7 @@ RUSTC = 'fixture compiler'
 class CompletionEvidence(unittest.TestCase):
     def exercise(self, alter_report=None, alter_log=None):
         artifacts = {name: dict(path='/fixture/' + name, sha256='b' * 64)
-                     for name in ('HOST', 'FIXTURE', 'CLI')}
+                     for name in ('HOST', 'BOUNDARY', 'FIXTURE', 'CLI')}
         command = ['sudo', '-n', 'env', 'FSM_NATIVE_FIXTURE_DISPOSABLE=1',
                    'FSM_NATIVE_FIXTURE_SHA256=' + 'c' * 64, 'GITHUB_ACTIONS=true']
         for name, artifact in artifacts.items():
@@ -34,7 +35,7 @@ class CompletionEvidence(unittest.TestCase):
             alter_log(lines)
         log = b'\n'.join(lines) + b'\n'
         report = dict(schema='fsm.native-completion-owner/1', source_commit=COMMIT,
-                      source_dirty=False, rustc=RUSTC, scope='private-owner-held-handlers',
+                      source_dirty=False, rustc=RUSTC, scope='public-and-private-held-handlers',
                       gate_released=False, task_complete=False, passed=True,
                       timed_out=False, exit_code=0, authority_sha256='c' * 64,
                       fixture_sha256='d' * 64, cli_strip='debuginfo', artifacts=artifacts,
@@ -53,7 +54,7 @@ class CompletionEvidence(unittest.TestCase):
 
     def test_exact_private_slice_cannot_complete_the_task_or_verify_binary_bytes(self):
         verdict = self.exercise()
-        self.assertEqual(verdict['cases'], 2)
+        self.assertEqual(verdict['cases'], 4)
         self.assertTrue(verdict['verified'])
         self.assertFalse(verdict['task_complete'])
         self.assertFalse(verdict['gate_released'])
