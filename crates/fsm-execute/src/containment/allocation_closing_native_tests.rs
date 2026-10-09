@@ -26,7 +26,7 @@ pub(super) fn run() {
     fs::write(&marker, b"{}").unwrap();
     assert_eq!(
         prepare(&fixture.directory).unwrap_err(),
-        "closing allocation identity differs"
+        "native preparation original inventory: closing allocation identity differs"
     );
     assert_eq!(fixture.counter(), before);
     assert!(!fixture.directory.join("allocation-2.json").exists());

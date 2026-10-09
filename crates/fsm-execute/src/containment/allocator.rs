@@ -310,13 +310,16 @@ fn prepare_with_owner(
 ) -> Result<Value, String> {
     let acquisition_deadline = Instant::now() + Duration::from_secs(2);
     protected_directory(directory)?;
-    let original = origin(directory)?;
+    let original =
+        origin(directory).map_err(|error| preparation_stage("original authority", error))?;
     // A missing/delegated facility refuses before burning an allocation.
     protected_directory(Path::new(GROUPS))?;
-    super::catalogue::read(directory)?;
-    super::enrollment::installed()?;
-    super::exec_status::ready()?;
-    super::manager::require()?;
+    super::catalogue::read(directory).map_err(|error| preparation_stage("catalogue", error))?;
+    super::enrollment::installed()
+        .map_err(|error| preparation_stage("installed enrollment", error))?;
+    super::exec_status::ready()
+        .map_err(|error| preparation_stage("exec status readiness", error))?;
+    super::manager::require().map_err(|error| preparation_stage("manager readiness", error))?;
     let lock = OpenOptions::new()
         .read(true)
         .write(true)
@@ -351,23 +354,29 @@ fn prepare_with_owner(
             return Err("authority busy".into());
         }
         protected_directory(directory)?;
-        let origin = origin(directory)?;
+        let origin =
+            origin(directory).map_err(|error| preparation_stage("rechecked authority", error))?;
         if origin != original {
             return Err("authority identity differs".into());
         }
-        let registration = read_value(&directory.join("store.json"), true)?;
+        let registration = read_value(&directory.join("store.json"), true)
+            .map_err(|error| preparation_stage("store registration", error))?;
         closed(&registration, &["format", "path", "identity"])?;
-        let store_metadata =
-            fs::symlink_metadata(Path::new(text(&registration, "path")?)).map_err(io)?;
+        let store_metadata = fs::symlink_metadata(Path::new(text(&registration, "path")?))
+            .map_err(io)
+            .map_err(|error| preparation_stage("registered store identity", error))?;
         if text(&registration, "format")? != "fsm.native-store-registration/1"
             || !store_metadata.is_dir()
             || registration.get("identity") != Some(&identity(&store_metadata))
         {
             return Err("registered store identity differs".into());
         }
-        let counter_value = read_value(&directory.join("counter.json"), true)?;
+        let counter_value = read_value(&directory.join("counter.json"), true)
+            .map_err(|error| preparation_stage("counter read", error))?;
         let last = counter(&counter_value, &origin)?;
-        match inventory(directory, &origin, last)? {
+        match inventory(directory, &origin, last)
+            .map_err(|error| preparation_stage("original inventory", error))?
+        {
             InventoryStatus::Ready => {
                 if Instant::now() >= acquisition_deadline {
                     return Err("authority busy".into());
@@ -392,18 +401,27 @@ fn prepare_with_owner(
         &directory.join(format!("allocation-{next}.json")),
         &intent(&origin, next),
     )?;
-    advance(directory, counter_value, next)?;
+    advance(directory, counter_value, next)
+        .map_err(|error| preparation_stage("counter advancement", error))?;
     let path = cgroup(&origin, next)?;
-    fs::create_dir(&path).map_err(io)?;
-    let metadata = fs::symlink_metadata(&path).map_err(io)?;
+    fs::create_dir(&path)
+        .map_err(io)
+        .map_err(|error| preparation_stage("cgroup creation", error))?;
+    let metadata = fs::symlink_metadata(&path)
+        .map_err(io)
+        .map_err(|error| preparation_stage("created cgroup identity", error))?;
     if !metadata.is_dir()
         || metadata.uid() != 0
         || metadata.mode() & 0o022 != 0
-        || super::observation::sample(&path, metadata.dev())? != (false, false)
+        || super::observation::sample(&path, metadata.dev())
+            .map_err(|error| preparation_stage("new cgroup observation", error))?
+            != (false, false)
     {
         return Err("new native domain is not protected and empty".into());
     }
-    let after = fs::symlink_metadata(&path).map_err(io)?;
+    let after = fs::symlink_metadata(&path)
+        .map_err(io)
+        .map_err(|error| preparation_stage("rechecked cgroup identity", error))?;
     if !after.is_dir()
         || after.uid() != 0
         || after.mode() & 0o022 != 0
@@ -423,8 +441,12 @@ fn prepare_with_owner(
     .map_err(|error| error.to_string())?
     .to_value();
     if let Some(operator) = operator {
-        drop(super::runner_lease::acquire(directory, next)?);
-        super::owner_lease::publish(directory, next, operator)?;
+        drop(
+            super::runner_lease::acquire(directory, next)
+                .map_err(|error| preparation_stage("runner lease", error))?,
+        );
+        super::owner_lease::publish(directory, next, operator)
+            .map_err(|error| preparation_stage("operator lease", error))?;
     }
     publish_once(
         &directory.join(format!("prepared-{next}.json")),
@@ -445,6 +467,10 @@ fn prepare_with_owner(
         ]),
     )?;
     Ok(domain)
+}
+
+fn preparation_stage(phase: &str, error: String) -> String {
+    format!("native preparation {phase}: {error}")
 }
 
 #[cfg(test)]

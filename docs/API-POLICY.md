@@ -1777,3 +1777,7 @@ the original two-second pre-allocation budget, and revalidate authority,
 registration, counter and full inventory on reacquisition. Missing or mismatched
 closing evidence remains an immediate refusal; waiting never proves closure
 or authorizes capacity release. Formats, public APIs and codes are unchanged.
+
+Private native preparation refusal diagnostics include bounded static phase
+names for inventory, facility readiness, cgroup creation and original leases;
+phase context changes no allocation, journal record, public error code or format.
