@@ -512,6 +512,12 @@ fn autonomous_schedule_ready_completions_yield_to_admitted_application_within_ei
             .any(|record| record.kind == RecordKind::ExecutionSettled)
     );
     let prefix = before.journal.last_seq;
+    let first_wave = before
+        .state
+        .execution
+        .unresolved()
+        .map(|(claim, _)| claim.clone())
+        .collect::<Vec<_>>();
     drop(before);
     let sessions = (0..4)
         .map(|_| handle.session().unwrap())
@@ -539,6 +545,13 @@ fn autonomous_schedule_ready_completions_yield_to_admitted_application_within_ei
             .unwrap();
         }
     }
+    // Keep the original owner paused until real authority results exist.
+    // Waiting observes native I/O only; it never advances the logical clock.
+    wait_for_original_results(&first_wave);
+    assert_eq!(
+        Store::open_read_only(&path).unwrap().journal.last_seq,
+        prefix
+    );
     let watchdog = Instant::now() + Duration::from_secs(20);
     let mut previous = prefix;
     let mut served = 0;
@@ -638,4 +651,56 @@ fn autonomous_schedule_ready_completions_yield_to_admitted_application_within_ei
         crate::journal_io::verify(&path).health,
         crate::journal_io::JournalHealth::Ok
     );
+}
+
+/// Observe authenticated original closure and result material without settling it.
+fn wait_for_original_results(claims: &[fsm_core::record::execution::Claim]) {
+    let watchdog = Instant::now() + Duration::from_secs(20);
+    for claim in claims {
+        let domain = claim.domain().to_value();
+        let directory = PathBuf::from("/var/lib/fsm-containment")
+            .join(domain.get("namespace").unwrap().as_str().unwrap())
+            .join(format!(
+                "authority-{}",
+                domain.get("generation").unwrap().as_num().unwrap()
+            ));
+        let allocation = domain.get("allocation").unwrap().as_num().unwrap();
+        let result = directory.join(format!("result-{allocation}-{}.json", claim.run_id()));
+        let result_bytes = loop {
+            match fs::read_to_string(&result) {
+                Ok(bytes) => break bytes,
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        std::io::ErrorKind::NotFound | std::io::ErrorKind::PermissionDenied
+                    ) => {}
+                Err(error) => panic!("original result observation failed: {error}"),
+            }
+            assert!(
+                Instant::now() < watchdog,
+                "original native result was not ready"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        };
+        let binding = value(
+            &fs::read_to_string(directory.join(format!("binding-{allocation}.json"))).unwrap(),
+        );
+        let journal_claim = binding.get("journal_claim").unwrap().as_str().unwrap();
+        let receipt = directory.join(format!("closure-{allocation}-{}.json", claim.run_id()));
+        let proof = fsm_store::store::VerifiedClosure::read(&receipt).unwrap();
+        assert!(proof.matches_claim(claim, journal_claim));
+        let attestation = value(&result_bytes);
+        proof
+            .check_result_digest(attestation.get("response_hash").unwrap().as_str().unwrap())
+            .unwrap();
+        assert_eq!(attestation.get("domain"), Some(&domain));
+        assert_eq!(
+            attestation.get("journal_claim").unwrap().as_str(),
+            Some(journal_claim)
+        );
+        assert_eq!(
+            attestation.get("run_id").unwrap().as_num(),
+            Some(claim.run_id().to_string().as_str())
+        );
+    }
 }
