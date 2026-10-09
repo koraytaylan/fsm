@@ -4,7 +4,9 @@ use super::*;
 use std::process::{Command, Stdio};
 
 pub(super) fn run(fixture: &mut Fixture, barriers: &Barriers, domain: &NativeDomain) {
-    super::super::broker_cases::disconnect_cases::install_supervisor(&fixture.directory);
+    // Finish route provisioning before the original runner can contend for
+    // authority; the later live-owner refusal still observes the enrolled tree.
+    let recovery = super::orphan_recovery::Session::new(fixture);
     let output = fixture.directory.join("orphan-runner.log");
     let mut owner = Command::new(fixture.directory.join("supervisor-test"))
         .args([
@@ -57,7 +59,6 @@ pub(super) fn run(fixture: &mut Fixture, barriers: &Barriers, domain: &NativeDom
         b"independent enrollment verified",
     )
     .unwrap();
-    let recovery = super::orphan_recovery::Session::new(fixture);
     recovery.refuse_live_runner();
     // Kill only this fixture's actual runner child; its independent enrolled
     // native root, detached child and grandchild must survive until CLI closure.

@@ -331,6 +331,11 @@ pub(super) fn run() {
             );
             assert!(fs::symlink_metadata(fixture.directory.join("launch-1.json")).is_err());
         }
+        // Provision the original recovery route before a live runner can hold
+        // the authority lock; provisioning is setup, not concurrent recovery.
+        let reconciliation = mode
+            .starts_with("uncertain-")
+            .then(|| orphan_recovery::Session::new(&fixture));
         let control = cancelled.clone();
         let directory = fixture.directory.clone();
         let execution =
@@ -384,9 +389,6 @@ pub(super) fn run() {
         );
         let handoff_path = fixture.directory.join("handoff-1.json");
         let saved_handoff = fs::read(&handoff_path).unwrap();
-        let reconciliation = mode
-            .starts_with("uncertain-")
-            .then(|| orphan_recovery::Session::new(&fixture));
         if let Some(reconciliation) = &reconciliation {
             // Enrollment is already independently proved; the live-owner CLI
             // refusal must not consume the server's two-second setup barrier.
