@@ -18,7 +18,7 @@ pub(in super::super) fn configure_table(table: &mut Value, failures: &str) {
     };
     first.insert(
         "retry".into(),
-        value(r#"{"attempts":2,"backoff_ms":50,"max_backoff_ms":50,"on":["failed"]}"#),
+        value(r#"{"attempts":2,"backoff_ms":50,"max_backoff_ms":50,"on":["nonzero_exit"]}"#),
     );
 }
 
@@ -50,6 +50,16 @@ fn quiet_retry_finishes_without_observation_requests() {
 #[test]
 fn portable_handler_fails_first_attempt_only() {
     let directory = Directory::new();
+    super::super::write_handlers(&directory.0, &directory.resource(), "quiet-retry");
+    let table = fsm_execute::config::HandlerTable::parse(
+        &fs::read_to_string(directory.0.join("handlers.json")).unwrap(),
+    )
+    .unwrap();
+    assert!(
+        table.handlers["check_prerequisite"]
+            .retry
+            .retries("nonzero_exit")
+    );
     fs::write(directory.resource().join("phase"), "active").unwrap();
     for expected in [7, 0] {
         let output = Command::new(std::env::current_exe().unwrap())

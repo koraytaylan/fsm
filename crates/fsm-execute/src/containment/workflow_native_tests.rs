@@ -131,7 +131,7 @@ fn table(helper: &Path, resource: &Path, failures: &str) -> Value {
         first.insert(
             "retry".into(),
             fsm_core::json::parse(
-                br#"{"attempts":2,"backoff_ms":50,"max_backoff_ms":50,"on":["failed"]}"#,
+                br#"{"attempts":2,"backoff_ms":50,"max_backoff_ms":50,"on":["nonzero_exit"]}"#,
                 &fsm_core::json::JsonLimits::DEFAULT,
             )
             .unwrap(),
@@ -291,7 +291,7 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
             .as_str()
             .unwrap();
         if failure == "quiet-retry" {
-            assert_eq!(status, "failed");
+            assert_eq!(status, "nonzero_exit");
         } else {
             assert!(matches!(status, "timeout" | "interrupted"));
         }
@@ -321,7 +321,7 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
             .unwrap();
         assert_eq!(
             settled.body.get("disposition").and_then(Value::as_str),
-            Some(if matches!(status, "timeout" | "failed") {
+            Some(if matches!(status, "timeout" | "nonzero_exit") {
                 "attempted"
             } else {
                 "interrupted"
@@ -329,7 +329,7 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
         );
         assert_eq!(
             number(&claims[1].body, "attempt").unwrap(),
-            if matches!(status, "timeout" | "failed") {
+            if matches!(status, "timeout" | "nonzero_exit") {
                 2
             } else {
                 1

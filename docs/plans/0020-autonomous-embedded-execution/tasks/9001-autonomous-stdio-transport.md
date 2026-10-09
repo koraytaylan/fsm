@@ -104,6 +104,11 @@ Focused acceptance review:
   original runner filter and retaining its source-bound report and log;
   ten mocked producer checks pass, including bounded single-case execution
   and refusal of a missing original case marker. The full gate is unchanged.
+- The first focused native execution refused the fixture's invalid `failed`
+  retry class before launching handlers; both independent definitions now use
+  `nonzero_exit`, and the durable stopped-outcome assertions match that class.
+  The portable fixture now parses the actual configured table and verifies
+  retry eligibility before executing its first-failure/second-success check.
 - Success, transient retry, compensation, interrupted advance and a held real
   process/MCP handler with responsive reads remain to be matched to this
   original inventory; no landing OID or full-gate claim is assigned, and full
