@@ -11,6 +11,31 @@ use std::{
 mod quiet_retry;
 pub(super) use quiet_retry::{configure_table, failed_operation, unacknowledged_attempts};
 
+fn executor_format(capabilities: &Value) -> Result<&str, &'static str> {
+    match capabilities.get("format").and_then(Value::as_str) {
+        Some(format @ ("fsm.executor/1" | "fsm.executor/2")) => Ok(format),
+        _ => Err("unsupported executor resource format"),
+    }
+}
+
+#[test]
+fn discovery_refuses_unknown_or_missing_format_before_interpreting_capabilities() {
+    for capabilities in [
+        value(r#"{"format":"fsm.executor/3"}"#),
+        value(r#"{"format":null}"#),
+        object([]),
+    ] {
+        assert_eq!(
+            executor_format(&capabilities),
+            Err("unsupported executor resource format")
+        );
+    }
+    for format in ["fsm.executor/1", "fsm.executor/2"] {
+        let capabilities = object([("format", string(format))]);
+        assert_eq!(executor_format(&capabilities), Ok(format));
+    }
+}
+
 impl Client {
     pub(super) fn finish(&mut self) {
         if self.http.is_some() {
@@ -62,6 +87,7 @@ impl Client {
         );
         let content = &response.get("contents").unwrap().as_arr().unwrap()[0];
         let capabilities = value(&text(content, "text"));
+        let format = executor_format(&capabilities).expect("supported executor discovery contract");
         assert_eq!(text(&capabilities, "mode"), "embedded");
         assert_eq!(
             capabilities.get("executes_effects"),
@@ -70,7 +96,7 @@ impl Client {
         let autonomous = cfg!(target_os = "linux")
             && matches!(self.mode, ExecutionMode::Embedded | ExecutionMode::Http);
         assert_eq!(
-            text(&capabilities, "format"),
+            format,
             if autonomous {
                 "fsm.executor/2"
             } else {

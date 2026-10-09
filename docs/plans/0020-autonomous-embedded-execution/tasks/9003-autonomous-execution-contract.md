@@ -15,6 +15,7 @@ touches:
   - crates/fsm-cli/src/mcp/tools/schema_out.rs
   - crates/fsm-cli/tests/mcp_executor.rs
   - crates/fsm-cli/tests/mcp_execute_workflow.rs
+  - crates/fsm-cli/tests/workflow_stdio/mod.rs
   - crates/fsm-cli/tests/executor_doc.rs
   - crates/fsm-cli/tests/transport_doc.rs
   - crates/fsm-cli/tests/fixtures/mcp_live/
@@ -26,7 +27,7 @@ touches:
   - docs/EMBEDDING.md
   - docs/RELEASE.md
   - README.md
-status: planned
+status: in_progress
 merged_as: ""
 ---
 # Autonomous Execution Contract
@@ -66,3 +67,12 @@ both transports actually run.
   0022 lifecycle implementation; record native OS/toolchain axes before release.
 
 - **Done when:** discovery, current user documentation, release notes, and production tests agree on autonomous stdio/HTTP execution and its versioned lifecycle contract, with the stable host gate green and no unrecorded integration prerequisite.
+
+Focused progress:
+
+- The discovery-driven fixture now accepts only the supported executor resource
+  formats before interpreting mode or handler fields, explicitly refusing unknown,
+  missing and non-string formats. Its named regression, 28 executor/document
+  cases, CLI all-target clippy and format/size/diff checks pass. Current operator
+  guidance still contains stale inline-execution and pending HTTP-egress claims;
+  reconciliation and final plan integration gates remain outstanding.

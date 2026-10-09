@@ -10,7 +10,7 @@ Task frontmatter is authoritative; the coordinator owns registration and complet
 | [bounded-session-channels](tasks/8904-bounded-session-channels.md) | done | 25129d2dd238f717e9b2e4ec2e0c148fa4633c13 |
 | [autonomous-stdio-transport](tasks/9001-autonomous-stdio-transport.md) | done | 6cf1df2be0c2649191c786c2885e7e1f1b1fa2e9 |
 | [autonomous-http-transport](tasks/9002-autonomous-http-transport.md) | done | 32dc871170b3402c091a62274cfa88efe1cbc05e |
-| [autonomous-execution-contract](tasks/9003-autonomous-execution-contract.md) | planned | — |
+| [autonomous-execution-contract](tasks/9003-autonomous-execution-contract.md) | in_progress | — |
 
 Progress: 6/7 tasks completed.
 
