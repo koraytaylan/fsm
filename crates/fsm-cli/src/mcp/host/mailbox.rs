@@ -186,8 +186,22 @@ impl Mailbox {
         command: Operation,
         reply: Reply,
     ) -> Result<(), AdmissionError> {
-        let bytes = operation_charge(&command);
         let mut state = self.state.lock().unwrap_or_else(|p| p.into_inner());
+        let admitted = self.reserve_locked(&mut state, session, command, reply)?;
+        state.queue.push_back(admitted);
+        self.ready.notify_one();
+        Ok(())
+    }
+
+    /// Own bounded admission and controls independently of writer dispatch.
+    fn reserve_locked(
+        self: &Arc<Self>,
+        state: &mut State,
+        session: Arc<SessionState>,
+        command: Operation,
+        reply: Reply,
+    ) -> Result<Admitted, AdmissionError> {
+        let bytes = operation_charge(&command);
         if state.stopped {
             return Err(AdmissionError::Stopped);
         }
@@ -225,7 +239,7 @@ impl Mailbox {
         charge.commands += 1;
         charge.bytes += bytes;
         let generation = session.generation;
-        state.queue.push_back(Admitted {
+        Ok(Admitted {
             session,
             command,
             reply,
@@ -236,9 +250,7 @@ impl Mailbox {
                 bytes,
                 request,
             },
-        });
-        self.ready.notify_one();
-        Ok(())
+        })
     }
 
     /// A prepared request already owns its slot and original cancellation control.
