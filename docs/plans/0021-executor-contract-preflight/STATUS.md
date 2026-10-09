@@ -132,8 +132,16 @@ offline/stored CLI and MCP reports, unchanged refusal state and zero operations,
 then quiet inspect/work/recover ordering and three original closures after repair.
 The executed protected-binding report test passes; eight focused MCP tests and
 29 mocked producer/artifact tests pass with feature-enabled CLI/executor clippy.
-Both native MCP-target cases remain ignored locally, and standalone/MCP-handler
-integration of these exact fixtures and native sensitivity remain outstanding.
+Standalone preparation now reuses that exact fixture and original protected
+CLI: initialized invalid execution must preserve the entire Store and absent
+operations, drain successfully and preserve historical pending work on writer
+reacquisition; repair requires ordered work and three original closures.
+Eight focused MCP cases, the protected-binding case and 31 mocked producer/artifact
+cases pass, with feature-enabled CLI/executor all-target clippy and format/size/diff
+checks; review `8764b7dc135d4d148f94803d10458b23cc828408b9b458a3611e109187c2cf33`.
+All three native MCP-target cases remain ignored locally; physical standalone
+and embedded acceptance, exact-fixture MCP-handler integration and native
+sensitivity remain outstanding.
 The README and operator example now document machine checking, repair,
 manual policy and current-state admission; eight executable example tests pass,
 including the documented offline order check without creating a store.

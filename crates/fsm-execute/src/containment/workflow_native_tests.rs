@@ -74,7 +74,7 @@ pub(super) fn stage_artifact(destination: &Path, source_variable: &str, digest_v
 }
 
 fn table(helper: &Path, resource: &Path, failures: &str) -> Value {
-    if failures == "contract-staged" {
+    if matches!(failures, "contract-staged" | "contract-staged-standalone") {
         return staged_contract_table(helper, resource);
     }
     let mut table = object([
@@ -256,7 +256,7 @@ fn staged_native_table_preserves_independent_report() {
 fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
     use fsm_core::record::{RecordKind, execution::Claim};
     use fsm_store::store::VerifiedClosure;
-    let expected = if failure == "contract-staged" {
+    let expected = if matches!(failure, "contract-staged" | "contract-staged-standalone") {
         3
     } else if failure == "contract-draft" {
         4
@@ -586,6 +586,10 @@ pub(super) fn run() {
             vec!["contract-staged"],
         ),
         (
+            "native_staged_standalone_refusal_recovery",
+            vec!["contract-staged-standalone"],
+        ),
+        (
             "workflow_http::native_http_delete_preserves_an_active_handler_and_completes_once",
             vec!["http-delete-active"],
         ),
@@ -781,7 +785,9 @@ pub(super) fn run() {
             let catalogue = table(&helper, &resource, failure);
             let operator_table = (matches!(
                 case,
-                "native_draft_repair_execution" | "native_staged_fixture_refusal_recovery"
+                "native_draft_repair_execution"
+                    | "native_staged_fixture_refusal_recovery"
+                    | "native_staged_standalone_refusal_recovery"
             ))
             .then(|| catalogue.clone());
             let fixture = if failure.starts_with("full-disk") {
@@ -840,7 +846,7 @@ pub(super) fn run() {
             .unwrap();
         let mut child = Command::new("/usr/bin/python3")
             .args(["-c", "import os,sys;os.setgroups([]);os.setgid(65534);os.setuid(65534);os.execv(sys.argv[1],sys.argv[1:])"])
-            .arg(if matches!(case, "native_draft_repair_execution" | "native_staged_fixture_refusal_recovery") { contract_mcp.as_ref().unwrap() } else { &helper }).args(["--exact", case, "--ignored", "--nocapture", "--color", "never"])
+            .arg(if matches!(case, "native_draft_repair_execution" | "native_staged_fixture_refusal_recovery" | "native_staged_standalone_refusal_recovery") { contract_mcp.as_ref().unwrap() } else { &helper }).args(["--exact", case, "--ignored", "--nocapture", "--color", "never"])
             .env("FSM_NATIVE_WORKFLOW_MANIFEST", &manifest_path)
             .env("TMPDIR", &fixtures[0].store)
             .stdin(Stdio::null()).stdout(log.try_clone().unwrap()).stderr(log)

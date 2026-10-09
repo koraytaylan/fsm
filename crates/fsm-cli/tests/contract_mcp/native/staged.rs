@@ -25,7 +25,12 @@ fn check_cli(entry: &Value, selector: &str, reference: &str, report: &Value) {
         .args([selector, reference])
         .output()
         .unwrap();
-    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let exit = if report.get("status").and_then(Value::as_str) == Some("compatible") {
+        0
+    } else {
+        1
+    };
+    assert_eq!(output.status.code(), Some(exit), "{output:?}");
     let mut bytes = canon_bytes(report);
     bytes.push(b'\n');
     assert_eq!(output.stdout, bytes);
@@ -33,6 +38,19 @@ fn check_cli(entry: &Value, selector: &str, reference: &str, report: &Value) {
 }
 
 pub(crate) fn run() {
+    run_with(Execution::Embedded);
+}
+
+pub(crate) fn run_standalone() {
+    run_with(Execution::Standalone);
+}
+
+enum Execution {
+    Embedded,
+    Standalone,
+}
+
+fn run_with(execution: Execution) {
     let entry = manifest();
     let store = path(&entry, "store");
     let resource = path(&entry, "resource");
@@ -140,17 +158,51 @@ pub(crate) fn run() {
         effect
     );
     drop(writer);
+    if matches!(execution, Execution::Standalone) {
+        let mut executor = Standalone::start(&entry);
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while Instant::now() < deadline {
+            assert!(executor.child.try_wait().unwrap().is_none());
+            let current = Store::open_read_only(&store).unwrap();
+            assert_eq!(current.records, records);
+            assert!(fsm_store::snapshot::store_states_eq(&state, &current.state));
+            assert_eq!(fs::read_to_string(resource.join("calls")).unwrap(), "");
+            assert!(!resource.join("work").exists());
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        executor.stop(&entry);
+        let writer = Store::open(&store).unwrap();
+        assert_eq!(writer.records, records);
+        assert!(fsm_store::snapshot::store_states_eq(&state, &writer.state));
+        assert_eq!(
+            fsm_execute::effect::resolve(&writer, &effect.effect_id).unwrap(),
+            effect
+        );
+    }
     fs::write(&table_path, canon_bytes(original)).unwrap();
-    client = start(&entry);
-    assert_eq!(
-        client.check(
-            15,
-            obj([("machine", Value::Str("contract_workflow".into()))])
-        ),
-        good_report
-    );
+    check_cli(&entry, "--machine", "contract_workflow", &good_report);
+    let mut standalone = match execution {
+        Execution::Standalone => Some(Standalone::start(&entry)),
+        Execution::Embedded => None,
+    };
+    let mut embedded = match execution {
+        Execution::Embedded => Some(start(&entry)),
+        Execution::Standalone => None,
+    };
+    if let Some(client) = embedded.as_mut() {
+        assert_eq!(
+            client.check(
+                15,
+                obj([("machine", Value::Str("contract_workflow".into()))])
+            ),
+            good_report
+        );
+    }
     let deadline = Instant::now() + Duration::from_secs(12);
     loop {
+        if let Some(executor) = standalone.as_mut() {
+            assert!(executor.child.try_wait().unwrap().is_none());
+        }
         let current = Store::open_read_only(&store).unwrap();
         if current.state.instances["inst-staged-run"].status == fsm_core::machine::Status::Completed
             && current.state.execution.unresolved().count() == 0
@@ -186,7 +238,12 @@ pub(crate) fn run() {
         fs::read_to_string(resource.join("phase")).unwrap(),
         "active"
     );
-    retire(&mut client);
+    if let Some(client) = embedded.as_mut() {
+        retire(client);
+    }
+    if let Some(executor) = standalone.as_mut() {
+        executor.stop(&entry);
+    }
     assert_eq!(
         Store::open(&store)
             .unwrap()
@@ -200,4 +257,76 @@ pub(crate) fn run() {
         fsm_store::journal_io::verify(&store).health,
         fsm_store::journal_io::JournalHealth::Ok
     );
+}
+
+struct Standalone {
+    child: std::process::Child,
+    control: PathBuf,
+}
+
+impl Standalone {
+    fn start(entry: &Value) -> Self {
+        let store = path(entry, "store");
+        let control = path(entry, "home").join("staged-control");
+        let child = Command::new(path(entry, "cli"))
+            .env("HOME", path(entry, "home"))
+            .args(["--json", "--data-dir"])
+            .arg(&store)
+            .args(["execute", "--handlers"])
+            .arg(store.join("contract-handlers.json"))
+            .args(["--poll-interval-ms", "5", "--control-dir"])
+            .arg(&control)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(
+                fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(store.join("standalone-stderr"))
+                    .unwrap(),
+            )
+            .spawn()
+            .unwrap();
+        let mut executor = Self { child, control };
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            assert!(executor.child.try_wait().unwrap().is_none());
+            if fsm_cli::local_control::observe(&executor.control, &store, 250).is_ok() {
+                break;
+            }
+            assert!(Instant::now() < deadline, "standalone did not initialize");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        executor
+    }
+
+    fn stop(&mut self, entry: &Value) {
+        let report = fsm_cli::local_control::stop(
+            &self.control,
+            &path(entry, "store"),
+            fsm_execute::service::ShutdownMode::Drain,
+            5000,
+        )
+        .unwrap();
+        assert_eq!(report.get("phase").and_then(Value::as_str), Some("stopped"));
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if let Some(status) = self.child.try_wait().unwrap() {
+                assert!(status.success());
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "standalone did not retire after drain"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+}
+
+impl Drop for Standalone {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
 }
