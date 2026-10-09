@@ -74,14 +74,22 @@ fn concrete_scalar_matrix_agrees_with_core_validation() {
         let machine = compile_fixture(ty);
         for (value, expected) in [(good, CheckStatus::Compatible), (bad, CheckStatus::Invalid)] {
             let payload = format!(r#"{{"value":{value}}}"#);
-            let table = table(&payload, &[]);
-            let report = report(&machine, &table);
-            assert_eq!(report.status, expected, "{ty} {value}");
-            let validation = validate_event(&machine, "completed", &json(&payload));
-            assert_eq!(validation.is_ok(), expected == CheckStatus::Compatible);
-            if expected == CheckStatus::Invalid {
-                assert_eq!(cause(&report), code);
-                assert_eq!(validation.unwrap_err().code, code);
+            for outcome in ["on_ok", "on_failed"] {
+                let mut table = table(&payload, &[]);
+                if outcome == "on_failed" {
+                    let handler = table.handlers.get_mut("work").unwrap();
+                    handler.on_failed = handler.on_ok.take();
+                }
+                let report = report(&machine, &table);
+                assert_eq!(report.status, expected, "{outcome} {ty} {value}");
+                assert_eq!(report.effects[0].outcomes[outcome], expected.as_str());
+                let validation = validate_event(&machine, "completed", &json(&payload));
+                assert_eq!(validation.is_ok(), expected == CheckStatus::Compatible);
+                if expected == CheckStatus::Invalid {
+                    assert_eq!(cause(&report), code);
+                    assert_eq!(report.findings[0].outcome.as_deref(), Some(outcome));
+                    assert_eq!(validation.unwrap_err().code, code);
+                }
             }
         }
     }
