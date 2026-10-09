@@ -1,5 +1,10 @@
 # Embedding fsm as a library
 
+A buffered HTTP response retains at most 8 MiB of aggregate Vec capacity across
+all frames, separately from queued/in-flight output and serialization temporaries.
+Overflow discards the partial buffer and closes the session instead of publishing
+a truncated JSON result; observing complete output consumes and seals the buffer.
+
 Hosted HTTP diagnostic tools such as journal_verify now return through bounded
 hosted output; JSON replies wait for queue drainage before reading the response
 buffer. A missing drainage observation retires that session and cannot publish

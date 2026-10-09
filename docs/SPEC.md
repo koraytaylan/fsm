@@ -1,5 +1,12 @@
 # fsm — normative specification
 
+HTTP buffered responses MUST independently bound aggregate retained Vec
+capacity to 8 MiB across all frames. Exact-bound capacity MUST be accepted;
+excess MUST discard the buffer and refuse later suffix writes and publication.
+After observed drainage, consuming the buffer MUST seal it and transfer its
+bytes without cloning the whole retained response. Serialization temporaries
+and the separately bounded output queue are outside this aggregate buffer.
+
 Hosted HTTP replies, including read-only diagnostics, MUST use bounded hosted
 output that permits owner-side frame admission without socket writes. Buffered
 JSON responses MUST observe complete queue drainage before reading their sink,

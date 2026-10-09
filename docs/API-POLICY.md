@@ -1,5 +1,11 @@
 # API and version policy
 
+HTTP aggregate response buffers now enforce an 8-MiB retained allocation cap
+and refuse excess through existing I/O failure paths; incomplete responses are
+never published. This tighter output bound has a pre-1.0 minor-version consequence
+without changing signatures, formats, journal bytes, hashes or error-code strings;
+version numbers remain unchanged.
+
 HTTP diagnostics now use the existing private hosted-output contract under the
 unchanged HTTP queue budget; no public signature, wire discriminator, journal
 bytes, hashes, error-code strings or versions change.

@@ -32,6 +32,7 @@ touches:
   - crates/fsm-cli/tests/fixtures/mcp_affordance/session.expected
   - crates/fsm-cli/tests/fixtures/audit/session.expected
   - crates/fsm-cli/src/http/endpoint.rs
+  - crates/fsm-cli/src/http/endpoint/buffer.rs
   - crates/fsm-cli/src/http/endpoint/streaming.rs
   - crates/fsm-cli/src/http/endpoint/retirement_tests.rs
   - crates/fsm-cli/src/http/writer.rs
@@ -216,6 +217,19 @@ Focused startup acceptance:
   A real-binary journal_verify regression returns health Ok, retains the physical
   writer and continues discovery. Removing only hosted HTTP output mode
   reproduces the empty response; restoration passes. Twenty-one focused HTTP
-  cases, CLI all-target clippy and format/size/diff checks pass. Native acceptance
-  remains pending for the corrected candidate; full concurrent admission and
-  aggregate response-buffer bounds still require closure before task completion.
+  cases, CLI all-target clippy and format/size/diff checks pass.
+  Frozen native group at e6cf6e5c passes all three success/retry/compensation
+  scenarios, including zero-session observation, actual original-owner exit,
+  journal reopening and authority/staging retirement. Source cleanliness, exact
+  case/count, exit status and transcript/log digests are verified; task-cache
+  report digest is 31184c2fc31faecfea492ab3be9c9072b2f486c23d3eb48c8d5bc62cd19fce67.
+- Buffered HTTP responses now independently bound aggregate Vec capacity to
+  8 MiB across completed frames, discard overflow and refuse later publication,
+  then transfer and seal fully observed bytes without cloning the whole buffer.
+  Three focused cases cover exact capacity, limit-plus-one, suffix refusal and
+  the real protocol notifier writer; relaxing only the buffer limit fails the
+  independent producer case and restoration passes. Twenty-one HTTP cases,
+  CLI all-target clippy and format/size/diff checks pass. Hosted dispatch/output
+  errors retire the original HTTP session without stopping the shared owner.
+  Full concurrent admission and active-handler expiry/DELETE acceptance still
+  require closure; plan-end gates remain due and this task stays in progress.

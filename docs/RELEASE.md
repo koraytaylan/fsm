@@ -1,5 +1,9 @@
 # Releasing
 
+HTTP buffered output now bounds aggregate retained response allocation to 8 MiB,
+discards overflow, refuses suffix publication and transfers completed bytes
+without cloning the entire retained buffer; queue limits remain unchanged.
+
 Hosted HTTP now supplies the bounded notifier required by read-only diagnostic
 workers, fixing empty socket responses for journal_verify and preserving owned
 frame publication; JSON response buffers are read only after observed drainage.

@@ -23,7 +23,7 @@ use super::sse::{Stream, write_event};
 use crate::clock::Clock;
 use crate::mcp::jsonrpc::{Incoming, WireError, parse_line};
 use crate::mcp::methods::handle_request;
-use crate::mcp::notify::{Notifier, SessionIo, SharedSink};
+use crate::mcp::notify::{Notifier, SessionIo};
 use crate::mcp::serve::{Live, negotiate};
 use crate::store::Store;
 
@@ -39,6 +39,9 @@ mod retirement_tests;
 
 #[path = "endpoint/streaming.rs"]
 mod streaming;
+
+#[path = "endpoint/buffer.rs"]
+mod buffer;
 
 /// One server's endpoint: the store every session shares, the sessions
 /// themselves, and the protocol state each of them keeps.
@@ -408,7 +411,7 @@ impl Endpoint {
                 return write_response(out, &Response::error(status));
             }
         };
-        let sink = SharedSink::new();
+        let sink = buffer::ResponseBuffer::default();
         let (notifier, buffered_output) =
             if let (true, Some(output)) = (streaming, streaming_output) {
                 (output.clone_handle(), streaming::BufferedOutput(None))
@@ -434,17 +437,21 @@ impl Endpoint {
             let mut live = state.live.lock_safe();
             let mut initialized = true;
             if let Some(hosted) = &state.hosted {
-                hosted.dispatch(
-                    &notifier,
-                    clock,
-                    &mut live,
-                    id,
-                    method,
-                    params,
-                    self.mode_note,
-                    &io,
-                    &feed_out,
-                )?;
+                hosted
+                    .dispatch(
+                        &notifier,
+                        clock,
+                        &mut live,
+                        id,
+                        method,
+                        params,
+                        self.mode_note,
+                        &io,
+                        &feed_out,
+                    )
+                    .inspect_err(|_| {
+                        self.sessions.close(&session_id);
+                    })?;
             } else {
                 self.store.with_store(|store| {
                     let _ = handle_request(
@@ -474,7 +481,9 @@ impl Endpoint {
             }
             return Ok(());
         }
-        let written = sink.text();
+        let written = sink.text().inspect_err(|_| {
+            self.sessions.close(&session_id);
+        })?;
         if written.is_empty()
             && let Some(hosted) = &state.hosted
         {
