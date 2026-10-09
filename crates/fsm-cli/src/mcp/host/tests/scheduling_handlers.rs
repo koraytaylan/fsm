@@ -525,6 +525,7 @@ fn autonomous_schedule_ready_completions_yield_to_admitted_application_within_ei
     let watchdog = Instant::now() + Duration::from_secs(20);
     let mut previous = prefix;
     let mut served = 0;
+    let mut checked_settlements = 0;
     let completed_while_ready;
     loop {
         assert!(
@@ -552,6 +553,7 @@ fn autonomous_schedule_ready_completions_yield_to_admitted_application_within_ei
             settled <= 8,
             "more than eight completions preceded an admitted application response"
         );
+        checked_settlements += settled;
         previous = outcome.committed_seq;
         replies.push_back(
             sessions[served % 4]
@@ -567,6 +569,7 @@ fn autonomous_schedule_ready_completions_yield_to_admitted_application_within_ei
             .instances
             .values()
             .all(|instance| instance.status == Status::Completed)
+            && outcome.committed_seq == observed.journal.last_seq
         {
             assert_eq!(claim_count(&observed), 9);
             assert_eq!(
@@ -583,6 +586,7 @@ fn autonomous_schedule_ready_completions_yield_to_admitted_application_within_ei
         }
         std::thread::sleep(Duration::from_millis(5));
     }
+    assert_eq!(checked_settlements, 9);
     assert!(served > 0 && completed_while_ready);
     handle.stop();
     drop(gate);
