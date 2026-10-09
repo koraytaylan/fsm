@@ -98,6 +98,14 @@ Current acceptance evidence:
   admission limits are preserved. Focused tests, fixture-enabled all-target
   clippy, formatting, size and diff checks pass.
 
+Frozen `fb6a8661` publishes retained native transport diagnostics on ordinary
+decision ticks; focused scheduling tests and all-target fixture clippy pass.
+Native scheduling run `37924655312` fails on both toolchains: the nine-handler
+queue fixture exceeds the SPEC-required eight owned broker connections and
+receives connection resets. This is a fixture admission defect, not evidence
+that the eight-turn fairness bound fails; redesign acceptance within the
+existing broker limit before claiming queue fairness or task completion.
+
 Remaining acceptance: genuine continuously ready completion/application queues
 must satisfy both eight-turn bounds together; the complete frozen
 integration gate and review must pass. Pure scheduler fairness fixtures alone
