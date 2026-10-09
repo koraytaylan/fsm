@@ -27,13 +27,12 @@ pub fn analyze_contract(
     table: &HandlerTable,
     limits: Limits,
 ) -> Result<Report, ExecError> {
+    let definitions = super::definition_index(catalogue.values());
     analyze_resolved(
         root,
         &|identity| {
             if identity.contains("@sha256:") {
-                catalogue
-                    .values()
-                    .find(|machine| machine.machine_id == identity)
+                definitions.get(identity).copied()
             } else {
                 catalogue.get(identity)
             }

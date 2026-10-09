@@ -6,7 +6,7 @@ use crate::{
     effect::{PendingEffect, resolve},
     error::ExecError,
 };
-use fsm_core::{hashes::digest_of, machine::Status};
+use fsm_core::machine::Status;
 use fsm_store::store::Store;
 
 /// Recheck concrete pending work and its current executable definition closure.
@@ -43,24 +43,19 @@ pub fn check_pending(
         .get(&effect.instance_id)
         .and_then(|identity| store.state.machines.get(identity))
         .ok_or_else(unknown_definition)?;
-    let report =
-        outcomes::analyze_resolved(
-            &receiver.compiled,
-            &|identity| {
-                store
-                    .state
-                    .machines
-                    .get(identity)
-                    .or_else(|| {
-                        store.state.machines.values().find(|machine| {
-                            digest_of(&machine.compiled.machine_id) == Some(identity)
-                        })
-                    })
-                    .map(|machine| &machine.compiled)
-            },
-            table,
-            Limits::default(),
-        )?;
+    let definitions = super::definition_index(
+        store
+            .state
+            .machines
+            .values()
+            .map(|machine| &machine.compiled),
+    );
+    let report = outcomes::analyze_resolved(
+        &receiver.compiled,
+        &|identity| definitions.get(identity).copied(),
+        table,
+        Limits::default(),
+    )?;
     if report.status != CheckStatus::Compatible {
         return Err(refusal(report.status).details(report.to_value()));
     }
