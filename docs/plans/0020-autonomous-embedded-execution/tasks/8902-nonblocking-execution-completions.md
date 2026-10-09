@@ -94,12 +94,14 @@ from verified `66c785ba`; continuity review digest
 This preserves prior recovery evidence, but does not verify the changed worker
 capacity path or the completion inventory added after that checkpoint.
 
-Review of frozen `465c248a..3ae5b2fa` confirms that successor helpers reuse
+Review of frozen `465c248a..c4f57c15` confirms that successor helpers reuse
 an original reservation only after predecessor retirement, proof verification
 shares that reservation, and the retained run survives writer refusal until
-owner settlement. The ten-case CI inventory now includes both handler kinds
-for durable capacity and backpressure. Its evidence verifier rejects missing
-cases and omitted or rebound private owner artifacts; 27 mocked tests pass.
-This is preliminary source/fixture review: new native runtime cases and the
-full current matrix are unexecuted, and the original generation and blocked
-reaping/output acceptance requirements remain open.
+owner settlement. The twelve-case CI inventory includes authentic successor
+generation refusal and private-host control with an exited root whose original
+descendants retain output pipes. Its evidence verifier rejects missing cases
+and omitted or rebound observer artifacts; 27 mocked tests pass, alongside
+49 portable host, 25 public-surface/retry and 13 worker regression tests.
+This is preliminary source/fixture review: the twelve native cases and full
+current matrix are unexecuted; only the earlier private held-handler slice has
+stable/MSRV runtime proof. The written inventory above is unchanged.

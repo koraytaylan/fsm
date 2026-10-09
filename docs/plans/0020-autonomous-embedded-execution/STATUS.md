@@ -23,15 +23,18 @@ on both stable and MSRV in
 [CI 37863129424](https://github.com/koraytaylan/fsm/actions/runs/37863129424).
 Independent retained-artifact verdict:
 `568c9272b2fafe095aedb1b439b0bd33f41d0fb95b16ffe42e68d25f129250d7`.
-Frozen completion checkpoint `465c248a..3ae5b2fa` wires ten process/MCP cases:
-private owner responsiveness, public held polling, duplicate settlement,
-writer refusal and durable capacity exhaustion. Review confirms shared
-reservation ownership across helper phases and retention until settlement;
-27 mocked artifact/evidence tests and focused all-target clippy pass.
-Pre-dispatch capacity refusal now stays queued (`631e7496`, load-bearing
-0/101/0 regression). New native cases and the current full matrix remain
-unexecuted; stale-generation and worker reaping/output acceptance still need
-production-level evidence, so 8902 retains no landing OID.
+Frozen completion checkpoint `465c248a..c4f57c15` wires twelve process/MCP
+cases: private owner responsiveness, inherited output pipes, public held
+polling, duplicate settlement, writer refusal and durable capacity exhaustion.
+The writer-refusal cases also reject an authentic completion bound to a
+successor generation before recovering and settling the original.
+Preliminary review confirms shared reservation ownership across helper phases
+and retention until settlement; 27 mocked artifact/evidence tests, 49 portable
+private-host tests, 25 public-surface/retry tests and 13 worker regressions pass.
+Focused all-target clippy, formatting, size and diff checks pass.
+Pre-dispatch capacity refusal stays queued (`631e7496`, load-bearing 0/101/0
+regression). The twelve native cases and current full matrix remain unexecuted,
+so 8902 retains no landing OID and the original acceptance inventory stays open.
 
 Historical STATUS evidence is retained outside the repository in the task-cache
 plan-status-archives directory, addressed by SHA-256:
