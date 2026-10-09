@@ -3,6 +3,7 @@
 use super::*;
 
 pub(super) fn run() {
+    stop_contention();
     let mut fixture = Fixture::new();
     let domain = fixture.prepare();
     let lock = super::super::super::authority_lock(&fixture.directory).unwrap();
@@ -63,4 +64,27 @@ fn assert_original(fixture: &Fixture, domain: &Value) {
     for name in ["closing-1.json", "closed-1.json", "binding-1.json"] {
         assert!(!fixture.directory.join(name).exists());
     }
+}
+
+fn stop_contention() {
+    let mut fixture = Fixture::new();
+    let domain = fixture.prepare();
+    let mut stop_lock = Some(super::super::super::authority_lock(&fixture.directory).unwrap());
+    let mut stop_acquisitions = 0;
+    let stop =
+        super::super::super::stop::request_with_contention_probe(&fixture.directory, 1, || {
+            assert_original(&fixture, &domain);
+            stop_acquisitions += 1;
+            drop(stop_lock.take());
+        });
+    assert_eq!(stop_acquisitions, 1);
+    // This unbound domain has no original binding or handoff, so acquiring
+    // the lock must reach that refusal without manufacturing a manager stop.
+    assert!(
+        stop.unwrap_err()
+            .starts_with("manager stop original binding:")
+    );
+    assert!(fixture.directory.join("closing-1.json").exists());
+    assert!(!fixture.directory.join("manager-stopped-1.json").exists());
+    fixture.cleanup().unwrap();
 }

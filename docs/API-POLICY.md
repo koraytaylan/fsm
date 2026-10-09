@@ -1762,3 +1762,10 @@ it MUST revalidate the protected authority's original device/inode identity
 before reading closure material or mutating native state. Other refusals,
 identity changes and exhausted budgets remain uncertain and cannot settle a
 journal claim; public APIs, persistent formats and error codes are unchanged.
+
+Matched native manager stop MUST retry only pre-mutation authority-lock
+contention within its original two-second request budget and revalidate the
+original protected authority identity after acquisition; acquisition, manager
+inspection and stop share that budget. Closure cannot substitute waiting for
+an unissued stop. Refusal or timeout remains uncertain, and persistent formats,
+public APIs and error codes are unchanged.

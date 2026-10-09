@@ -19,8 +19,40 @@ pub(super) fn fence(directory: &Path, allocation: u64) -> Result<(), String> {
 }
 
 pub(super) fn request(directory: &Path, allocation: u64) -> Result<(), String> {
+    request_with_contention_probe(directory, allocation, || {})
+}
+
+pub(super) fn request_with_contention_probe(
+    directory: &Path,
+    allocation: u64,
+    mut contention: impl FnMut(),
+) -> Result<(), String> {
+    let deadline = Instant::now() + Duration::from_secs(2);
     super::protected_directory(directory).map_err(|error| stage("authority directory", error))?;
-    let _lock = super::authority_lock(directory).map_err(|error| stage("authority lock", error))?;
+    let original = super::identity(&fs::symlink_metadata(directory).map_err(super::io)?);
+    let _lock = loop {
+        if Instant::now() >= deadline {
+            return Err("manager stop authority deadline".into());
+        }
+        match super::authority_lock(directory) {
+            Ok(lock) => break lock,
+            Err(error) if error == "authority busy" => {
+                contention();
+                std::thread::sleep(
+                    Duration::from_millis(5)
+                        .min(deadline.saturating_duration_since(Instant::now())),
+                );
+            }
+            Err(error) => return Err(stage("authority lock", error)),
+        }
+    };
+    if Instant::now() >= deadline {
+        return Err("manager stop authority deadline".into());
+    }
+    super::protected_directory(directory).map_err(|error| stage("authority directory", error))?;
+    if super::identity(&fs::symlink_metadata(directory).map_err(super::io)?) != original {
+        return Err("manager stop authority identity differs".into());
+    }
     let domain = closing::recorded_domain(directory, allocation)
         .map_err(|error| stage("recorded domain", error))?;
     // A live original resource can always have admission revoked, even when
@@ -111,7 +143,6 @@ pub(super) fn request(directory: &Path, allocation: u64) -> Result<(), String> {
     }
     parse(&bytes, &JsonLimits::DEFAULT)
         .map_err(|_| "manager stop completion exceeds native depth bound")?;
-    let deadline = Instant::now() + Duration::from_secs(2);
     let keys = [
         "InvocationID",
         "ControlGroup",
