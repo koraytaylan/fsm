@@ -103,20 +103,32 @@ Current acceptance evidence:
   Changing only `COMMAND_BATCH` to nine fails at exit 101; restoration passes.
   Retained verdict digest:
   `3dfecb0dedf93c1a5e96c9d675c27f464d3d41663321909e38a5fda04b7bcc07`.
-- Frozen `3c4afe45` retains all nine genuine completion cases in waves of seven,
-  respecting the eight-connection broker limit; ordinary ticks expose retained
-  uncertainty diagnostics. The focused native run `37926268833` passes the
-  deterministic cleanup contention, timeout and authority-replacement checks,
-  then fails concurrent queue acceptance because authority acquisition exceeds
-  the original two-second cleanup budget. Concurrent retirement still needs
-  repair; this run cannot prove queue fairness or task completion.
+- Frozen `57f6b9bc` passes all fourteen genuine process/MCP scheduling cases on
+  stable and MSRV in [CI 37929334249](https://github.com/koraytaylan/fsm/actions/runs/37929334249).
+  Concurrent retirement now waits within the original acquisition budget for
+  the original authority; allocation waits for its original closed inventory
+  without retaining the authority lock. Protected closing or original binding
+  and handoff material permits waiting only, never replacement proof or early
+  capacity release. Disposable native checks exercise contention, timeout,
+  authority replacement and missing or malformed retirement material.
+  All nine original trees enter and settle in waves of seven under the existing
+  broker limit while 32 application reads remain queued; every settlement is
+  counted against application response prefixes, and original shutdown and
+  strict journal verification pass. Independent retained-report digest:
+  `16b2bdcc02a95a9a55a8a5b407bd9f3a979ada9b5cb8c9164cccc2b265c35451`.
+  Reports bind source, compiler, inventory and invocation; executable bytes
+  were not independently compared. Native scope remains Linux/systemd.
+  Subsequent `1ae04d3b` only separates unchanged allocator binding fixtures;
+  focused authority-test compilation passes, with no new native execution claim.
 
-Remaining acceptance: genuine continuously ready completion/application queues
-must satisfy both eight-turn bounds together; frozen review must pass and
-expensive integration gates remain due at plan completion under the user's
-2026-10-09 cadence. Pure scheduler fairness fixtures alone
-do not prove owner wiring. No landing OID is assigned and the original written
-inventory above is unchanged.
+Remaining acceptance: the native queue fixture releases real trees before
+resuming the owner, but does not first establish that all first-wave results
+are ready; its seven-inflight cap also means a settlement-count assertion alone
+cannot distinguish eight from nine owner turns. Strengthen the ready-result
+barrier and review the combined native wiring and exact shared-loop guard proof
+before assigning a landing OID. Expensive integration gates remain due at plan
+completion under the user's 2026-10-09 cadence. No task completion is claimed,
+and the original written inventory above is unchanged.
 
 Historical milestone prose is archived outside the repository by SHA-256:
 `7b97be7468f15d9bf316c331ce5ad18f36ebda9c722c8d501fcf84e23c92dc05`.
