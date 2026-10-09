@@ -1,5 +1,11 @@
 # API and version policy
 
+HTTP startup now preserves healthy contention as a refreshed read-only server
+and retains unhealthy-store diagnostics per session, matching stdio's mode
+contract. No journal bytes, hashes, wire discriminators, public Rust signatures,
+dependencies, MSRV or error codes change; the shared autonomous HTTP executor
+remains pending, and this repair makes no new execution capability claim.
+
 Public native preparation MUST use owned allocations: `start` and `for_store`
 request `prepare-owned`, and `poll` returns `NativePreparedOwner`; callers retain
 the guard and read metadata through `domain()`. The unprivileged broker and

@@ -1,5 +1,10 @@
 # Releasing
 
+HTTP fallback now refreshes healthy contended stores without upgrading to a
+writer and serves unhealthy-store diagnosis from the original directory in
+every session. Real-binary configured-handler refusal cases cover both paths;
+shared autonomous HTTP execution and its native acceptance remain pending.
+
 Plan 0022 proves local process ownership and closure, not exactly-once external
 effects: remote work submitted before termination can survive local closure,
 and recovery can repeat the operation. External effects remain at-least-once;

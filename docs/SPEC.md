@@ -3555,6 +3555,16 @@ minor-version consequence, with no core semantics, journal bytes, hash domains,
 public Rust signatures, dependency or MSRV changes. Production acceptance and
 complete bounded egress ordering remain pending in plans 20–23.
 
+HTTP startup MUST use the same bounded writer acquisition and original
+contention observation as stdio. A healthy contended store MUST remain
+read-only for the server lifetime and refresh from read-only journal prefixes
+before calls; release of the competing writer MUST NOT upgrade that handle.
+An unhealthy HTTP store MUST retain its original diagnostic directory in every
+session, permit `store_doctor`, refuse store-dependent mutation and access, and
+start no handlers. Authentication and origin checks still precede dispatch.
+This fallback does not establish autonomous HTTP execution, whose shared-host
+integration and real-handler acceptance remain separately pending.
+
 Linux embedded stdio MUST accept `serve --execute --poll-interval-ms N`
 with a positive whole-millisecond interval no greater than 86400000; the
 default is 250 ms. Invalid intervals or use outside embedded stdio MUST

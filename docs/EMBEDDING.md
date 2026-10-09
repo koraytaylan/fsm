@@ -1217,6 +1217,14 @@ person using it.
 
 ### Sessions
 
+HTTP uses stdio's bounded writer acquisition: when another writer holds a
+healthy store it serves read-only views, refreshed before each call, and never
+upgrades automatically when that writer exits. An unhealthy store still accepts
+initialization and serves `store_doctor` from the original directory, while
+store-dependent calls refuse and no handler starts. These fallback modes do
+not imply that HTTP runs an embedded executor; shared autonomous execution
+remains pending in plan 0020.
+
 `initialize` mints a session and returns it in `Mcp-Session-Id`. Every later
 request must carry that header. A request without it is `400`; one naming a
 session this server does not have is **`404`, and `404` means re-initialize**

@@ -8,6 +8,8 @@ depends_on:
 gated: false
 touches:
   - crates/fsm-cli/src/http/mod.rs
+  - crates/fsm-cli/src/http/startup.rs
+  - crates/fsm-cli/src/mcp/serve.rs
   - crates/fsm-cli/src/http/endpoint.rs
   - crates/fsm-cli/src/http/writer.rs
   - crates/fsm-cli/src/http/session.rs
@@ -21,7 +23,8 @@ touches:
   - docs/SPEC.md
   - docs/EMBEDDING.md
   - docs/API-POLICY.md
-status: planned
+  - docs/RELEASE.md
+status: in_progress
 merged_as: ""
 ---
 # Autonomous HTTP Transport
@@ -64,3 +67,17 @@ across every session.
   handlers; native HTTP conformance, security, resume, and limit tests pass.
 
 - **Done when:** real HTTP tests prove autonomous execution and session-independent host lifetime with one writer and bounded isolated sessions, while the stable host and existing HTTP gates pass.
+
+Focused startup acceptance:
+
+- Real `serve --http --execute` configured-sentinel cases prove contended
+  read-only refresh, refusal of mutation and automatic upgrade, and degraded
+  diagnosis from the original directory without handler starts or altered
+  corrupt bytes. Direct sentinel execution verifies its marker behavior.
+  Neutralizing only read-only refresh fails the named real-client case on
+  stale state; restoration passes. Twenty-six focused fallback/conformance/
+  multi-client/resume/limit cases pass; source and test-target clippy pass.
+- Shared host construction, independent native execution, per-session bounded
+  admission, asynchronous SSE delivery and zero-client lifetime acceptance
+  remain incomplete; this startup repair establishes no autonomous capability
+  or task landing, and full gates remain due at plan completion.

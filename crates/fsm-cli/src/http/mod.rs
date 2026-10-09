@@ -21,6 +21,7 @@ pub mod security;
 pub mod server;
 pub mod session;
 pub mod sse;
+mod startup;
 pub mod writer;
 
 use std::sync::Arc;
@@ -83,20 +84,17 @@ pub fn run_http(ctx: &mut Ctx, args: &Args, addr: &str, mode: ServeMode) -> u8 {
         format!("{}\n", policy.startup_line()).as_bytes(),
     );
 
-    let store = match mode {
-        ServeMode::ReadOnly => crate::store::Store::open_read_only(&ctx.data_dir).ok(),
-        _ => crate::store::Store::open(&ctx.data_dir).ok(),
-    };
+    let opened = startup::open(&ctx.data_dir, &mode);
     let bind = policy.bind;
     // One flag for both halves: the accept loop stops taking connections and
     // the streams parked in `Endpoint::deliver` end, rather than holding
     // threads open past the server they belong to.
     let stop = Arc::new(AtomicBool::new(false));
-    let endpoint = Arc::new(
-        endpoint::Endpoint::new(&policy.path, store, "")
-            .with_policy(policy)
-            .with_stop(Arc::clone(&stop)),
-    );
+    let mut endpoint = endpoint::Endpoint::new(&policy.path, opened.store, opened.mode_note);
+    if let Some(detail) = opened.diagnostic {
+        endpoint = endpoint.with_degraded(ctx.data_dir.clone(), detail);
+    }
+    let endpoint = Arc::new(endpoint.with_policy(policy).with_stop(Arc::clone(&stop)));
     let handler: Arc<dyn server::Handler> = Arc::new(endpoint::EndpointHandler::new(endpoint));
     match server::serve_http(bind, handler, stop) {
         Ok(()) => 0,

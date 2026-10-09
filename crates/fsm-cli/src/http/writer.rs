@@ -36,12 +36,18 @@ use crate::store::Store;
 /// The store every session's calls are serialized through.
 pub struct SerializedWriter {
     store: Mutex<Option<Store>>,
+    refresh: Option<std::path::PathBuf>,
 }
 
 impl SerializedWriter {
     pub fn new(store: Option<Store>) -> Self {
+        let refresh = store
+            .as_ref()
+            .filter(|store| store.journal.is_read_only())
+            .map(|store| store.data_dir.clone());
         Self {
             store: Mutex::new(store),
+            refresh,
         }
     }
 
@@ -51,11 +57,19 @@ impl SerializedWriter {
     /// panic: a call that panicked must not make the store unreachable for
     /// every other session. The panic itself was already fatal, or was
     /// isolated at the connection boundary where a stranger's input belongs.
+    /// A read-only writer refreshes its committed prefix before the call,
+    /// retaining its previous readable prefix if reopening fails; it never
+    /// takes a writer lock or upgrades after contention ends.
     pub fn with_store<T>(&self, body: impl FnOnce(Option<&mut Store>) -> T) -> T {
         let mut store = self
             .store
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(dir) = &self.refresh
+            && let Ok(refreshed) = Store::open_read_only(dir)
+        {
+            *store = Some(refreshed);
+        }
         body(store.as_mut())
     }
 

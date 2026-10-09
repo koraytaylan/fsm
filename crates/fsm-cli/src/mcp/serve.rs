@@ -340,7 +340,7 @@ pub struct Unavailable<'a> {
 pub const CONTENDED_DETAIL: &str = "another process holds the writer; this session is read-only. Stop that writer, or use the paired deployment: the executor writes and this server watches.";
 
 /// Why a writable open did not produce a writer.
-enum WriterUnavailable {
+pub(crate) enum WriterUnavailable {
     /// Somebody else holds the lock: the store is **healthy and busy**.
     /// A read-only handle comes back instead, boxed because a `Store` is
     /// large and an enum is as big as its largest variant.
@@ -366,7 +366,7 @@ const WRITER_BACKOFF_MS: u64 = 400;
 /// busy*, so the session starts, says so, and refuses writes with a message
 /// naming the holder — a different problem from plan 0014's unhealthy store,
 /// with a completely different remedy.
-fn open_writer(dir: &std::path::Path) -> Result<Store, WriterUnavailable> {
+pub(crate) fn open_writer(dir: &std::path::Path) -> Result<Store, WriterUnavailable> {
     let mut last = None;
     for attempt in 0..WRITER_ATTEMPTS {
         match Store::open(dir) {

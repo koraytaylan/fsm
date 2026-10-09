@@ -52,6 +52,7 @@ pub struct Endpoint {
     /// What this server will answer, and from whom.
     policy: Option<Policy>,
     mode_note: &'static str,
+    degraded: Option<(std::path::PathBuf, String)>,
     /// The server's stop flag, when this endpoint is being served by one.
     ///
     /// Its presence is also what tells `stream` whether it may hold a
@@ -83,6 +84,7 @@ impl Endpoint {
             streams: Mutex::new(BTreeMap::new()),
             policy: None,
             mode_note,
+            degraded: None,
             stop: None,
         }
     }
@@ -94,6 +96,20 @@ impl Endpoint {
     pub fn with_stop(mut self, stop: std::sync::Arc<std::sync::atomic::AtomicBool>) -> Self {
         self.stop = Some(stop);
         self
+    }
+
+    pub(crate) fn with_degraded(mut self, data_dir: std::path::PathBuf, detail: String) -> Self {
+        self.degraded = Some((data_dir, detail));
+        self
+    }
+
+    fn new_live(&self) -> Live {
+        let mut live = Live::default();
+        if let Some((dir, detail)) = &self.degraded {
+            live.degraded_dir = Some(dir.clone());
+            live.degraded = Some(detail.clone());
+        }
+        live
     }
 
     /// The same endpoint, with a posture to enforce.
@@ -316,7 +332,9 @@ impl Endpoint {
 
         {
             let mut lives = self.lives.lock_safe();
-            let live = lives.entry(session_id.clone()).or_default();
+            let live = lives
+                .entry(session_id.clone())
+                .or_insert_with(|| self.new_live());
             let mut initialized = true;
             // Every session's call, through one lock, for the whole call.
             self.store.with_store(|store| {
@@ -374,7 +392,7 @@ impl Endpoint {
             && let Some(requested) = params.as_ref().and_then(|p| p.get("requestId"))
         {
             let mut lives = self.lives.lock_safe();
-            let live = lives.entry(session_id).or_default();
+            let live = lives.entry(session_id).or_insert_with(|| self.new_live());
             live.cancellations.cancel(requested);
         }
     }
