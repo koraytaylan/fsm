@@ -34,6 +34,12 @@ the retained bound owner and unconsumed entry permission. Frozen review
 `a4a864a0e44c963e09801401785884712c4211490d0bc8e8335de5b6ed4cae97`
 indexes prior scoped proofs; metadata fixtures do not close physical acceptance.
 
+Focused regression checkpoint `8b659d64` passes 49 tick, retry, scheduler,
+composition and chaos cases; verdict
+`eedbf3f61b365721543985fc1eadab72632c3e2511c5b8f0232ae554659bf0e9`.
+The combined genuine native competing-writer/timeout cleanup case is still
+absent from the sixteen-axis inventory; these regressions do not close it.
+
 CLI focused range `62bdbd5d..2cd48842` passes ten real-binary contract cases,
 17 executor documentation cases and five legacy session cases, CLI all-target
 clippy, format/size checks and control-option guard sensitivity; self-review
