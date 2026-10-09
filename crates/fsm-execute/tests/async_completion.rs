@@ -30,16 +30,33 @@ mod native {
     #[test]
     #[ignore = "requires disposable native CI and exact staged process fixture"]
     fn async_completion_process_dispatch_poll_and_stop_do_not_wait_for_release() {
-        observe("process");
+        observe("process", CompletionMode::AbortHeld);
     }
 
     #[test]
     #[ignore = "requires disposable native CI and exact staged MCP fixture"]
     fn async_completion_mcp_dispatch_poll_and_stop_do_not_wait_for_release() {
-        observe("mcp");
+        observe("mcp", CompletionMode::AbortHeld);
     }
 
-    fn observe(kind: &str) {
+    #[test]
+    #[ignore = "requires disposable native CI and exact staged process fixture"]
+    fn async_completion_process_repeated_polling_settles_once() {
+        observe("process", CompletionMode::Release);
+    }
+
+    #[test]
+    #[ignore = "requires disposable native CI and exact staged MCP fixture"]
+    fn async_completion_mcp_repeated_polling_settles_once() {
+        observe("mcp", CompletionMode::Release);
+    }
+
+    enum CompletionMode {
+        AbortHeld,
+        Release,
+    }
+
+    fn observe(kind: &str, mode: CompletionMode) {
         let manifest = manifest();
         assert_eq!(field(&manifest, "kind"), kind);
         let store_path = PathBuf::from(field(&manifest, "store"));
@@ -117,6 +134,25 @@ mod native {
             assert!(!resource.join("root-release").exists());
             assert_eq!(driver.store_mut().unwrap().journal.last_seq, prefix);
         }
+        if matches!(mode, CompletionMode::Release) {
+            for role in ["grandchild", "child", "root"] {
+                fs::write(resource.join(format!("{role}-release")), b"release").unwrap();
+            }
+            let deadline = Instant::now() + Duration::from_secs(12);
+            while driver.store_mut().unwrap().state.instances["held"].status
+                != fsm_core::machine::Status::Completed
+            {
+                let _ = driver.tick(&mut clock, 2000);
+                assert!(Instant::now() < deadline, "completion did not settle");
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            let settled = driver.store_mut().unwrap().journal.last_seq;
+            for _ in 0..3 {
+                let _ = driver.tick(&mut clock, 2000);
+                let _ = driver.poll(&mut clock, 2000);
+                assert_eq!(driver.store_mut().unwrap().journal.last_seq, settled);
+            }
+        }
         let entered = Instant::now();
         let request = control.stop(ShutdownMode::Abort, 10000).unwrap();
         assert!(
@@ -124,7 +160,10 @@ mod native {
             "stop request waited on release"
         );
         assert!(control.report().admission_closed);
-        assert!(!resource.join("root-release").exists());
+        assert_eq!(
+            resource.join("root-release").exists(),
+            matches!(mode, CompletionMode::Release)
+        );
         let deadline = Instant::now() + Duration::from_secs(12);
         while control.report().phase != ExecutorPhase::Stopped {
             let entered = Instant::now();
@@ -142,12 +181,36 @@ mod native {
         let report = request.wait();
         assert!(report.inventory_complete && report.helpers_retired && report.writer_released);
         assert!(driver.store_mut().is_none());
-        assert!(!resource.join("root-release").exists());
+        assert_eq!(
+            resource.join("root-release").exists(),
+            matches!(mode, CompletionMode::Release)
+        );
         let verified = fsm_store::journal_io::verify(&store_path);
         assert_eq!(verified.health, fsm_store::journal_io::JournalHealth::Ok);
         let reopened = Store::open(&store_path).unwrap();
         assert_eq!(verified.records, reopened.records.len() as u64);
         assert_eq!(reopened.state.execution.unresolved().count(), 0);
+        if matches!(mode, CompletionMode::Release) {
+            assert!(reopened.state.instances["held"].pending.is_empty());
+            assert_eq!(
+                reopened.state.instances["held"].status,
+                fsm_core::machine::Status::Completed
+            );
+        }
+        for kind in [
+            fsm_core::record::RecordKind::ExecutionClaimed,
+            fsm_core::record::RecordKind::ExecutionStopped,
+            fsm_core::record::RecordKind::ExecutionSettled,
+        ] {
+            assert_eq!(
+                reopened
+                    .records
+                    .iter()
+                    .filter(|record| record.kind == kind)
+                    .count(),
+                1
+            );
+        }
     }
 
     fn field<'a>(manifest: &'a Value, name: &str) -> &'a str {
