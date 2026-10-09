@@ -13,6 +13,155 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
+#[test]
+fn acknowledged_service_recovery_preserves_refused_key_then_advances_once_without_restart() {
+    use fsm_execute::rid::{ack_rid, event_rid};
+    for borrowed in [false, true] {
+        let directory = Directory::new();
+        let (source, original, mut table) = fixture();
+        let mut document = source.state.machines[&original.emitting_machine_id]
+            .compiled
+            .spec
+            .to_value();
+        let Value::Obj(fields) = &mut document else {
+            unreachable!()
+        };
+        fields.insert(
+            "events".into(),
+            parse(
+                br#"[{"name":"next","fields":[{"name":"approved","ty":"bool"}]}]"#,
+                &JsonLimits::DEFAULT,
+            )
+            .unwrap(),
+        );
+        table.handlers.get_mut("work").unwrap().on_ok = Some(Advance {
+            event: "next".into(),
+            payload: Value::Obj(BTreeMap::from([(
+                "approved".into(),
+                Value::Str("wrong".into()),
+            )])),
+            stamps: Vec::new(),
+        });
+        let mut clock = FixedClock::new(2000, 1);
+        let mut store = Store::open(&directory.0).unwrap();
+        store
+            .define_machine_on(&mut clock, document, false, false)
+            .unwrap();
+        store
+            .create_instance_ctx_on(
+                &mut clock,
+                "admission",
+                "case-1",
+                "create",
+                None,
+                &BTreeMap::new(),
+                &[],
+            )
+            .unwrap();
+        let effect = store.state.instances["case-1"].pending[0].clone();
+        store
+            .ack_effect_outcome_on(&mut clock, "case-1", &effect, &ack_rid(&effect), "ok", None)
+            .unwrap();
+        let state = store.state.clone();
+        let records = store.records.clone();
+        drop(store);
+        let derived = event_rid(&effect, "next");
+        let mut watcher = Watcher::with_handlers(directory.0.clone(), &table);
+        let mut scheduler = Scheduler::new(table.clone());
+        let mut runner = Runner::new_native().unwrap();
+        let mut tick = |watcher: &mut Watcher, scheduler: &mut Scheduler, runner: &mut Runner| {
+            let lines = if borrowed {
+                let mut writer = Store::open(&directory.0).unwrap();
+                tick_with(
+                    watcher,
+                    scheduler,
+                    runner,
+                    &mut Pipeline,
+                    &mut writer,
+                    &mut clock,
+                    2000,
+                )
+            } else {
+                tick_reporting(
+                    watcher,
+                    scheduler,
+                    runner,
+                    &mut Pipeline,
+                    &directory.0,
+                    &mut clock,
+                    2000,
+                )
+                .lines
+            };
+            assert!(
+                !lines
+                    .iter()
+                    .any(|line| line == &format!("observed pending work {effect}")),
+                "acknowledged work was selected for a new start: {lines:?}"
+            );
+            assert!(scheduler.inflight_effect(&effect).is_none());
+            lines
+        };
+        for _ in 0..3 {
+            let lines = tick(&mut watcher, &mut scheduler, &mut runner);
+            assert!(
+                lines
+                    .iter()
+                    .any(|line| line == "error exec/contract_invalid"),
+                "{lines:?}"
+            );
+            let snapshot = Store::open_read_only(&directory.0).unwrap();
+            assert_eq!(snapshot.records, records);
+            assert!(fsm_store::snapshot::store_states_eq(
+                &state,
+                &snapshot.state
+            ));
+            assert!(!snapshot.state.dedup.contains_key(&derived));
+            assert!(runner.local_native_claims().next().is_none());
+        }
+        table
+            .handlers
+            .get_mut("work")
+            .unwrap()
+            .on_ok
+            .as_mut()
+            .unwrap()
+            .payload = Value::Obj(BTreeMap::from([("approved".into(), Value::Bool(true))]));
+        watcher = Watcher::with_handlers(directory.0.clone(), &table);
+        scheduler = Scheduler::new(table);
+        tick(&mut watcher, &mut scheduler, &mut runner);
+        let recovered = Store::open_read_only(&directory.0).unwrap();
+        assert!(recovered.state.dedup.contains_key(&derived));
+        assert_eq!(
+            recovered
+                .records
+                .iter()
+                .filter(|record| record.kind == fsm_core::record::RecordKind::EffectAcked)
+                .count(),
+            1
+        );
+        assert_eq!(
+            recovered
+                .records
+                .iter()
+                .filter(|record| record.kind == fsm_core::record::RecordKind::EventApplied)
+                .count(),
+            1
+        );
+        assert!(runner.local_native_claims().next().is_none());
+        let records = recovered.records.clone();
+        drop(recovered);
+        for _ in 0..3 {
+            tick(&mut watcher, &mut scheduler, &mut runner);
+            assert_eq!(
+                Store::open_read_only(&directory.0).unwrap().records,
+                records
+            );
+            assert!(runner.local_native_claims().next().is_none());
+        }
+    }
+}
+
 struct Directory(PathBuf);
 
 impl Directory {
