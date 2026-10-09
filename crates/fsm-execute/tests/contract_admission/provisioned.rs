@@ -715,7 +715,12 @@ fn observe(borrowed: bool, scenario: Scenario) {
             tick,
         );
     }
-    fs::write(resource.join("root-release"), b"release").unwrap();
+    // The held-result fixture waits for its child, which waits for the
+    // grandchild; releasing only the root publishes a result but leaves the
+    // original tree and inherited pipes live forever under the fixed clock.
+    for role in ["grandchild", "child", "root"] {
+        fs::write(resource.join(format!("{role}-release")), b"release").unwrap();
+    }
     loop {
         let lines = tick(&mut watcher, &mut scheduler, &mut runner, &mut clock);
         let current = Store::open_read_only(&store_path).unwrap();
