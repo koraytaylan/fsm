@@ -3000,6 +3000,12 @@ interruption MUST preserve pending effects and MUST NOT invent acknowledgement
 or outcome events. Foreign client helpers MAY be cancelled; foreign native
 domains MUST NOT be closed by this driver.
 
+The original runner MUST recognize matching protected allocation revocation
+before selecting a new process-exit or MCP candidate, including revocation
+published while root-status observation was in progress; shutdown-induced
+exit or EOF MUST be classified as interruption. A candidate selected before
+revocation MUST retain its original policy and still require complete closure.
+
 `Stopped` MUST require an empty retained local claim inventory, zero unclaimed
 preparation reservations, actual helper retirement, a successful original-store
 observation and completed release of the owned writer. Unknown preparation

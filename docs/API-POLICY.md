@@ -1255,6 +1255,11 @@ existing error codes remain unchanged. No portable availability is claimed.
 
 NativeAdmissionControl, Runner::native_admission_control and Runner::local_native_claims add Linux-only Rust capabilities using existing exec/mode and exec/inflight_deferred refusals, without changing persisted bytes, formats or hash domains. The control is cloneable and Send/Sync; it has no public constructor detached from a runner, and its close/is_closed methods describe admission only. Existing production runner selection remains unchanged.
 
+Matching protected allocation revocation prevents shutdown-induced process exits
+and MCP EOF from becoming new outcome events; candidates selected before
+revocation retain their original policy, with no persistent format or public
+signature change.
+
 The Linux `service::OwnedNativeExecutor`, `ExecutorControl`, `ShutdownRequest`,
 `ShutdownReport`, `ExecutorPhase` and `ShutdownMode` surface is additive and
 opt-in. Invalid shutdown timeouts use existing `exec/config`; unsupported or

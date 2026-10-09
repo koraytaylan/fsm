@@ -1278,6 +1278,12 @@ shutdown wiring and installed native acceptance remain incomplete.
 
 ### Shared native admission closure and local targets
 
+Corrected original runner candidate selection during external closure: matching
+protected revocation is checked before selecting process exits or MCP answers,
+including after root-status observation, so shutdown-induced failures cannot
+advance the workflow; already selected outcomes and complete-closure requirements
+remain intact, with no persistent format or public signature change.
+
 Added shared native admission closure and original local shutdown-target iteration, including final authorization checks after route/writer validation and retention of pre-closure publications. Closed fences preserve completion/handoff processing and uncertain preparations; native Drop closes admission only. The shared fence alone does not establish lifecycle reporting or production stdio shutdown; later opt-in lifecycle and endpoint APIs compose it, with installed production acceptance still required. Persisted formats and production runner selection are unchanged.
 
 - Added an opt-in Linux owned native lifecycle driver and independently

@@ -199,7 +199,9 @@ pub(super) fn execute_cancellable(
         if exec_observation.is_some_and(|error| error.is_some()) {
             break Candidate::Spawn;
         }
-        if cancelled.load(Ordering::Acquire) {
+        if cancelled.load(Ordering::Acquire)
+            || super::closing::requested(directory, allocation, &claim.domain().to_value())?
+        {
             exec_status.refuse_partial()?;
             break Candidate::Cancelled;
         }
@@ -211,7 +213,12 @@ pub(super) fn execute_cancellable(
             && let Some(worker) = &mut owned.worker
             && let Some(answer) = worker.collect()
         {
-            break Candidate::Mcp(answer);
+            break observed_candidate(
+                directory,
+                allocation,
+                &claim.domain().to_value(),
+                Candidate::Mcp(answer),
+            )?;
         }
         // The owned child is systemd-run, not the invocation-matched handler;
         // its retirement cannot authenticate the handler's exit status.
@@ -225,7 +232,14 @@ pub(super) fn execute_cancellable(
             && Instant::now() >= root_observation
         {
             match process_exit::observe(&claim.domain().to_value(), gate, deadline) {
-                Ok(Some(status)) => break Candidate::Process(status),
+                Ok(Some(status)) => {
+                    break observed_candidate(
+                        directory,
+                        allocation,
+                        &claim.domain().to_value(),
+                        Candidate::Process(status),
+                    )?;
+                }
                 Ok(None) => {}
                 Err(error) => {
                     if process_exit::deadline_expired(&error, deadline, Instant::now()) {
@@ -338,6 +352,22 @@ pub(super) fn execute_cancellable(
     }
     completion_record::publish(directory, &claim, &result)?;
     Ok(result)
+}
+
+// SPEC: explicitly owned native lifecycle; a matched external fence must not
+// manufacture an outcome event from the exit or EOF that its own kill caused.
+// Once selected, an original candidate survives the runner's later own fence.
+fn observed_candidate(
+    directory: &Path,
+    allocation: u64,
+    domain: &Value,
+    candidate: Candidate,
+) -> Result<Candidate, String> {
+    if super::closing::requested(directory, allocation, domain)? {
+        Ok(Candidate::Cancelled)
+    } else {
+        Ok(candidate)
+    }
 }
 
 #[cfg(test)]

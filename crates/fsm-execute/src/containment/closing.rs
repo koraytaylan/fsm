@@ -14,6 +14,27 @@ pub(super) fn begin(directory: &Path, allocation: u64) -> Result<(), String> {
     revoke(directory, allocation).map(|_| ())
 }
 
+/// Observe original revocation intent without treating it as closure proof.
+pub(super) fn requested(directory: &Path, allocation: u64, domain: &Value) -> Result<bool, String> {
+    let marker = directory.join(format!("closing-{allocation}.json"));
+    match fs::symlink_metadata(&marker) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(io(error)),
+        Ok(_) => {
+            let material = read_value(&marker, true)?;
+            if material
+                != object([
+                    ("format", Value::Str("fsm.native-closing/1".into())),
+                    ("domain", domain.clone()),
+                ])
+            {
+                return Err("closing material differs".into());
+            }
+            Ok(true)
+        }
+    }
+}
+
 pub(super) fn revoke(directory: &Path, allocation: u64) -> Result<(Value, File), String> {
     protected_directory(directory)?;
     let lock = authority_lock(directory)?;

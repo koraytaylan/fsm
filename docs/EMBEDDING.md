@@ -2494,6 +2494,10 @@ execution; call `poll(clock, now_ms)` for admission-free original completion
 observation. After `control.stop(ShutdownMode::Drain, timeout_ms)` or `Abort`,
 both entries perform shutdown observation without new admission.
 
+Matched protected revocation prevents the runner from treating a shutdown-induced
+process exit or MCP EOF as a new failure event; an original candidate selected
+before revocation keeps its policy, and interruption still needs complete closure.
+
 `ShutdownRequest::wait` waits independently on metadata until confirmed
 `Stopped` or the original deadline's `Uncertain` report. The host must continue
 driving the worker; a quiet or blocked host is not automatically serviced by
