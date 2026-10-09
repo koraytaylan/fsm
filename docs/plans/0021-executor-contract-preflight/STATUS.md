@@ -88,13 +88,16 @@ writes; the focused MCP target passes six cases with one native case ignored,
 with CLI all-target clippy and format/size checks passing; focused review digest
 `633aec7aeab2104aa0d2aa2dbe5c2f22af27364af04805831b00affdc2bc8536`.
 
-Native MCP preparation range `5fe38b22..a49b0a83` adds the protected original-host
-draft/repair/create/quiet-execution case to the existing disposable workflow.
-Four focused Rust cases and 22 mocked artifact/producer cases pass, with
+Native MCP preparation extends the existing protected original-host case through
+prerequisite, suspension, work and restore, with exact ordered calls, published
+work, restored phase and four original closures required. An unchecked draft
+missing a late restore argument must preserve its pending work, entire store
+and absent side effects before cancellation and corrected workflow creation.
+Six focused Rust cases and 22 mocked artifact/producer cases pass, with
 feature-enabled CLI/executor all-target clippy and format/size/diff checks;
-the genuine native case remains ignored locally and unexecuted. Frozen review
-digest `314b7a451cf586eca53de2a358bf938d299009729e0bf4e497ca9a5192765496`
-indexes the preceding MCP verdict; task 9202 and plan-end acceptance remain open.
+the genuine native case remains ignored locally and unexecuted. Scoped review
+`0653f1a2824127b25a9995362330af3f6e6309c524487ba2f484871591b62391`
+indexes the preceding MCP verdict; tasks 9202/9203 and plan-end acceptance remain open.
 
 Cross-surface acceptance preparation adds independently specified staged
 precondition/work/recovery fixtures and full reports. Five focused tests pass

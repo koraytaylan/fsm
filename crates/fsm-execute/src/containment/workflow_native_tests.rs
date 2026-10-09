@@ -182,7 +182,7 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
     use fsm_core::record::{RecordKind, execution::Claim};
     use fsm_store::store::VerifiedClosure;
     let expected = if failure == "contract-draft" {
-        1
+        4
     } else if failure == "quiet-retry"
         || failure.starts_with("crash-")
         || failure.starts_with("full-disk")

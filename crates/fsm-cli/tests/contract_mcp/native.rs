@@ -55,21 +55,37 @@ fn path(entry: &Value, name: &str) -> PathBuf {
 }
 
 fn machine() -> Value {
-    // Independently authored from SPEC: one automatic effect with two required
-    // str arguments and two externally sendable terminal outcomes.
+    // Independently authored from SPEC: prerequisite, suspension, work and
+    // recovery; even the final restore site must satisfy the loaded contract.
     parse(br#"{
       "format":"fsm.machine/1","name":"native_contract_draft",
       "context":[
         {"name":"resource","ty":"str","init":"\"resource with spaces; $(literal) \\\"quoted\\\"\""},
         {"name":"run","ty":"str","init":"\"run-1\""}
       ],
-      "events":[{"name":"begin","fields":[]},{"name":"check_prerequisite_ok","fields":[]},{"name":"check_prerequisite_failed","fields":[]}],
-      "effects":[{"name":"check_prerequisite","fields":[{"name":"resource","ty":"str"},{"name":"run","ty":"str"}]}],
-      "states":[{"name":"idle"},{"name":"working","entry":{"emit":[{"effect":"check_prerequisite","args":{"resource":"ctx.resource","run":"ctx.run"}}]}},{"name":"done","terminal":true},{"name":"failed","terminal":true}],
+      "events":[{"name":"begin","fields":[]},{"name":"check_prerequisite_ok","fields":[]},{"name":"check_prerequisite_failed","fields":[]},
+                {"name":"suspend_ok","fields":[]},{"name":"suspend_failed","fields":[]},
+                {"name":"perform_work_ok","fields":[]},{"name":"perform_work_failed","fields":[]},
+                {"name":"restore_ok","fields":[]},{"name":"restore_failed","fields":[]}],
+      "effects":[{"name":"check_prerequisite","fields":[{"name":"resource","ty":"str"},{"name":"run","ty":"str"}]},
+                 {"name":"suspend","fields":[{"name":"resource","ty":"str"},{"name":"run","ty":"str"}]},
+                 {"name":"perform_work","fields":[{"name":"resource","ty":"str"},{"name":"run","ty":"str"}]},
+                 {"name":"restore","fields":[{"name":"resource","ty":"str"},{"name":"run","ty":"str"}]}],
+      "states":[{"name":"idle"},{"name":"working","entry":{"emit":[{"effect":"check_prerequisite","args":{"resource":"ctx.resource","run":"ctx.run"}}]}},
+                {"name":"suspending","entry":{"emit":[{"effect":"suspend","args":{"resource":"ctx.resource","run":"ctx.run"}}]}},
+                {"name":"performing","entry":{"emit":[{"effect":"perform_work","args":{"resource":"ctx.resource","run":"ctx.run"}}]}},
+                {"name":"recovering","entry":{"emit":[{"effect":"restore","args":{"resource":"ctx.resource","run":"ctx.run"}}]}},
+                {"name":"done","terminal":true},{"name":"failed","terminal":true}],
       "initial":"idle","transitions":[
         {"from":"idle","on":"begin","to":"working"},
-        {"from":"working","on":"check_prerequisite_ok","to":"done"},
-        {"from":"working","on":"check_prerequisite_failed","to":"failed"}
+        {"from":"working","on":"check_prerequisite_ok","to":"suspending"},
+        {"from":"working","on":"check_prerequisite_failed","to":"failed"},
+        {"from":"suspending","on":"suspend_ok","to":"performing"},
+        {"from":"suspending","on":"suspend_failed","to":"recovering"},
+        {"from":"performing","on":"perform_work_ok","to":"recovering"},
+        {"from":"performing","on":"perform_work_failed","to":"recovering"},
+        {"from":"recovering","on":"restore_ok","to":"done"},
+        {"from":"recovering","on":"restore_failed","to":"failed"}
       ]
     }"#, &JsonLimits::DEFAULT).unwrap()
 }
@@ -82,7 +98,7 @@ fn invalid_machine() -> Value {
     let Value::Arr(states) = states.get_mut("states").unwrap() else {
         unreachable!()
     };
-    let Value::Obj(working) = &mut states[1] else {
+    let Value::Obj(working) = &mut states[4] else {
         unreachable!()
     };
     let Value::Obj(entry) = working.get_mut("entry").unwrap() else {
@@ -99,6 +115,87 @@ fn invalid_machine() -> Value {
     };
     arguments.remove("run");
     spec
+}
+
+fn refuse_unchecked_draft(
+    client: &mut Client,
+    store: &std::path::Path,
+    resource: &std::path::Path,
+) {
+    let mut invalid = invalid_machine();
+    let Value::Obj(fields) = &mut invalid else {
+        unreachable!()
+    };
+    fields.insert("name".into(), Value::Str("unchecked_contract_draft".into()));
+    for (identifier, name, arguments) in [
+        (20, "machine_create", obj([("spec", invalid)])),
+        (
+            21,
+            "instance_create",
+            obj([
+                ("machine", Value::Str("unchecked_contract_draft".into())),
+                ("request_id", Value::Str("contract-refusal".into())),
+            ]),
+        ),
+        (
+            22,
+            "instance_send",
+            obj([
+                ("instance_id", Value::Str("inst-contract-refusal".into())),
+                ("request_id", Value::Str("contract-refusal-begin".into())),
+                ("event", obj([("name", Value::Str("begin".into()))])),
+            ]),
+        ),
+    ] {
+        let result = client.call(
+            identifier,
+            "tools/call",
+            obj([("name", Value::Str(name.into())), ("arguments", arguments)]),
+        );
+        assert_ne!(
+            result.get("isError"),
+            Some(&Value::Bool(true)),
+            "{result:?}"
+        );
+    }
+    let original = Store::open_read_only(store).unwrap();
+    let records = original.records.clone();
+    let state = original.state.clone();
+    assert_eq!(state.instances["inst-contract-refusal"].pending.len(), 1);
+    assert_eq!(state.execution.unresolved().count(), 0);
+    drop(original);
+    let deadline = Instant::now() + Duration::from_secs(1);
+    while Instant::now() < deadline {
+        client.call(23, "ping", obj([]));
+        let current = Store::open_read_only(store).unwrap();
+        assert_eq!(
+            current.records, records,
+            "unchecked late-invalid contract published execution work"
+        );
+        assert!(fsm_store::snapshot::store_states_eq(&state, &current.state));
+        assert_eq!(fs::read_to_string(resource.join("calls")).unwrap(), "");
+        assert!(!resource.join("work").exists());
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let cancelled = client.call(
+        24,
+        "tools/call",
+        obj([
+            ("name", Value::Str("instance_cancel".into())),
+            (
+                "arguments",
+                obj([
+                    ("instance_id", Value::Str("inst-contract-refusal".into())),
+                    ("request_id", Value::Str("contract-refusal-cancel".into())),
+                ]),
+            ),
+        ]),
+    );
+    assert_ne!(
+        cancelled.get("isError"),
+        Some(&Value::Bool(true)),
+        "{cancelled:?}"
+    );
 }
 
 pub(super) fn run() {
@@ -172,10 +269,8 @@ pub(super) fn run() {
             .iter()
             .any(|finding| finding.get("code").and_then(Value::as_str)
                 == Some("exec/contract_argument_missing")
-                && finding
-                    .get("path")
-                    .and_then(Value::as_str)
-                    .is_some_and(|path| path.ends_with("/args/run"))
+                && finding.get("path").and_then(Value::as_str)
+                    == Some("/states/4/entry/emit/0/args/run")
                 && finding
                     .get("hint")
                     .and_then(Value::as_str)
@@ -223,6 +318,7 @@ pub(super) fn run() {
     assert_eq!(fs::read_to_string(resource.join("calls")).unwrap(), "");
     assert!(!resource.join("work").exists());
     drop(snapshot);
+    refuse_unchecked_draft(&mut client, &store, &resource);
     let create = client.call(
         6,
         "tools/call",
@@ -300,7 +396,7 @@ pub(super) fn run() {
                         .iter()
                         .filter(|record| record.kind == kind)
                         .count(),
-                    1
+                    4
                 );
             }
             break;
@@ -313,7 +409,15 @@ pub(super) fn run() {
     }
     assert_eq!(
         fs::read_to_string(resource.join("calls")).unwrap(),
-        "check_prerequisite\n"
+        "check_prerequisite\nsuspend\nperform_work\nrestore\n"
+    );
+    assert_eq!(
+        fs::read_to_string(resource.join("phase")).unwrap(),
+        "active"
+    );
+    assert_eq!(
+        fs::read_to_string(resource.join("work")).unwrap(),
+        "first,second"
     );
     drop(client.input.take());
     let deadline = Instant::now() + Duration::from_secs(12);
@@ -335,10 +439,17 @@ pub(super) fn run() {
 
 #[test]
 fn authored_native_pair_has_an_independent_missing_argument_and_repair() {
-    let table = fsm_execute::config::HandlerTable::parse(r#"{"format":"fsm.handlers/1","handlers":[{
+    let mut table = fsm_execute::config::HandlerTable::parse(r#"{"format":"fsm.handlers/1","handlers":[{
         "effect":"check_prerequisite","argv":["/PRIVATE_STAGED_HELPER","handler-resource={resource}","handler-run={run}"],"timeout_ms":1000,
         "on_ok":{"event":"check_prerequisite_ok"},"on_failed":{"event":"check_prerequisite_failed"}
     }]}"#).unwrap();
+    for effect in ["suspend", "perform_work", "restore"] {
+        let mut handler = table.handlers["check_prerequisite"].clone();
+        handler.effect = effect.into();
+        handler.on_ok.as_mut().unwrap().event = format!("{effect}_ok");
+        handler.on_failed.as_mut().unwrap().event = format!("{effect}_failed");
+        table.handlers.insert(effect.into(), handler);
+    }
     for (spec, expected) in [(invalid_machine(), "invalid"), (machine(), "compatible")] {
         let machine = fsm_core::spec::compile_accepted(&spec).unwrap();
         let result = fsm_execute::contract::analyze_contract(
@@ -350,5 +461,19 @@ fn authored_native_pair_has_an_independent_missing_argument_and_repair() {
         .unwrap()
         .to_value();
         assert_eq!(result.get("status").and_then(Value::as_str), Some(expected));
+        let findings = result.get("findings").unwrap().as_arr().unwrap();
+        if expected == "invalid" {
+            assert_eq!(findings.len(), 1);
+            assert_eq!(
+                findings[0].get("code").and_then(Value::as_str),
+                Some("exec/contract_argument_missing")
+            );
+            assert_eq!(
+                findings[0].get("path").and_then(Value::as_str),
+                Some("/states/4/entry/emit/0/args/run")
+            );
+        } else {
+            assert!(findings.is_empty());
+        }
     }
 }
