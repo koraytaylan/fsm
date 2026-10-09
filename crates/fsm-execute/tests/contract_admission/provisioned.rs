@@ -199,8 +199,6 @@ fn observe(borrowed: bool, scenario: Scenario) {
         let notify = table.handlers.get_mut("notify").unwrap();
         notify.timeout_ms = 5000;
         notify.retry.attempts = 2;
-        notify.retry.backoff_ms = 0;
-        notify.retry.max_backoff_ms = 0;
         notify.on_failed = notify.on_ok.clone();
     }
     if matches!(
@@ -288,6 +286,7 @@ fn observe(borrowed: bool, scenario: Scenario) {
                 scheduler: &mut Scheduler,
                 runner: &mut Runner,
                 clock: &mut FixedClock| {
+        let now = fsm_store::clock::Clock::reserve_ms(clock);
         if borrowed {
             let mut store = Store::open(&store_path).unwrap();
             tick_with(
@@ -297,7 +296,7 @@ fn observe(borrowed: bool, scenario: Scenario) {
                 &mut Pipeline,
                 &mut store,
                 clock,
-                2000,
+                now,
             )
         } else {
             let outcome = tick_reporting(
@@ -307,7 +306,7 @@ fn observe(borrowed: bool, scenario: Scenario) {
                 &mut Pipeline,
                 &store_path,
                 clock,
-                2000,
+                now,
             );
             assert!(!outcome.writer_unavailable);
             outcome.lines
@@ -451,18 +450,7 @@ fn observe(borrowed: bool, scenario: Scenario) {
             );
             assert!(scheduler.inflight_effect(&effect_id).is_none());
             assert!(runner.local_native_claims().next().is_none());
-            for marker in [
-                "root-entered",
-                "root-candidate",
-                "root-published",
-                "child-entered",
-                "grandchild-entered",
-            ] {
-                assert!(
-                    !resource.join(marker).exists(),
-                    "acknowledged recovery restarted a handler"
-                );
-            }
+            assert_no_entry(&resource);
         }
         assert_eq!(
             fsm_store::journal_io::verify(&store_path).health,

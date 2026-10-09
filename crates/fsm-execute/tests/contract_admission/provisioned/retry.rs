@@ -103,6 +103,13 @@ pub(super) fn observe(
     let snapshot = current.state.clone();
     let attempt = watcher.scan(2000).unwrap().attempts[first.effect().1];
     drop(current);
+    let due = fsm_execute::sched::ready_at(
+        &original_table.handlers["notify"].retry,
+        attempt.attempt,
+        attempt.last_ts,
+    );
+    assert!(due > attempt.last_ts);
+    *clock = FixedClock::new(due, 0);
     for restart in [false, true] {
         if restart {
             // The original owner is already closed and retired; this replaces
@@ -142,6 +149,20 @@ pub(super) fn observe(
     *table = original_table;
     *scheduler = Scheduler::new(table.clone());
     *watcher = Watcher::with_handlers(store_path.to_path_buf(), table);
+    // Repair does not erase the original durable backoff: one millisecond
+    // before eligibility, no new domain, entry or journal record is permitted.
+    *clock = FixedClock::new(due - 1, 0);
+    tick(watcher, scheduler, runner, clock);
+    unchanged_markers(resource, &markers);
+    let current = Store::open_read_only(store_path).unwrap();
+    assert_eq!(current.records, records);
+    assert!(fsm_store::snapshot::store_states_eq(
+        &snapshot,
+        &current.state
+    ));
+    assert!(runner.local_native_claims().next().is_none());
+    drop(current);
+    *clock = FixedClock::new(due, 0);
     loop {
         let lines = tick(watcher, scheduler, runner, clock);
         if let Some(second) = runner.local_native_claims().next() {

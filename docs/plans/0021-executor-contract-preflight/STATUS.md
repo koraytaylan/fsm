@@ -151,18 +151,22 @@ ordered completion, stale-report bypass and plan-end gates remain outstanding.
 
 Manual Phase R binds the six-task bundle to validation base `15172d8298f271abfd0bd1d5b47617d1108ceefc` after plans 0022 and 0020 complete: closed frontmatter, repository-relative footprints and the acyclic local dependency graph pass, with uncreated deliverables explicitly inventoried; task-cache validation digest `4298d27510c4726206598590ca50efd51e0aeca49c5605aae9f004697820f1f7`. Task 9101 completes its focused inventory at `efcb4f9e`, with 67 stable effect/configuration/public-surface cases and focused lint/format/diff checks passing; self-review verdict `dfd37ee9a1867119e4c63a048ad58b1030b7db590fe118b95dcee1edff82f9a1`; task 9102 completes at `ed811ab6` with eleven focused outcome tests and self-review verdict `b9a671329f5a8177a34529118e6925015757c21b9a064f5d5371820bd71ac271`; task 9103 is in progress; prior independent preparation remains subject to current task acceptance, and admission/MCP/final acceptance remain incomplete. Full gates run at plan completion.
 
-Focused native admission now has its own stable/MSRV CI dispatch at `4a7efce3`,
-without unrelated native suites or portable gates. Its first repaired process
-case failed retirement on both toolchains: the observer released only the root,
-while the held-result fixture requires child and grandchild retirement too.
-The observer now releases the complete original tree; two actual portable
-process/MCP barrier tests and admission-target clippy pass, with format/size/diff
-checks passing. Frozen verdict
-`03fa46cd0789b958c3b540e7e30a0f2d3f0c3441121412f61465bab3991341ae`
-indexes the failure review and cancellation observer correction: Root-owned
-preallocated PID slots must remain readable and empty, while candidate and
-published markers must remain absent. Thirteen focused admission cases and
-admission-target clippy pass; focused native rerun and task completion remain open.
+Focused native admission has a stable/MSRV CI dispatch at `4a7efce3`, without
+unrelated suites or portable gates. Checkpoint `f286deb7` passes sixteen real
+process/MCP refusal/repair, fairness, unknown-outcome and missing-argument axes
+on each toolchain, with original native closure verified before every marker.
+The first timeout case then refuses an invalid manually constructed zero-backoff
+fixture. Retry preparation now retains the parsed positive backoff, checks
+invalid warm/cold observations at eligibility, and requires repaired work to
+remain idle one millisecond before its durable due time before starting at it.
+Cancellation, bound-entry and recovery observers share readable-empty Root PID
+slots and strict missing candidate/result markers; repaired completion releases
+the complete original tree. Thirteen focused admission cases, two real portable
+barrier cases, 27 mocked producer/verifier cases and admission-target clippy pass,
+with format/size/diff checks. Frozen verdict
+`85bdcc02759aa80e2cae556ca7e739de72073543e62f1e878afb305ee7710501`
+indexes the actual failures and corrections; the remaining physical inventory,
+native sensitivity and plan-end gates remain open.
 
 Bound entry now reuses its freshly reconstructed effect from the same immutable
 writer, removing its duplicate prefix replay while retaining concrete admission
