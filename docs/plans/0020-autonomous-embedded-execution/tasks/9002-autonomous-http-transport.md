@@ -257,3 +257,17 @@ Focused startup acceptance:
   Both fixture tables now retain their original 30-second timeout and default
   single attempt, and entry failures include bounded executor diagnostics;
   focused compilation, CLI clippy and format/size/diff checks pass.
+  Corrected frozen candidate 80c1c34a passes genuine native acceptance: DELETE
+  preserves both original live process identities and the unresolved claim,
+  then zero-session observation reaches completion with exactly seven original
+  handler invocations and acknowledgements. Reinitialization observes verified
+  history; original-owner drain exits successfully and the physical store
+  reopens with no unresolved claims or handoffs. Source cleanliness, exact case,
+  successful exit, log/transcript digests and authority/staging retirement are
+  verified; report digest is
+  e3aa5143844db1753ddeb9b4aa1cf9ebd3a11e7750c123c94213f55e1b44602c.
+  The integrated focused HTTP milestone passes 90 integration and twelve unit
+  cases, CLI all-target clippy, format/size and frozen-range diff checks; the
+  session-ID subprocess entry remains intentionally ignored in its parent run.
+  This closes active-handler DELETE acceptance, not concurrent host command
+  saturation or the plan-end full/platform gates; this task stays in progress.

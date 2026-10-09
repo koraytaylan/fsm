@@ -74,6 +74,16 @@ independent reviewer, executable byte comparison or fresh full/platform gate
 is claimed. Full gates remain due at plan completion; HTTP and final contract
 inventories remain separate and incomplete.
 
+Frozen HTTP checkpoint `6cf1df2b..80c1c34a` passes 102 focused HTTP cases,
+CLI all-target clippy and format/size/diff checks; its corrected native DELETE
+case preserves the original active handler tree, completes once during the
+zero-session interval and retires the original owner and authority cleanly in
+[CI 37963113671](https://github.com/koraytaylan/fsm/actions/runs/37963113671).
+Verified source-bound report digest:
+`e3aa5143844db1753ddeb9b4aa1cf9ebd3a11e7750c123c94213f55e1b44602c`.
+This is a focused milestone, not task closure or an independent verdict;
+concurrent host admission acceptance and plan-end integration gates remain due.
+
 Historical STATUS evidence is retained outside the repository in the task-cache
 plan-status-archives directory, addressed by SHA-256:
 `cced858136f38ba34f1ae340015acc6d79ca7ce8e0d1a40b9c3e5cc88099701b`.
