@@ -55,8 +55,21 @@ fn borrowed_native_unknown_outcome_preserves_work_until_repair() {
 #[derive(Clone, Copy)]
 enum Scenario {
     Repair,
+    MissingArgumentRepair,
     UnknownRepair,
     Fairness,
+}
+
+#[test]
+#[ignore = "requires disposable native CI and exact staged process/MCP fixture"]
+fn standalone_native_missing_argument_preserves_work_until_repair() {
+    observe(false, Scenario::MissingArgumentRepair);
+}
+
+#[test]
+#[ignore = "requires disposable native CI and exact staged process/MCP fixture"]
+fn borrowed_native_missing_argument_preserves_work_until_repair() {
+    observe(true, Scenario::MissingArgumentRepair);
 }
 
 fn observe(borrowed: bool, scenario: Scenario) {
@@ -83,6 +96,15 @@ fn observe(borrowed: bool, scenario: Scenario) {
             payload: Value::Obj(BTreeMap::new()),
             stamps: vec!["at".into()],
         });
+    }
+    if matches!(scenario, Scenario::MissingArgumentRepair) {
+        restore.on_ok = None;
+        table
+            .handlers
+            .get_mut("notify")
+            .unwrap()
+            .argv
+            .push("{absent}".into());
     }
     table.handlers.insert("restore".into(), restore);
     let mut clock = FixedClock::new(2000, 0);
@@ -173,6 +195,21 @@ fn observe(borrowed: bool, scenario: Scenario) {
         assert!(scheduler.inflight_effect(&effect_id).is_none());
     }
     let completed_instance = match scenario {
+        Scenario::MissingArgumentRepair => {
+            assert_eq!(
+                table
+                    .handlers
+                    .get_mut("notify")
+                    .unwrap()
+                    .argv
+                    .pop()
+                    .as_deref(),
+                Some("{absent}")
+            );
+            scheduler = Scheduler::new(table.clone());
+            watcher = Watcher::with_handlers(store_path.clone(), &table);
+            "original"
+        }
         Scenario::Repair | Scenario::UnknownRepair => {
             table.handlers.get_mut("restore").unwrap().on_ok = None;
             scheduler = Scheduler::new(table.clone());
