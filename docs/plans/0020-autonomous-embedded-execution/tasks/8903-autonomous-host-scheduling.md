@@ -68,13 +68,17 @@ independent of whether a client happens to submit another request.
 
 Current acceptance evidence:
 
-- Frozen `fe0f5119` passes ten protected process/MCP scheduling cases on stable
-  and MSRV in [CI 37921158588](https://github.com/koraytaylan/fsm/actions/runs/37921158588):
+- Frozen `c3f27b90` passes twelve protected process/MCP scheduling cases on stable
+  and MSRV in [CI 37922489917](https://github.com/koraytaylan/fsm/actions/runs/37922489917):
   autonomous success, exact injected retry backoff, failure-driven compensation,
   durable-acknowledgement recovery without another RPC or handler entry, and
   writer-only/read-only/contended/degraded construction without fixture entry
-  or authority allocation. Independent retained-report digest:
-  `507fe02c77e551cf05d76165ebd4ccb76e3c43ffa7797fe258e6f5abe2ac722c`.
+  or authority allocation. Large-outbox acceptance preserves global capacity
+  two and per-instance capacity one: the quiet instance completes while the
+  earlier instance retains its unreleased original tree and 32 pending effects;
+  original abort and strict journal verification then pass. Independent
+  retained-report digest:
+  `c4015df70de63c2bf9fe94426fbd329be0319bb646154e79b3406107159c8428`.
   Reports bind source, compiler, inventory and invocation; executable bytes
   were not independently compared. Native scope is Linux/systemd.
 - Bounded original-driver decisions use one logical sample and yield after
@@ -95,8 +99,7 @@ Current acceptance evidence:
   clippy, formatting, size and diff checks pass.
 
 Remaining acceptance: genuine continuously ready completion/application queues
-must satisfy both eight-turn bounds together; a large native outbox must not
-starve another instance through the actual private owner; the complete frozen
+must satisfy both eight-turn bounds together; the complete frozen
 integration gate and review must pass. Pure scheduler fairness fixtures alone
 do not prove owner wiring. No landing OID is assigned and the original written
 inventory above is unchanged.

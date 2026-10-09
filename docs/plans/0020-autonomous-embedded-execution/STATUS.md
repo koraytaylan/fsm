@@ -32,13 +32,15 @@ The eight-stage stable host report at `0bd1e14e` has digest
 `11d09f239210cfd4a4b7f71a7ba738902ed478da3ace92b5182684aa67dc5a4c`.
 Scheduling, channels and transport inventories remain separate and incomplete.
 
-Frozen `fe0f5119` advances 8903's scoped scheduling acceptance in
-[CI 37921158588](https://github.com/koraytaylan/fsm/actions/runs/37921158588):
-both native toolchains pass ten genuine process/MCP cases covering autonomous
+Frozen `c3f27b90` advances 8903's scoped scheduling acceptance in
+[CI 37922489917](https://github.com/koraytaylan/fsm/actions/runs/37922489917):
+both native toolchains pass twelve genuine process/MCP cases covering autonomous
 success, exact retry backoff, failure-driven restore, private-owner recovery
 after durable acknowledgement, and restricted construction without fixture
-entry or native domain allocation. Independent verdict:
-`507fe02c77e551cf05d76165ebd4ccb76e3c43ffa7797fe258e6f5abe2ac722c`.
+entry or native domain allocation. A quiet instance completes while an earlier
+32-effect outbox retains its original held tree under the existing caps.
+Independent verdict:
+`c4015df70de63c2bf9fe94426fbd329be0319bb646154e79b3406107159c8428`.
 This scoped verdict grants no task completion; exact authority timeout,
 completion fairness and the frozen integration gate remain outstanding,
 with no independent staged-byte comparison.
