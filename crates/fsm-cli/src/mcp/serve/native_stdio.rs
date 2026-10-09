@@ -1,10 +1,20 @@
 //! Process-scoped native stdio ownership; borrowed APIs retain their bounds.
+//! The complete loop-to-native conversion is also used by the HTTP owner.
 use super::{ExecutorLoop, ServeMode, WriterUnavailable};
 use fsm_execute::{
     run::Runner,
     service::{ExecutorPhase, OwnedNativeExecutor},
 };
 use std::{io, os::unix::fs::DirBuilderExt, path::Path};
+
+impl ExecutorLoop {
+    pub(crate) fn into_native(
+        self,
+        store: crate::store::Store,
+    ) -> Result<OwnedNativeExecutor, fsm_execute::error::ExecError> {
+        OwnedNativeExecutor::from_owned_parts(store, self.watcher, self.scheduler, self.runner)
+    }
+}
 
 pub(super) fn run(dir: &Path, executor: ExecutorLoop) -> io::Result<()> {
     let poll_interval = executor.poll_interval;

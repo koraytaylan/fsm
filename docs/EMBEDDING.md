@@ -1222,7 +1222,22 @@ Sessions hold separate protocol state; cancellation and DELETE can retire the
 original request/session without stopping that writer. A request refused by
 host admission returns HTTP 503, after security and session validation, and
 performs no store mutation. Execution remains manual in writer-only mode;
-native embedded scheduling and asynchronous HTTP egress are still pending.
+bounded asynchronous HTTP egress is still pending.
+
+On supported Linux, `serve --http <addr> --execute --handlers <file>` retains
+one shared native writer/executor and publishes `fsm.executor/2` with autonomous
+progress. Effects, recovery and deadlines progress independently of client
+requests; DELETE, disconnects and zero sessions leave the host running. Use
+`execute stop --control-dir "$HOME/.cache/fsm/control" --mode drain --timeout-ms
+5000` with the same data directory for authenticated original-owner retirement.
+The server preserves the first stop deadline and checks actual native closure,
+worker return, endpoint removal and diagnostic drainage before successful exit;
+uncertainty returns `exec/inflight_deferred` with observed facts. A real-binary
+deadline case proves zero-session scheduling and original stop without launching
+handlers; genuine HTTP handler and bounded asynchronous egress acceptance remain
+pending, so this integration does not complete task 9002.
+Unsupported production embedded HTTP refuses before opening or binding, as
+stdio does; it does not silently substitute a manual writer for `--execute`.
 
 Stopping the HTTP server shuts down admitted sockets before joining their
 workers, waking silent and partial-request reads without waiting for the normal
@@ -1234,8 +1249,7 @@ healthy store it serves read-only views, refreshed before each call, and never
 upgrades automatically when that writer exits. An unhealthy store still accepts
 initialization and serves `store_doctor` from the original directory, while
 store-dependent calls refuse and no handler starts. These fallback modes do
-not imply that HTTP runs an embedded executor; shared autonomous execution
-remains pending in plan 0020.
+not run an embedded executor even when `--execute` was requested.
 
 `initialize` mints a session and returns it in `Mcp-Session-Id`. Every later
 request must carry that header. A request without it is `400`; one naming a
@@ -1750,8 +1764,9 @@ EOF, failed output and egress refusal retire the session and request supervised
 shutdown using the original native control and its existing deadline.
 The resource publishes `fsm.executor/2` with `progress: "autonomous"`;
 clients must inspect its format discriminator rather than treating a new format
-as the closed v1 contract. HTTP and public borrowed helpers still use their
-legacy `client_requests` contract and require requests to drive ticks.
+as the closed v1 contract. Supported Linux embedded HTTP shares the autonomous
+owner with server-scoped lifetime; public borrowed helpers retain their legacy
+`client_requests` contract and require requests to drive ticks.
 Complete production acceptance, notification ordering and long-diagnostic
 isolation remain under plans 20–23; this integration is not their completion.
 
@@ -2474,8 +2489,9 @@ control waits remain bounded and truthful. On Linux x86_64/aarch64, ordinary
 `serve --execute` selects this owned native composition and publishes the
 owner-only control endpoint; ordinary `execute` uses the paired native writer
 strategy, and `execute stop` requests authenticated drain or abort through
-the endpoint. Borrowed session helpers and HTTP do not select this native
-composition. Signal integration and installed-native nonempty workflow
+the endpoint. Supported Linux embedded HTTP also selects this native owner,
+with a server lifetime independent of sessions; borrowed session helpers do
+not select it. Signal integration and installed-native nonempty workflow
 acceptance remain unfinished. Native execution requires protected authority
 registration of the actual physical store; this library entry does not install
 that authority or register the store.
@@ -2602,7 +2618,8 @@ construction occurs in its worker. Healthy native startup has no legacy
 fallback; contended/unhealthy startup preserves the exact observed diagnostic
 prefix without publication or reopening into execution. Borrowed session APIs
 retain their bounds and explicit backend selection. Unsupported production
-embedded stdio refuses; HTTP ownership remains incomplete. This routing change
+embedded stdio refuses; supported Linux embedded HTTP retains its shared owner
+independently of sessions, with full transport acceptance still incomplete. This routing change
 does not establish installed native or autonomous plan 20 acceptance.
 
 Production native stdio failures expose the initiating I/O message and kind
@@ -2618,7 +2635,7 @@ Owned native MCP sessions enqueue action diagnostics to a separate bounded stder
 
 Native owned MCP protocol warnings about requests preceding `notifications/initialized` use the same bounded operator diagnostic queue as executor action lines, with the same separate drainage and loss facts; borrowed sessions retain their existing warning behavior, and no journal or wire format changes.
 
-Supported Linux native CLI hosts bound final error delivery by the original shutdown deadline: small pipe reports attempt separate atomic nonblocking writes, and other reports use a bounded worker without a blocking join; blocked stderr can lose the final report while the process exits with its failure code. Healthy reports preserve original error and cleanup details; delivery never substitutes for authenticated cleanup, and startup, borrowed and HTTP rendering retain their existing behavior.
+Supported Linux native CLI hosts, including embedded HTTP, bound final error delivery by the original shutdown deadline: small pipe reports attempt separate atomic nonblocking writes, and other reports use a bounded worker without a blocking join; blocked stderr can lose the final report while the process exits with its failure code. Healthy reports preserve original error and cleanup details; delivery never substitutes for authenticated cleanup, and startup and borrowed rendering retain their existing behavior.
 
 Native preparation cancellation retains its original finite transport deadline:
 when eligibility is lost or admission closes, an already requested preparation

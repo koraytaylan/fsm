@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 
 use crate::store::ErrorObj;
 
-pub const INSTRUCTIONS: &str = "Read fsm://docs/spec and fsm://executor before authoring: discover execution mode, handlers, arguments, and outcome events. Workflow: machine_create (dry_run first) → instance_create → instance_send. Consult enabled_events and deadlines_pending. In writer mode, run effects, effect_ack, send outcome events, and deadline_poll when due. Read the executor progress field: autonomous mode handles effects, deadlines and recovery while stdin stays open; instance_get and ping observe progress. Legacy client_requests mode needs requests to drive ticks. Subscribe to fsm://instance/{id} for updates; subscriptions observe progress without driving execution. Decimal values are JSON strings. Retry the SAME request_id after timeout; corrected content needs a NEW id. simulate runs events without effects or deadline polls.";
+pub const INSTRUCTIONS: &str = "Read fsm://docs/spec and fsm://executor before authoring: discover execution mode, handlers, arguments, and outcome events. Workflow: machine_create (dry_run first) → instance_create → instance_send. Consult enabled_events and deadlines_pending. In writer mode, run effects, effect_ack, send outcome events, and deadline_poll when due. Read the executor progress field: autonomous mode handles effects, deadlines and recovery while the host runs (stdio requires open stdin; HTTP session disconnects do not stop the host); instance_get and ping observe progress. Legacy client_requests mode needs requests to drive ticks. Subscribe to fsm://instance/{id} for updates; subscriptions observe progress without driving execution. Decimal values are JSON strings. Retry the SAME request_id after timeout; corrected content needs a NEW id. simulate runs events without effects or deadline polls.";
 
 pub const AUTHOR_MACHINE: &str =
     "Guided flow to author, validate, and prove a new machine from a goal.";
@@ -138,7 +138,7 @@ fn drive_instance(args: Option<&Value>) -> Result<Value, ErrorObj> {
          1. Read fsm://executor to learn the current execution mode and configured handlers. Then instance_get({instance_id}) — read `configuration`, `enabled_events`, `effects_pending`, and `deadlines_pending`.\n\
          2. Send only an event listed as enabled: instance_send with a NEW request_id, and the SAME id on a retry after a timeout.\n\
          3. Effects in `effects_pending` are descriptors — the engine emits them but never runs them.\n\
-            - In embedded mode, inspect the executor progress field. Autonomous mode progresses while stdin remains open, even when quiet; polling and subscriptions observe it. Legacy client_requests mode drives a tick after each request. The executor acks handled effects and sends configured outcome events.\n\
+            - In embedded mode, inspect the executor progress field. Autonomous mode progresses while the host runs, even when clients are quiet; polling and subscriptions observe it. Legacy client_requests mode drives a tick after each request. The executor acks handled effects and sends configured outcome events.\n\
             - In writer mode, run each effect yourself, effect_ack with the outcome, then instance_send a domain outcome event; an ack never advances a state. In read-only mode, confirm the external executor with the operator and subscribe to observe it.\n\
          4. In writer mode, call deadline_poll when due, once per due schedule. The executor polls deadlines automatically on its ticks.\n\
          5. Subscribe to fsm://instance/{instance_id} for updates; in embedded mode continue requests until the workflow settles, including any failure recovery."
@@ -176,7 +176,7 @@ fn author_machine(args: Option<&Value>) -> Result<Value, ErrorObj> {
          4. Call machine_create with dry_run until clean.\n\
          5. Call machine_create to persist the definition.\n\
          6. simulate a happy path and a rejection path, checking traces.\n\
-         7. instance_create and drive with instance_send; use the execution mode from fsm://executor. Autonomous embedded mode progresses through completion and recovery while stdin remains open; legacy client_requests mode requires repeated requests. Writer mode requires manual effects, outcome events, and due deadline polls."
+         7. instance_create and drive with instance_send; use the execution mode from fsm://executor. Autonomous embedded mode progresses through completion and recovery while the host runs; legacy client_requests mode requires repeated requests. Writer mode requires manual effects, outcome events, and due deadline polls."
     );
     Ok(message(text))
 }

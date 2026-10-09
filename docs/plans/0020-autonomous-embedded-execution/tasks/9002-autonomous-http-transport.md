@@ -10,8 +10,22 @@ touches:
   - crates/fsm-cli/src/http/mod.rs
   - crates/fsm-cli/src/http/startup.rs
   - crates/fsm-cli/src/mcp/serve.rs
+  - crates/fsm-cli/src/mcp/serve/native_stdio.rs
   - crates/fsm-cli/src/mcp/mod.rs
   - crates/fsm-cli/src/mcp/http_host.rs
+  - crates/fsm-cli/src/mcp/http_host/native.rs
+  - crates/fsm-cli/src/mcp/executor.rs
+  - crates/fsm-cli/src/mcp/prompts.rs
+  - crates/fsm-cli/src/mcp/descriptions.rs
+  - crates/fsm-cli/tests/fixtures/transcripts/full_2024-11-05.out.jsonl
+  - crates/fsm-cli/tests/fixtures/transcripts/full_2025-03-26.out.jsonl
+  - crates/fsm-cli/tests/fixtures/transcripts/full_2025-06-18.out.jsonl
+  - crates/fsm-cli/tests/fixtures/transcripts/skeleton.out.jsonl
+  - crates/fsm-cli/tests/fixtures/transcripts/skeleton_echo.out.jsonl
+  - crates/fsm-cli/tests/fixtures/mcp_live/session.expected
+  - crates/fsm-cli/tests/fixtures/mcp_live/quiet.expected
+  - crates/fsm-cli/tests/fixtures/mcp_affordance/session.expected
+  - crates/fsm-cli/tests/fixtures/audit/session.expected
   - crates/fsm-cli/src/http/endpoint.rs
   - crates/fsm-cli/src/http/writer.rs
   - crates/fsm-cli/src/http/session.rs
@@ -80,10 +94,8 @@ Focused startup acceptance:
   Neutralizing only read-only refresh fails the named real-client case on
   stale state; restoration passes. Twenty-six focused fallback/conformance/
   multi-client/resume/limit cases pass; source and test-target clippy pass.
-- Shared host construction, independent native execution, per-session bounded
-  admission, asynchronous SSE delivery and zero-client lifetime acceptance
-  remain incomplete; this startup repair establishes no autonomous capability
-  or task landing, and full gates remain due at plan completion.
+- Startup acceptance alone establishes no autonomous capability or task
+  landing; full gates remain due at plan completion.
 - Writer-only production HTTP now selects the existing bounded command owner
   and immutable replies; per-session protocol locks replace the global Live
   lock, cancellation/DELETE bypass those waits, and pre-admission busy replies
@@ -92,7 +104,7 @@ Focused startup acceptance:
   Twenty-seven focused HTTP cases, source/test-target clippy and format/size/
   diff checks pass. Review repaired empty hosted replies to preserve cancelled
   HTTP 202 and retired-admission HTTP 503 without fabricating a JSON-RPC result.
-  Native owner scheduling, exact HTTP saturation, client-wait responsiveness
+  Genuine native workflows, exact HTTP saturation, client-wait responsiveness
   and asynchronous SSE framing still require their original acceptance proof.
 - Server stop now wakes admitted socket I/O before joining connection workers;
   finished workers also end sockets retained for shutdown. Twenty focused
@@ -100,3 +112,17 @@ Focused startup acceptance:
   format/size/diff checks. Disabling only the stop wakeup fails the named silent/
   partial-request case; restoration passes. This removes a transport retirement
   delay without claiming application interruptibility or native host closure.
+- Supported Linux embedded HTTP now consumes the complete executor into one
+  native owner and publishes its original physical-store control endpoint;
+  binding precedes execution. The real-binary manual-effect/deadline fixture
+  deletes the only session, observes committed completion without HTTP calls,
+  reconnects to the same writer and exits successfully through original drain
+  control with a verified journal. Delaying only HTTP scheduling fails the
+  named zero-session deadline case; restoration passes. A retained actual
+  owner test proves first-deadline preservation, writer retention and unknown
+  worker/output facts on timeout. Thirty-eight focused HTTP cases, thirty-three
+  guidance goldens, that uncertainty case, CLI all-target clippy and format/
+  size/diff checks pass. Guidance and fixtures now state the transport lifetime.
+  No installed handler was run locally; genuine success/retry/compensation,
+  expiry retirement, exact HTTP saturation and bounded asynchronous SSE/
+  unanswered-elicitation isolation still require acceptance before task closure.

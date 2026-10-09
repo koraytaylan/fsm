@@ -17,6 +17,12 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+pub(crate) mod native;
+
 pub(crate) struct SharedWriter {
     handle: Handle,
     data_dir: PathBuf,
@@ -60,7 +66,13 @@ impl SharedWriter {
 
 impl Drop for SharedWriter {
     fn drop(&mut self) {
-        self.handle.stop();
+        // Native lifetime control is retained by the server composition;
+        // dropping an adapter must not escalate its original drain request.
+        if self.worker.is_some() {
+            self.handle.stop();
+        } else {
+            self.handle.reject_queued();
+        }
         if let Some(worker) = self.worker.take() {
             let deadline = Instant::now() + Duration::from_secs(5);
             while !worker.is_finished() && Instant::now() < deadline {

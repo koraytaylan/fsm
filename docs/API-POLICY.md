@@ -10,13 +10,23 @@ Writer-only production HTTP now uses the existing private bounded command
 owner and separate session-state locks, with HTTP 503 for host admission
 refusal. Supported wire/format versions, public Rust signatures, journal bytes,
 hashes, dependency and MSRV contracts remain unchanged; discovery stays manual
-`fsm.executor/1`. Native embedded HTTP execution is not yet advertised.
+`fsm.executor/1`.
+
+Supported Linux embedded HTTP now composes the existing native owner and
+autonomous `fsm.executor/2` contract for a server lifetime independent of
+sessions, with original local stop control and observed retirement facts.
+This execution capability and discriminator change shares the pre-1.0 minor
+consequence of autonomous stdio; no version number, public Rust signature,
+journal bytes, hashes, dependency, MSRV or error code changes. Real-handler
+HTTP acceptance and bounded asynchronous egress remain pending.
+Unsupported production embedded HTTP refuses before store acquisition or
+binding, matching production stdio's explicit platform refusal.
 
 HTTP startup now preserves healthy contention as a refreshed read-only server
 and retains unhealthy-store diagnostics per session, matching stdio's mode
 contract. No journal bytes, hashes, wire discriminators, public Rust signatures,
-dependencies, MSRV or error codes change; the shared autonomous HTTP executor
-remains pending, and this repair makes no new execution capability claim.
+dependencies, MSRV or error codes change; this startup fallback repair itself
+makes no new execution capability claim.
 
 Public native preparation MUST use owned allocations: `start` and `for_store`
 request `prepare-owned`, and `poll` returns `NativePreparedOwner`; callers retain

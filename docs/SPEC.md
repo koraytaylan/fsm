@@ -3180,7 +3180,7 @@ The Linux owned native MCP session MUST admit operator action diagnostics throug
 
 Native owned MCP protocol warnings about requests preceding `notifications/initialized` use the same bounded operator diagnostic queue as executor action lines, with the same separate drainage and loss facts; borrowed sessions retain their existing warning behavior, and no journal or wire format changes.
 
-Supported Linux native standalone and owned stdio final CLI error delivery MUST preserve the initiating code, hint and observed cleanup details, MUST use the original shutdown deadline and MUST NOT join a blocked writer or prevent failure exit; small pipe frames MAY attempt atomic nonblocking delivery at expiry, while other frames use an independent bounded worker observed only until that deadline. Final delivery is best effort and MUST NOT imply confirmed cleanup; pre-owner startup, borrowed and HTTP error rendering retain their existing behavior.
+Supported Linux native standalone, owned stdio and embedded HTTP final CLI error delivery MUST preserve the initiating code, hint and observed cleanup details, MUST use the original shutdown deadline and MUST NOT join a blocked writer or prevent failure exit; small pipe frames MAY attempt atomic nonblocking delivery at expiry, while other frames use an independent bounded worker observed only until that deadline. Final delivery is best effort and MUST NOT imply confirmed cleanup; pre-owner startup and borrowed error rendering retain their existing behavior.
 
 Native preparation cancellation retains its original finite transport deadline:
 when eligibility is lost or admission closes, an already requested preparation
@@ -3562,8 +3562,8 @@ before calls; release of the competing writer MUST NOT upgrade that handle.
 An unhealthy HTTP store MUST retain its original diagnostic directory in every
 session, permit `store_doctor`, refuse store-dependent mutation and access, and
 start no handlers. Authentication and origin checks still precede dispatch.
-This fallback does not establish autonomous HTTP execution, whose shared-host
-integration and real-handler acceptance remain separately pending.
+This fallback does not establish autonomous HTTP execution; only a healthy
+supported native owner runs it, and real-handler acceptance remains separate.
 
 Production HTTP writer-only mode MUST dispatch store-backed requests through
 one bounded command owner with owned arguments and immutable committed replies.
@@ -3574,7 +3574,21 @@ Refusal by bounded host admission MUST return HTTP 503 before any refused
 operation mutates the journal, after existing security and session checks.
 Synchronous borrowed HTTP helpers retain their existing caller-clock behavior.
 This writer-only integration retains manual `fsm.executor/1` discovery;
-embedded native scheduling and asynchronous HTTP egress remain pending.
+asynchronous HTTP egress remains pending.
+
+On supported Linux, healthy embedded HTTP MUST retain its complete executor
+in one native owner shared by every session, independently scheduling effects,
+recovery and deadlines while the server runs. DELETE, disconnected sockets and
+zero attached clients MUST NOT stop that owner. The original local control
+endpoint MUST target this owner's physical store and preserve its first stop
+deadline. Server retirement MUST reject queued work, observe the original
+shutdown and worker result, and remove that endpoint within that deadline;
+missing native, worker, endpoint or diagnostic-drain facts MUST NOT imply
+confirmed shutdown. Embedded discovery MUST use the existing autonomous
+`fsm.executor/2` contract with server-lifetime HTTP guidance. Real-handler and
+bounded asynchronous HTTP egress acceptance remain separately required.
+Unsupported production embedded HTTP MUST refuse before opening the store or
+binding rather than silently serving a manual writer for `--execute`.
 
 HTTP server stop MUST shut down both halves of every retained admitted socket
 before joining its connection workers, so silent or partial requests do not

@@ -3,13 +3,26 @@
 Writer-only HTTP routes store calls through one private bounded owner; session
 protocol state and cancellation controls are separate, and admission refusal
 returns HTTP 503. Real-binary cross-session idempotency verifies one committed
-result without duplicate journal mutation. Native HTTP scheduling and complete
-asynchronous egress acceptance remain unfinished in task 9002.
+result without duplicate journal mutation. Complete asynchronous egress
+acceptance remains unfinished in task 9002.
+
+Supported Linux embedded HTTP now retains the existing native owner for the
+server lifetime, independently of sessions, and exposes autonomous
+`fsm.executor/2` with transport-correct guidance. A real-binary deadline case
+deletes the only session, observes completion without HTTP calls, reconnects to
+the same writer and retires through authenticated original local control.
+Retirement retains the first stop deadline and requires actual native closure,
+worker return, endpoint removal and diagnostic drainage; uncertainty reports
+observed facts via `exec/inflight_deferred`. Genuine HTTP handler and bounded
+asynchronous egress acceptance still remain, with no task-completion claim,
+journal-format change, new error code or version-number change.
+Unsupported production embedded HTTP explicitly refuses before opening or
+binding, matching production stdio; those platform axes remain unexecuted.
 
 HTTP fallback now refreshes healthy contended stores without upgrading to a
 writer and serves unhealthy-store diagnosis from the original directory in
 every session. Real-binary configured-handler refusal cases cover both paths;
-shared autonomous HTTP execution and its native acceptance remain pending.
+these fallback cases do not establish genuine HTTP handler acceptance.
 
 Plan 0022 proves local process ownership and closure, not exactly-once external
 effects: remote work submitted before termination can survive local closure,
