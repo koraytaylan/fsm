@@ -331,6 +331,33 @@ mod native {
         original: &fsm_core::record::execution::Claim,
         original_hash: &str,
     ) -> fsm_execute::run::native_client::NativeCompletion {
+        // Handler release precedes the supervisor's durable publication; owner
+        // polling remains paused so this wait cannot settle the journal first.
+        let configuration = manifest();
+        let domain = original.domain().to_value();
+        let allocation = domain.get("allocation").and_then(Value::as_num).unwrap();
+        let completed = PathBuf::from(field(&configuration, "authority"))
+            .join(format!("completed-{allocation}-{}.json", original.run_id()));
+        let deadline = Instant::now() + Duration::from_secs(12);
+        loop {
+            match fs::symlink_metadata(&completed) {
+                Ok(metadata) => {
+                    assert!(metadata.is_file());
+                    assert_eq!(metadata.uid(), 0);
+                    assert_eq!(metadata.mode() & 0o7777, 0o600);
+                    if metadata.nlink() == 1 {
+                        break;
+                    }
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => panic!("cannot observe original completion publication: {error}"),
+            }
+            assert!(
+                Instant::now() < deadline,
+                "original completion was not published"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
         let mut recovered =
             NativeRun::recover(original, original_hash, Duration::from_secs(10)).unwrap();
         let deadline = Instant::now() + Duration::from_secs(12);
