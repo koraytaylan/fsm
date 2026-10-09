@@ -404,6 +404,60 @@ mod cache_tests {
     }
 
     #[test]
+    fn warm_invoked_closure_refuses_missing_definition_evidence_until_restored() {
+        let (mut store, effect, table) = fixture();
+        let mut clock = FixedClock::new(2000, 1);
+        let child = parse(br#"{"format":"fsm.machine/1","name":"child","context":[],"events":[],"states":[{"name":"ready"}],"initial":"ready","transitions":[]}"#, &JsonLimits::DEFAULT).unwrap();
+        let child_id = fsm_core::hashes::machine_id(&child);
+        let child_digest = fsm_core::hashes::digest_of(&child_id).unwrap();
+        store
+            .define_machine_on(&mut clock, child, false, false)
+            .unwrap();
+        let original_digest = fsm_core::hashes::digest_of(&effect.emitting_machine_id).unwrap();
+        let parent = parse(format!(r#"{{
+          "format":"fsm.machine/1","name":"parent",
+          "context":[{{"name":"resource","ty":"str","init":"original"}}],
+          "events":[],"effects":[{{"name":"work","fields":[]}}],
+          "states":[{{"name":"ready","entry":{{"emit":[{{"effect":"work","args":{{"resource":"ctx.resource"}}}}]}},
+                     "invoke":[{{"id":"child","machine":"{child_digest}"}}]}}],
+          "initial":"ready","transitions":[],
+          "supersedes":{{"machine":"{original_digest}","states":{{"ready":"ready"}},"context":{{"resource":"ctx.resource"}}}}
+        }}"#).as_bytes(), &JsonLimits::DEFAULT).unwrap();
+        store
+            .define_machine_on(&mut clock, parent, false, false)
+            .unwrap();
+        store
+            .migrate_instance_on(&mut clock, "case", "parent", "migrate")
+            .unwrap();
+        let cache = AdmissionCache::default();
+        check_pending_cached(&store, &effect, &table, Some(&cache)).unwrap();
+        assert_eq!(cache.entries().len(), 1);
+        // Catalogue evidence fault only: no missing definition is published to
+        // the journal, and this fixture grants no native execution authority.
+        let child = store.state.machines.remove(&child_id).unwrap();
+        let state = store.state.clone();
+        let records = store.records.clone();
+        for _ in 0..2 {
+            assert_eq!(
+                check_pending_cached(&store, &effect, &table, Some(&cache))
+                    .unwrap_err()
+                    .code,
+                "exec/contract_unknown"
+            );
+            assert_eq!(store.records, records);
+            assert!(fsm_store::snapshot::store_states_eq(&state, &store.state));
+            assert_eq!(cache.entries().len(), 1);
+        }
+        assert_eq!(cache.1.load(std::sync::atomic::Ordering::Relaxed), 3);
+        store.state.machines.insert(child_id, child);
+        let state = store.state.clone();
+        check_pending_cached(&store, &effect, &table, Some(&cache)).unwrap();
+        assert_eq!(cache.1.load(std::sync::atomic::Ordering::Relaxed), 3);
+        assert_eq!(store.records, records);
+        assert!(fsm_store::snapshot::store_states_eq(&state, &store.state));
+    }
+
+    #[test]
     fn cache_bound_is_inclusive_and_evicts_without_refusing_work() {
         let cache = AdmissionCache::default();
         for index in 0..AdmissionCache::CAPACITY {
