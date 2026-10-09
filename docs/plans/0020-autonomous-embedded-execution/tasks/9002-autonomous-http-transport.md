@@ -249,3 +249,11 @@ Focused startup acceptance:
   Fixture compilation, CLI all-target clippy, ten producer checks and
   format/size/diff checks pass; native execution must pass before this case can
   establish active-handler DELETE acceptance.
+  Frozen candidate e590422f failed before handler entry because its provisioned
+  catalogue added a retry policy absent from the CLI fixture; native binding
+  correctly refused the changed fingerprint and retained the uncertain claim.
+  Verified failed-report digest in the task cache is
+  918dda7ac7ab595fee6d281f86bf419d560f65934ab0d017809842b641355209.
+  Both fixture tables now retain their original 30-second timeout and default
+  single attempt, and entry failures include bounded executor diagnostics;
+  focused compilation, CLI clippy and format/size/diff checks pass.

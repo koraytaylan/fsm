@@ -191,7 +191,8 @@ pub(super) fn delete_during_active_handler(directory: &Directory, client: &mut C
         }
         assert!(
             Instant::now() < deadline,
-            "original handler tree never entered"
+            "original handler tree never entered: {}",
+            bounded_executor_errors(&client.errors)
         );
         std::thread::sleep(Duration::from_millis(5));
     };
