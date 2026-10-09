@@ -465,7 +465,7 @@ fn autonomous_schedule_ready_completions_yield_to_admitted_application_within_ei
     }
     let handlers =
         HandlerTable::parse(&fs::read_to_string(path.join("handlers.json")).unwrap()).unwrap();
-    assert_eq!(handlers.max_inflight, 9);
+    assert_eq!(handlers.max_inflight, 7);
     assert_eq!(handlers.max_inflight_per_instance, 1);
     let (gate, wait_clock) = WaitGate::new();
     let (owner, handle) = NativeOwner::new(
@@ -481,7 +481,7 @@ fn autonomous_schedule_ready_completions_yield_to_admitted_application_within_ei
         .recv_timeout(Duration::from_secs(3))
         .unwrap();
     let entry_watchdog = Instant::now() + Duration::from_secs(20);
-    while !(0..9).all(|index| {
+    while !(0..7).all(|index| {
         resource
             .join(format!("run-{index}/root-candidate"))
             .is_file()
@@ -503,8 +503,8 @@ fn autonomous_schedule_ready_completions_yield_to_admitted_application_within_ei
         std::thread::sleep(Duration::from_millis(5));
     }
     let before = Store::open_read_only(&path).unwrap();
-    assert_eq!(claim_count(&before), 9);
-    assert_eq!(before.state.execution.unresolved().count(), 9);
+    assert_eq!(claim_count(&before), 7);
+    assert_eq!(before.state.execution.unresolved().count(), 7);
     assert!(
         !before
             .records
@@ -527,8 +527,10 @@ fn autonomous_schedule_ready_completions_yield_to_admitted_application_within_ei
                 .unwrap(),
         );
     }
-    // Every original native tree is released; no outcome or closure is invented.
-    for index in 0..9 {
+    // Seven executing connections leave one broker slot for control work.
+    // All nine original trees still execute and settle; later admission uses
+    // capacity released by the first wave, while application work stays queued.
+    for index in 0..7 {
         for role in ["grandchild", "child", "root"] {
             fs::write(
                 resource.join(format!("run-{index}/{role}-release")),
@@ -547,6 +549,22 @@ fn autonomous_schedule_ready_completions_yield_to_admitted_application_within_ei
             Instant::now() < watchdog,
             "completion queue stalled behind ready application requests"
         );
+        // Release the remaining original trees only after genuine entry;
+        // admission and completion are driven solely by the original owner.
+        for index in 7..9 {
+            if resource
+                .join(format!("run-{index}/root-candidate"))
+                .is_file()
+            {
+                for role in ["grandchild", "child", "root"] {
+                    fs::write(
+                        resource.join(format!("run-{index}/{role}-release")),
+                        b"release",
+                    )
+                    .unwrap();
+                }
+            }
+        }
         gate.advance(&handle);
         let outcome = replies
             .pop_front()

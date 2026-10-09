@@ -670,7 +670,7 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
         let Value::Obj(fields) = &mut result else {
             unreachable!()
         };
-        fields.insert("max_inflight".into(), Value::Num("9".into()));
+        fields.insert("max_inflight".into(), Value::Num("7".into()));
         fields.insert("max_inflight_per_instance".into(), Value::Num("1".into()));
     }
     result
