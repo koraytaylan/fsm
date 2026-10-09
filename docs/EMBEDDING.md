@@ -1461,6 +1461,11 @@ machine reports expose only sanitized public contract metadata.
 
 ### The handler table: `fsm.handlers/1`
 
+Private MCP draft-analysis preparation retains independently compilable draft
+findings in writer-only, read-only and degraded modes, while reporting unknown
+active execution compatibility with explicit unavailable-table provenance;
+the draft-check tool is not yet registered or advertised.
+
 Optional `manual_effects` explicitly lists effects that the operator intends
 to acknowledge manually. It defaults to `[]`, accepts at most 256 unique,
 nonempty names, and cannot overlap names in `handlers`. A manual-only table

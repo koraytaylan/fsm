@@ -1487,6 +1487,28 @@ Legacy table-only checks retain their content and exit semantics, adding
 `scope: "handler-table-only"`; their privileged argv inspection MUST NOT be
 included in machine reports. `--list-dead` retains its existing behavior.
 
+## MCP draft contract evidence
+
+Draft contract analysis MUST compile the supplied definition without registering
+it and MUST use only the immutable table loaded by its execution host; a client
+MUST NOT supply a handler override. Stored selectors and invocation catalogues
+MUST use the verified read-only definition view. A missing or degraded store
+MUST NOT prevent independent draft compilation.
+
+When the host table is unavailable, including writer-only, read-only and degraded
+modes, the common report MUST have null `contract_id`, false `effects_checked`
+and false `outcomes_checked`. An `exec/contract_unknown` finding at the root
+MUST carry `cause` exactly `{ "mode": <writer|read-only|degraded>,
+"table": "unavailable" }`; no other process's possible executor is evidence.
+Known draft compilation errors remain invalid, with null machine identity;
+otherwise unavailable execution evidence is unknown even for effect-free drafts.
+Available emit types and static invocation findings MUST remain visible.
+In this unchecked scope, site disposition `missing` means no authoritative
+disposition is available, not a known missing handler; the accompanying finding
+MUST be unknown rather than a fabricated contradiction. Unknown handler policy
+MUST NOT invent required arguments or outcomes. The final report MUST obey the
+same finding and canonical-byte ceilings, including provenance findings.
+
 ## Explicit manual executor effects
 
 The operator-owned `fsm.handlers/1` table MAY contain `manual_effects`, an

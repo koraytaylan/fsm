@@ -1,5 +1,10 @@
 # Releasing
 
+Private MCP draft analysis now preserves independent definition findings while
+unavailable host tables remain explicitly unknown, including effect-free drafts
+and degraded/read-only authority; registry/session integration and task 9202
+acceptance remain pending, with no advertised capability or format change.
+
 Executor machine checks now reject `--control-dir` with usage exit 2, preserving
 the documented separation from execution options; private nested MCP literals
 remain absent from compatible/invalid reports and malformed-table diagnostics.

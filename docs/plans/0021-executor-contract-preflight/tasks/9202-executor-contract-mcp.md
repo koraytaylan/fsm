@@ -15,6 +15,7 @@ touches:
   - crates/fsm-cli/src/mcp/tools/schema_out.rs
   - crates/fsm-cli/src/mcp/tools/handlers/mod.rs
   - crates/fsm-cli/src/mcp/tools/handlers/executor.rs
+  - crates/fsm-cli/src/mcp/tools/handlers/executor/
   - crates/fsm-cli/src/mcp/mod.rs
   - crates/fsm-cli/src/mcp/methods.rs
   - crates/fsm-cli/src/mcp/serve.rs
@@ -31,6 +32,7 @@ touches:
   - docs/SPEC.md
   - docs/EMBEDDING.md
   - docs/API-POLICY.md
+  - docs/RELEASE.md
 status: planned
 merged_as: ""
 ---
