@@ -21,6 +21,9 @@ pub(super) fn restart_after_fault(
     if failures == "active-stop-eof-embedded" {
         assert!(original.is_none());
         stdio_eof::restart_after_eof(directory, client)
+    } else if failures == "active-stop-output-embedded" {
+        assert!(original.is_none());
+        stdio_eof::restart_after_broken_output(directory, client)
     } else if failures.starts_with("expired-drain") {
         expired_drain::restart_after_expiry(directory, client, original)
     } else if failures.starts_with("active-stop") {
@@ -53,6 +56,7 @@ pub(super) fn holds_tree(argument: &str) -> bool {
             | "handler-failures=active-stop-abort"
             | "handler-failures=active-stop-abort-embedded"
             | "handler-failures=active-stop-eof-embedded"
+            | "handler-failures=active-stop-output-embedded"
             | "handler-failures=active-stop-drain"
             | "handler-failures=active-stop-drain-embedded"
             | "handler-failures=active-stop-complete-drain"

@@ -12,6 +12,7 @@ from cli_artifact import build_cli
 import workflow_failure_export
 
 CASES = (
+    ('workflow_race::stdio_eof::broken_output_stops_live_tree_with_open_input_and_recovers', 1),
     ('workflow_race::stdio_eof::eof_stops_live_tree_and_recovers', 1),
     ('workflow_stdio::quiet_retry::quiet_retry_finishes_without_observation_requests', 1),
     ('discovered_handlers_complete_the_workflow_in_order', 1),

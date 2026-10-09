@@ -1,9 +1,29 @@
-//! Original stdio EOF stops a live tree and preserves work for a verified reopen.
+//! Original stdio retirement stops a live tree and preserves work for verified reopen.
 use super::fault_control::live;
 use super::*;
 use std::os::unix::fs::MetadataExt;
 
 pub(super) fn restart_after_eof(directory: &Directory, client: &mut Client) -> Competitor {
+    restart_after_retirement(directory, client, Retirement::Eof)
+}
+
+pub(super) fn restart_after_broken_output(
+    directory: &Directory,
+    client: &mut Client,
+) -> Competitor {
+    restart_after_retirement(directory, client, Retirement::BrokenOutput)
+}
+
+enum Retirement {
+    Eof,
+    BrokenOutput,
+}
+
+fn restart_after_retirement(
+    directory: &Directory,
+    client: &mut Client,
+    retirement: Retirement,
+) -> Competitor {
     assert!(directory.1.is_some(), "genuine native fixture required");
     let marker = directory.resource().join("tree-live");
     let deadline = Instant::now() + Duration::from_secs(8);
@@ -31,9 +51,12 @@ pub(super) fn restart_after_eof(directory: &Directory, client: &mut Client) -> C
     assert!(identities.iter().all(live));
     assert!(client.process.try_wait().unwrap().is_none());
     assert!(matches!(Store::open(&directory.store()), Err(error) if error.code == "store/lock"));
-    // No stop command, signal, release marker or further protocol request;
-    // the configured 30-second handler timeout cannot satisfy this EOF bound.
-    client.finish();
+    // No stop command, signal or release marker; the configured 30-second
+    // handler timeout cannot satisfy either transport retirement bound.
+    match retirement {
+        Retirement::Eof => client.finish(),
+        Retirement::BrokenOutput => break_output_with_open_input(client),
+    }
     assert!(identities.iter().all(|identity| !live(identity)));
     let writer = Store::open(&directory.store()).unwrap();
     assert_eq!(&writer.records[..snapshot.records.len()], snapshot.records);
@@ -73,6 +96,52 @@ pub(super) fn restart_after_eof(directory: &Directory, client: &mut Client) -> C
     start(directory, "after-stdio-eof")
 }
 
+fn break_output_with_open_input(client: &mut Client) {
+    let (_, disconnected) = mpsc::channel();
+    drop(std::mem::replace(&mut client.responses, disconnected));
+    // The first response makes the original reader retire and close its actual
+    // pipe; the second response must then encounter that broken pipe.
+    for identifier in [9001, 9002] {
+        writeln!(
+            client.input.as_mut().unwrap(),
+            "{{\"jsonrpc\":\"2.0\",\"id\":{identifier},\"method\":\"ping\",\"params\":{{}}}}"
+        )
+        .unwrap();
+        client.input.as_mut().unwrap().flush().unwrap();
+        if identifier == 9001 {
+            let reader = client.reader.take().unwrap();
+            let deadline = Instant::now() + Duration::from_secs(3);
+            while !reader.is_finished() {
+                assert!(
+                    Instant::now() < deadline,
+                    "original pipe reader did not retire"
+                );
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            reader.join().unwrap();
+        }
+    }
+    let deadline = Instant::now() + Duration::from_secs(12);
+    loop {
+        if let Some(status) = client.process.try_wait().unwrap() {
+            assert!(
+                !status.success(),
+                "broken operator output must remain a failure"
+            );
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "broken output retained the original owner"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(
+        client.input.is_some(),
+        "input EOF must not cause this retirement"
+    );
+}
+
 #[test]
 #[ignore = "requires registered native authority and independent tree observer; task 9001"]
 fn eof_stops_live_tree_and_recovers() {
@@ -81,6 +150,21 @@ fn eof_stops_live_tree_and_recovers() {
         .collect::<Vec<_>>();
     run_scenario_mode(
         "active-stop-eof-embedded",
+        "succeeded",
+        &calls,
+        "active",
+        ExecutionMode::Embedded,
+    );
+}
+
+#[test]
+#[ignore = "requires registered native authority and independent tree observer; task 9001"]
+fn broken_output_stops_live_tree_with_open_input_and_recovers() {
+    let calls = std::iter::once("check_prerequisite")
+        .chain(OPERATIONS)
+        .collect::<Vec<_>>();
+    run_scenario_mode(
+        "active-stop-output-embedded",
         "succeeded",
         &calls,
         "active",

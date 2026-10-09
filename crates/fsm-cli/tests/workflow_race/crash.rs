@@ -21,6 +21,7 @@ pub(in super::super) fn configure_table(table: &mut Value, failures: &str) {
             | "active-stop-abort"
             | "active-stop-abort-embedded"
             | "active-stop-eof-embedded"
+            | "active-stop-output-embedded"
             | "active-stop-drain"
             | "active-stop-drain-embedded"
             | "active-stop-complete-drain"
