@@ -57,6 +57,34 @@ fn actual_keys_and_inferred_types_are_authoritative() {
 }
 
 #[test]
+fn declared_argument_missing_from_one_emit_is_diagnosed_at_that_site() {
+    let machine = machine(
+        r#"{
+          "format":"fsm.machine/1","name":"two_sites","context":[],"events":[],
+          "effects":[{"name":"work","fields":[{"name":"value","ty":"int"}]}],
+          "states":[{"name":"idle",
+            "entry":{"emit":[{"effect":"work","args":{"value":"1"}}]},
+            "exit":{"emit":[{"effect":"work","args":{}}]}
+          }],"initial":"idle","transitions":[]
+        }"#,
+    );
+    let report = analyze_effects(
+        &machine,
+        &BTreeMap::new(),
+        &table(r#""{value}""#),
+        Limits::default(),
+    )
+    .unwrap();
+    assert_eq!(report.status, CheckStatus::Invalid);
+    assert_eq!(report.effects.len(), 2);
+    assert_eq!(report.findings.len(), 1);
+    let finding = &report.findings[0];
+    assert_eq!(finding.code, "exec/contract_argument_missing");
+    assert_eq!(finding.path, "/states/0/exit/emit/0/args/value");
+    assert_eq!(finding.effect.as_deref(), Some("work"));
+}
+
+#[test]
 fn every_emit_family_is_checked_even_when_guarded_false() {
     let machine = machine(include_str!("fixtures/contract/all_sites.json"));
     let report = analyze_effects(
