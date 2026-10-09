@@ -1,5 +1,11 @@
 # Releasing
 
+Shared service bound-native entry now repeats current contract validation and
+requires the original claimed handler fingerprint before requesting execution;
+refusal preserves the original owner and entry permission without journal
+mutation. Transport-only guard tests do not establish genuine native acceptance,
+and plan 0021 admission remains incomplete.
+
 Prepared native work now rechecks its pending contract and original handler
 against the current writer and loaded table before claim publication; refusal
 retains the original domain for cleanup without consuming an attempt or

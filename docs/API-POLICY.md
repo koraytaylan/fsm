@@ -1804,6 +1804,12 @@ the original preparation for cleanup without consuming an attempt. This executio
 policy has a pre-1.0 minor consequence; no public signatures, persisted formats,
 hash domains, error codes or version numbers change.
 
+Shared service bound-native entry rechecks the current pending contract and
+original claimed handler fingerprint before requesting execution. Refusal
+retains original ownership and entry permission using existing contract errors;
+this execution-policy capability has a pre-1.0 minor consequence and changes
+no persisted formats or public Rust signatures.
+
 Shared service native preparation now performs pending-contract refusal before queuing a helper, using existing exec/contract diagnostics and no persisted-format or public signature change; this execution-policy capability has a pre-1.0 minor consequence, with final claim/entry validation and native acceptance still pending.
 
 Warm native completion reconciliation now recognizes another host's accepted original event through the exact replayed acknowledgement and verified handoff retirement; this fixes retained-owner drain without changing public signatures, error codes, persisted formats or hash domains, and historical acknowledgements without handoffs retain their existing path.

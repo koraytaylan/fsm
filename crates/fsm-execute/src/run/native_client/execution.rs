@@ -34,6 +34,22 @@ pub struct NativeExecution {
 }
 
 impl NativeExecution {
+    #[cfg(test)]
+    pub(in crate::run) fn bound_transport_fixture(claim: &Claim) -> Self {
+        // Real helper transport only: this supplies no native domain authority.
+        let _factory = super::test_support::completed_transport();
+        let hash = format!("sha256:{}", "a".repeat(64));
+        let mut run = NativeRun::start(claim, &hash, Duration::from_secs(10)).unwrap();
+        run.require_writer_entry();
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while run.progress().phase != NativeRunPhase::Bound {
+            assert!(run.poll().unwrap().is_none());
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        Self::with_run(claim, run)
+    }
+
     /// Retain an original durable claim without requesting helper startup.
     ///
     /// The caller must retain the actual published claim; this constructor

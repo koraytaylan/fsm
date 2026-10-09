@@ -1473,8 +1473,12 @@ Native preparation already checks the observed pending contract before queuing;
 the prepared-to-claim boundary repeats that check against the current writer
 and requires the original handler to match the loaded table. Refusal leaves the
 effect pending and retains the prepared domain for cleanup without publishing a
-claim. Final bound-entry checks, successful-analysis caching and acknowledged
-outcome recovery acceptance remain part of the unfinished shared admission task.
+claim. Bound-owner service entry repeats pending-contract validation and matches
+the loaded handler fingerprint to its original claim before requesting execution;
+refusal keeps original ownership and entry permission, while timeout and shutdown
+still apply. Successful-analysis caching and acknowledged outcome recovery
+acceptance remain part of the unfinished shared admission task; transport-only
+refusal tests do not establish genuine native handler acceptance.
 
 One operator-owned JSON file, read once at startup, before any store is opened.
 It is the security boundary of the whole design: it closes the set of commands

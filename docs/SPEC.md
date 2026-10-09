@@ -1421,6 +1421,13 @@ MUST cancel that preparation while retaining its original domain for authenticat
 cleanup; it MUST NOT publish a claim or consume an attempt. This pre-claim check
 does not replace final bound-entry validation or acknowledged-outcome recovery.
 
+Shared service entry for a bound native owner MUST repeat pending-contract
+validation against its current writer and full loaded table, and MUST match
+the current handler fingerprint to the original claim before consuming entry
+permission or requesting execution. Contract refusal MUST retain the original
+claim, bound owner and unconsumed entry permission without journal mutation;
+timeout, cancellation and original-owner shutdown remain independently required.
+
 ## CLI executor machine checks
 
 `fsm execute --check --handlers <file>` MAY select exactly one of

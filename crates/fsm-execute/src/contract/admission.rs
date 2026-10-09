@@ -86,6 +86,28 @@ fn stale() -> ExecError {
     )
     .hint("observe the original pending effect again before attempting admission")
 }
+
+/// Recheck service entry against the current closure and the immutable claim.
+#[cfg(target_os = "linux")]
+pub(crate) fn check_claimed(
+    store: &Store,
+    claim: &fsm_core::record::execution::Claim,
+    table: &HandlerTable,
+) -> Result<(), ExecError> {
+    let (instance, effect_id) = claim.effect();
+    let effect = resolve(store, effect_id).map_err(|_| stale())?;
+    if effect.instance_id != instance {
+        return Err(stale());
+    }
+    check_pending(store, &effect, table)?;
+    let handler = table.handlers.get(&effect.effect_name).ok_or_else(stale)?;
+    let (fingerprint, _) = handler.checked_contract()?;
+    if claim.to_value().get("handler_fingerprint") != Some(&fsm_core::json::Value::Str(fingerprint))
+    {
+        return Err(stale());
+    }
+    Ok(())
+}
 fn unknown_definition() -> ExecError {
     ExecError::new(
         "exec/contract_definition_unknown",

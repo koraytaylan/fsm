@@ -21,6 +21,10 @@ use std::{
 const MAX_OWNERS: usize = 4096;
 const RECOVERY_TIMEOUT: Duration = Duration::from_secs(3);
 
+#[cfg(test)]
+#[path = "native_owners/contract_tests.rs"]
+mod contract_tests;
+
 struct Owner {
     claim: Claim,
     locally_admitted: bool,
@@ -483,7 +487,13 @@ impl NativeOwners {
         }
         self.cursor = *selected;
         let owner = self.owners.get_mut(selected)?;
-        let result = owner.apply(store, clock, pipeline, &self.admission_closed);
+        let result = owner.apply(
+            store,
+            clock,
+            pipeline,
+            &self.admission_closed,
+            scheduler.handler_table(),
+        );
         // Settlement releases durable ownership before optional event delivery;
         // a later event error must not keep the consumed local slot occupied.
         if !owner.execution.progress().retained {
@@ -689,8 +699,10 @@ impl Owner {
         clock: &mut dyn Clock,
         pipeline: &mut Pipeline,
         admission_closed: &AtomicBool,
+        table: &crate::config::HandlerTable,
     ) -> Result<(String, bool), ExecError> {
         if self.entry_ready() {
+            crate::contract::check_claimed(store, &self.claim, table)?;
             // A read-only or stale writer refusal leaves the bound owner intact;
             // only a validated entry attempt consumes its one-shot permission.
             let entry_requested = &mut self.entry_requested;

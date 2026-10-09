@@ -17,6 +17,8 @@ touches:
   - crates/fsm-execute/src/run/pipeline.rs
   - crates/fsm-execute/src/run/native_admission.rs
   - crates/fsm-execute/src/run/native_owners.rs
+  - crates/fsm-execute/src/run/native_owners/contract_tests.rs
+  - crates/fsm-execute/src/run/native_client/execution.rs
   - crates/fsm-execute/tests/contract_admission.rs
   - crates/fsm-execute/tests/fixtures/contract/
   - crates/fsm-execute/tests/fixtures/public_surface.txt
