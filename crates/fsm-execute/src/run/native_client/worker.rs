@@ -34,13 +34,25 @@ pub(crate) fn refuse_fixture_startup() -> impl Sized {
     )
 }
 
+#[cfg(test)]
+pub(crate) fn exhaust_budget(budget: &Arc<Budget>) -> impl Sized {
+    let _scope = Scope::enter(Some(budget));
+    (0..WORKER_SLOTS)
+        .map(|_| reserve_current().unwrap().unwrap())
+        .collect::<Vec<_>>()
+}
+
 #[derive(Default)]
 pub(crate) struct Budget(AtomicUsize);
 
 #[cfg(test)]
 impl Budget {
-    pub(super) fn reserved(&self) -> usize {
+    pub(crate) fn reserved(&self) -> usize {
         self.0.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn charged_bytes(&self) -> usize {
+        self.reserved() * TRANSPORT_CHARGE
     }
 }
 

@@ -1,5 +1,8 @@
 //! Retained readiness is scheduling metadata, never native settlement authority.
 
+#[cfg(target_os = "linux")]
+mod capacity;
+
 use super::*;
 use crate::watch::Observation;
 use fsm_core::{
