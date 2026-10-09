@@ -40,8 +40,39 @@ class PrivateHostArtifact(unittest.TestCase):
                 self.select(rows)
 
     def test_build_failure_cannot_select_an_earlier_artifact(self):
-        with self.assertRaisesRegex(RuntimeError, 'Private host build failed'):
+        with self.assertRaisesRegex(RuntimeError, 'Completion observer build failed'):
             self.select([artifact()], exit_code=101)
+
+
+class PublicBoundaryArtifact(unittest.TestCase):
+    def select(self, rows, exit_code=0):
+        output = b'\n'.join(json.dumps(row).encode() for row in rows)
+        result = subprocess.CompletedProcess([], exit_code, output, b'')
+        with patch.object(cli_artifact.subprocess, 'run', return_value=result) as run:
+            selected = cli_artifact.build_boundary_test(Path('/fixture/repo'), 'stable')
+        command = run.call_args.args[0]
+        self.assertEqual(command[command.index('-p') + 1], 'fsm-execute')
+        self.assertEqual(command[command.index('--test') + 1], 'async_completion')
+        self.assertIn('--no-run', command)
+        return selected
+
+    def test_selects_public_integration_test_among_other_artifacts(self):
+        self.assertEqual(self.select([artifact(), artifact(name='async_completion',
+                                                          kind=['test'])]),
+                         Path('/fixture/host-test'))
+
+    def test_refuses_wrong_target_kind_profile_missing_and_duplicate_artifacts(self):
+        candidate = artifact(name='async_completion', kind=['test'])
+        for rows in [[], [artifact()], [candidate, candidate],
+                     [artifact(name='async_completion', kind=['lib'])],
+                     [artifact(name='async_completion', kind=['test'], test=False)],
+                     [artifact(name='async_completion', kind=['test'], executable=None)]]:
+            with self.subTest(rows=rows), self.assertRaises(AssertionError):
+                self.select(rows)
+
+    def test_failed_build_cannot_select_public_observer(self):
+        with self.assertRaisesRegex(RuntimeError, 'Completion observer build failed'):
+            self.select([artifact(name='async_completion', kind=['test'])], 101)
 
 
 if __name__ == '__main__':

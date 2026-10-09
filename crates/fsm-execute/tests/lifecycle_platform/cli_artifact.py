@@ -7,7 +7,20 @@ import subprocess
 
 def build_host_test(repo, toolchain):
     """Select the private host harness without adding a public test API."""
-    command = ['cargo', '+' + toolchain, 'test', '-p', 'fsm-cli', '--lib',
+    return build_completion_test(repo, toolchain, 'fsm-cli', ['--lib'],
+                                 'fsm_cli', ['lib'])
+
+
+def build_boundary_test(repo, toolchain):
+    """Select the public async completion integration test, without running it."""
+    return build_completion_test(repo, toolchain, 'fsm-execute',
+                                 ['--test', 'async_completion'],
+                                 'async_completion', ['test'])
+
+
+def build_completion_test(repo, toolchain, package, selection, target, kind):
+    """Require exactly one successful compiler-produced completion observer."""
+    command = ['cargo', '+' + toolchain, 'test', '-p', package, *selection,
                '--features', 'lifecycle-test-fixture', '--no-run',
                '--message-format=json']
     result = subprocess.run(command, cwd=repo, capture_output=True, timeout=180,
@@ -16,14 +29,14 @@ def build_host_test(repo, toolchain):
     if result.returncode:
         rendered = [row['message'].get('rendered', '') for row in messages
                     if row.get('reason') == 'compiler-message']
-        raise RuntimeError('Private host build failed: ' + ''.join(rendered)
+        raise RuntimeError('Completion observer build failed: ' + ''.join(rendered)
                            + result.stderr.decode(errors='replace'))
     matches = [row['executable'] for row in messages
                if row.get('reason') == 'compiler-artifact'
-               and row['target']['name'] == 'fsm_cli'
-               and row['target']['kind'] == ['lib']
+               and row['target']['name'] == target
+               and row['target']['kind'] == kind
                and row['profile']['test'] is True and row.get('executable')]
-    assert len(matches) == 1, ('private host library test', matches)
+    assert len(matches) == 1, (target, matches)
     return Path(matches[0]).resolve()
 
 
