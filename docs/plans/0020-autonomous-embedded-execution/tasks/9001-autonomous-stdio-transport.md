@@ -15,6 +15,9 @@ touches:
   - crates/fsm-cli/src/main.rs
   - crates/fsm-cli/tests/autonomous_stdio.rs
   - crates/fsm-cli/tests/mcp_execute_workflow.rs
+  - crates/fsm-cli/tests/workflow_stdio/
+  - crates/fsm-execute/src/containment/workflow_native_tests.rs
+  - crates/fsm-execute/tests/lifecycle_platform/workflow_probe.py
   - crates/fsm-cli/tests/embedded_read_only.rs
   - crates/fsm-cli/tests/serve_modes.rs
   - crates/fsm-cli/tests/mcp_executor.rs
@@ -87,6 +90,14 @@ Focused acceptance review:
   serves diagnosis, refuses instance access and preserves its original bytes.
   Focused clippy, formatting and diff checks pass; no containment helper was
   invoked for this local acceptance slice.
+- The provisioned original workflow inventory now includes a quiet transient
+  failure retry: the first prerequisite exits 7, the next succeeds, and the
+  production server completes without further client requests. Original native
+  claims and closure proofs are checked for eight runs, one attempted failure,
+  seven acknowledgements and matching second-attempt identity. The portable
+  subprocess fixture passes; CLI/provisioner test-target clippy and eight
+  mocked producer retirement tests pass. Genuine native execution of this
+  new case remains unexecuted, not a passed skip.
 - Success, transient retry, compensation, interrupted advance and a held real
   process/MCP handler with responsive reads remain to be matched to this
   original inventory; no landing OID or full-gate claim is assigned, and full

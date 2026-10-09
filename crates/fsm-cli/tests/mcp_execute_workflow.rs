@@ -175,9 +175,8 @@ fn workflow_handler() {
     let failed = arguments
         .iter()
         .find_map(|argument| argument.strip_prefix("handler-failures="))
-        .expect("explicit workflow failure argument")
-        .split(',')
-        .any(|failure| failure == operation);
+        .expect("explicit workflow failure argument");
+    let failed = workflow_stdio::failed_operation(failed, operation, &directory);
     match operation {
         "suspend" => fs::write(&phase, "suspended").unwrap(),
         "perform_work" => {
@@ -253,6 +252,8 @@ fn write_handlers(directory: &Path, resource: &Path, failures: &str) {
         ("format", string("fsm.handlers/1")),
         ("handlers", Value::Arr(handlers)),
     ]);
+    let mut table = table;
+    workflow_stdio::configure_table(&mut table, failures);
     #[cfg(target_os = "linux")]
     let table = {
         let mut table = table;
@@ -772,7 +773,7 @@ fn run_scenario_mode(
                     |entry| entry.get("kind").and_then(Value::as_str) == Some("ExecutionSettled")
                 )
                 .count(),
-            acked + usize::from(interrupted_scenario(failures))
+            acked + workflow_stdio::unacknowledged_attempts(failures)
         );
         acked
     } else {
@@ -783,7 +784,7 @@ fn run_scenario_mode(
     };
     assert_eq!(
         acknowledgements,
-        expected_calls.len() - usize::from(interrupted_scenario(failures))
+        expected_calls.len() - workflow_stdio::unacknowledged_attempts(failures)
     );
     assert_eq!(
         text(&client.call("journal_verify", object([])), "health"),

@@ -3,6 +3,9 @@
 use super::{Client, bounded_executor_errors};
 use std::time::{Duration, Instant};
 
+mod quiet_retry;
+pub(super) use quiet_retry::{configure_table, failed_operation, unacknowledged_attempts};
+
 impl Client {
     pub(super) fn finish(&mut self) {
         // EOF must retire the original owner; killing the server would conceal

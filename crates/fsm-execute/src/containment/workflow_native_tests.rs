@@ -118,6 +118,25 @@ fn table(helper: &Path, resource: &Path, failures: &str) -> Value {
             ),
         ),
     ]);
+    if failures == "quiet-retry" {
+        let Value::Obj(fields) = &mut table else {
+            panic!("handler table")
+        };
+        let Value::Arr(handlers) = fields.get_mut("handlers").unwrap() else {
+            panic!("handlers")
+        };
+        let Value::Obj(first) = &mut handlers[0] else {
+            panic!("first handler")
+        };
+        first.insert(
+            "retry".into(),
+            fsm_core::json::parse(
+                br#"{"attempts":2,"backoff_ms":50,"max_backoff_ms":50,"on":["failed"]}"#,
+                &fsm_core::json::JsonLimits::DEFAULT,
+            )
+            .unwrap(),
+        );
+    }
     if failures.starts_with("crash-")
         || failures.starts_with("full-disk")
         || failures.starts_with("failed-stop")
@@ -162,7 +181,8 @@ fn table(helper: &Path, resource: &Path, failures: &str) -> Value {
 fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
     use fsm_core::record::{RecordKind, execution::Claim};
     use fsm_store::store::VerifiedClosure;
-    let expected = if failure.starts_with("crash-")
+    let expected = if failure == "quiet-retry"
+        || failure.starts_with("crash-")
         || failure.starts_with("full-disk")
         || failure.starts_with("failed-stop")
         || failure.starts_with("expired-drain")
@@ -227,7 +247,8 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
         .filter(|record| record.kind == RecordKind::ExecutionSettled)
     {
         let disposition = record.body.get("disposition").and_then(Value::as_str);
-        if (failure.starts_with("crash-")
+        if (failure == "quiet-retry"
+            || failure.starts_with("crash-")
             || failure.starts_with("full-disk")
             || failure.starts_with("failed-stop")
             || failure.starts_with("expired-drain")
@@ -239,7 +260,8 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
             assert_eq!(disposition, Some("acked"));
         }
     }
-    if failure.starts_with("crash-")
+    if failure == "quiet-retry"
+        || failure.starts_with("crash-")
         || failure.starts_with("full-disk")
         || failure.starts_with("failed-stop")
         || failure.starts_with("expired-drain")
@@ -268,7 +290,11 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
             .unwrap()
             .as_str()
             .unwrap();
-        assert!(matches!(status, "timeout" | "interrupted"));
+        if failure == "quiet-retry" {
+            assert_eq!(status, "failed");
+        } else {
+            assert!(matches!(status, "timeout" | "interrupted"));
+        }
         if failure.ends_with("-term")
             || failure.ends_with("-int")
             || failure.starts_with("full-disk")
@@ -295,7 +321,7 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
             .unwrap();
         assert_eq!(
             settled.body.get("disposition").and_then(Value::as_str),
-            Some(if status == "timeout" {
+            Some(if matches!(status, "timeout" | "failed") {
                 "attempted"
             } else {
                 "interrupted"
@@ -303,7 +329,11 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
         );
         assert_eq!(
             number(&claims[1].body, "attempt").unwrap(),
-            if status == "timeout" { 2 } else { 1 }
+            if matches!(status, "timeout" | "failed") {
+                2
+            } else {
+                1
+            }
         );
     }
     for record in store
@@ -458,6 +488,10 @@ pub(super) fn run() {
         cli.clone()
     };
     let cases = [
+        (
+            "workflow_stdio::quiet_retry::quiet_retry_finishes_without_observation_requests",
+            vec!["quiet-retry"],
+        ),
         (
             "discovered_handlers_complete_the_workflow_in_order",
             vec![""],
