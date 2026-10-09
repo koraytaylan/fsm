@@ -96,7 +96,11 @@ fn provisioned_private_completion_owner_matrix() {
             &format!("FSM_CRASH_{variable}_SHA256"),
         );
     }
-    for (host, behavior) in [("private", "private-held"), ("boundary", "boundary-held")] {
+    for (host, behavior) in [
+        ("private", "private-held"),
+        ("boundary", "boundary-held"),
+        ("boundary", "boundary-settled"),
+    ] {
         for kind in ["process", "mcp"] {
             scenario(
                 &staging,
@@ -254,6 +258,10 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
         .arg(staging.join(artifact))
         .args(["--exact", if private {
             "mcp::host::tests::held_handlers::execution_host_real_held_handler_allows_read_mutation_and_stop_without_release"
+        } else if behavior == "boundary-settled" && kind == "process" {
+            "native::async_completion_process_repeated_polling_settles_once"
+        } else if behavior == "boundary-settled" {
+            "native::async_completion_mcp_repeated_polling_settles_once"
         } else if host == "boundary" && kind == "process" {
             "native::async_completion_process_dispatch_poll_and_stop_do_not_wait_for_release"
         } else if host == "boundary" {
@@ -421,6 +429,7 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                             | "torn-tail"
                             | "private-held"
                             | "boundary-held"
+                            | "boundary-settled"
                     ) {
                         "hold-result"
                     } else {
@@ -435,7 +444,10 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
         (
             "timeout_ms".into(),
             Value::Num(
-                if matches!(behavior, "private-held" | "boundary-held") {
+                if matches!(
+                    behavior,
+                    "private-held" | "boundary-held" | "boundary-settled"
+                ) {
                     "30000"
                 } else {
                     "3000"
@@ -518,6 +530,7 @@ fn verify(fixture: &Fixture, behavior: &str) {
                     | "event-result"
                     | "private-held"
                     | "boundary-held"
+                    | "boundary-settled"
             ) {
                 1
             } else {
