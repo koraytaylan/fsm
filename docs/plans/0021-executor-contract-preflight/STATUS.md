@@ -40,7 +40,8 @@ composition and chaos cases; verdict
 The provisioned inventory crosses both writer entry paths and process/MCP
 handlers for timeout cleanup under contention, manual repair, ack-only work,
 acknowledged recovery and bound-entry table/private MCP argument replacement followed by receiver
-migration and repair with historical pending identity preserved. Original ownership,
+migration and repair with historical pending identity and arguments preserved
+despite changed live context. Original ownership,
 unchanged refusal journals, marker absence and exact settlement/allocation
 counts are required before repair or writer release, as applicable. Thirteen
 focused admission and 25 mocked producer/verifier cases pass, with executor
@@ -52,7 +53,7 @@ until provisioned plan-end CI.
 Five focused bound-entry tests pass, including private MCP replacement and
 nested missing arguments; feature-enabled executor all-target clippy and
 format/size/diff checks pass. Scoped review
-`50bdc5ebf06b92054cda30b4656b0b6cfee0934a675a33087d6052b143d21a6c`
+`e6248708c6d2a38dd00c9546c84999288bcff2a7716d93bbccd7535b3695276a`
 indexes the executable migration fixture and private MCP probes;
 the eighteen native Rust cases remain ignored locally.
 

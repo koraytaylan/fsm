@@ -211,11 +211,11 @@ fn observe(borrowed: bool, scenario: Scenario) {
             &mut clock,
             parse(
                 br#"{
-      "format":"fsm.machine/1","name":"native-admission","context":[],
+      "format":"fsm.machine/1","name":"native-admission","context":[{"name":"resource","ty":"str","init":"historical"}],
       "enums":{"StampRange":["0","2000"]},
       "events":[{"name":"done","fields":[]},{"name":"stamped","fields":[{"name":"at","ty":{"enum":"StampRange"}}]}],
       "effects":[{"name":"notify","fields":[]},{"name":"restore","fields":[]}],
-      "states":[{"name":"running","entry":{"emit":[{"effect":"notify"}]}},
+      "states":[{"name":"running","entry":{"emit":[{"effect":"notify","args":{"resource":"ctx.resource"}}]}},
                 {"name":"compensating","entry":{"emit":[{"effect":"restore"}]}},
                 {"name":"finished","terminal":true}],
       "initial":"running","transitions":[{"from":"running","on":"done","to":"finished"}]
@@ -740,7 +740,13 @@ fn migrate_receiver(
         Value::Obj(BTreeMap::from([
             ("machine".into(), Value::Str(digest.into())),
             ("states".into(), Value::Obj(states)),
-            ("context".into(), Value::Obj(BTreeMap::new())),
+            (
+                "context".into(),
+                Value::Obj(BTreeMap::from([(
+                    "resource".into(),
+                    Value::Str("\"replacement\"".into()),
+                )])),
+            ),
         ])),
     );
     let events = fields.get_mut("events").unwrap();
@@ -772,6 +778,10 @@ fn migrate_receiver(
     store
         .migrate_instance_on(clock, instance, name, name)
         .unwrap();
+    assert_eq!(
+        store.state.instances[instance].ctx["resource"],
+        fsm_core::expr::eval::Val::Str("replacement".into())
+    );
 }
 
 #[test]
@@ -779,9 +789,9 @@ fn receiver_migration_fixture_preserves_pending_identity_and_repairs_contract() 
     let mut store = Store::open_memory().unwrap();
     let mut clock = FixedClock::new(2000, 0);
     let machine = parse(br#"{
-      "format":"fsm.machine/1","name":"migration-fixture","context":[],
+      "format":"fsm.machine/1","name":"migration-fixture","context":[{"name":"resource","ty":"str","init":"historical"}],
       "events":[{"name":"done","fields":[]}],"effects":[{"name":"notify","fields":[]}],
-      "states":[{"name":"running","entry":{"emit":[{"effect":"notify"}]}},{"name":"finished","terminal":true}],
+      "states":[{"name":"running","entry":{"emit":[{"effect":"notify","args":{"resource":"ctx.resource"}}]}},{"name":"finished","terminal":true}],
       "initial":"running","transitions":[{"from":"running","on":"done","to":"finished"}]
     }"#, &JsonLimits::DEFAULT).unwrap();
     store
@@ -799,7 +809,11 @@ fn receiver_migration_fixture_preserves_pending_identity_and_repairs_contract() 
         )
         .unwrap();
     let historical = resolve(&store, &store.state.instances["original"].pending[0]).unwrap();
-    let table = HandlerTable::parse(r#"{"format":"fsm.handlers/1","handlers":[{"effect":"notify","argv":["/operator/notify"],"timeout_ms":1000,"on_ok":{"event":"done","payload":{}}}]}"#).unwrap();
+    assert_eq!(
+        historical.args["resource"],
+        fsm_core::expr::eval::Val::Str("historical".into())
+    );
+    let table = HandlerTable::parse(r#"{"format":"fsm.handlers/1","handlers":[{"effect":"notify","argv":["/operator/notify","{resource}"],"timeout_ms":1000,"on_ok":{"event":"done","payload":{}}}]}"#).unwrap();
     check_pending(&store, &historical, &table).unwrap();
     migrate_receiver(&mut store, &mut clock, "original", "invalid-receiver", true);
     assert_eq!(resolve(&store, &historical.effect_id).unwrap(), historical);
