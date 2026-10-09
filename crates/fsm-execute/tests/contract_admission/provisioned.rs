@@ -533,6 +533,59 @@ fn observe(borrowed: bool, scenario: Scenario) {
         scheduler = Scheduler::new(table.clone());
         watcher = Watcher::with_handlers(store_path.clone(), &table);
         assert_eq!(runner.local_native_claims().next(), Some(&original_claim));
+        let mut writer = Store::open(&store_path).unwrap();
+        let historical = resolve(&writer, &effect_id).unwrap();
+        migrate_receiver(
+            &mut writer,
+            &mut clock,
+            "original",
+            "invalid-receiver",
+            true,
+        );
+        assert_eq!(resolve(&writer, &effect_id).unwrap(), historical);
+        assert_ne!(
+            historical.emitting_machine_id,
+            writer.state.instance_machines["original"]
+        );
+        let migrated_records = writer.records.clone();
+        let migrated_state = writer.state.clone();
+        drop(writer);
+        let mut refusals = 0;
+        while refusals < 3 {
+            let lines = tick(&mut watcher, &mut scheduler, &mut runner, &mut clock);
+            refusals += usize::from(
+                lines
+                    .iter()
+                    .any(|line| line == "error exec/contract_invalid"),
+            );
+            assert!(
+                !resource.join("root-entered").exists(),
+                "stale receiver approval entered a handler"
+            );
+            assert!(!resource.join("root-candidate").exists());
+            assert_eq!(runner.local_native_claims().next(), Some(&original_claim));
+            let current = Store::open_read_only(&store_path).unwrap();
+            assert_eq!(current.records, migrated_records);
+            assert!(fsm_store::snapshot::store_states_eq(
+                &migrated_state,
+                &current.state
+            ));
+            assert!(
+                Instant::now() < deadline,
+                "receiver migration did not refuse entry: {lines:?}"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let mut writer = Store::open(&store_path).unwrap();
+        migrate_receiver(
+            &mut writer,
+            &mut clock,
+            "original",
+            "repaired-receiver",
+            false,
+        );
+        assert_eq!(resolve(&writer, &effect_id).unwrap(), historical);
+        drop(writer);
     }
     while !resource.join("root-candidate").is_file() {
         let lines = tick(&mut watcher, &mut scheduler, &mut runner, &mut clock);
@@ -632,6 +685,115 @@ fn observe(borrowed: bool, scenario: Scenario) {
         fsm_store::journal_io::verify(&store_path).health,
         fsm_store::journal_io::JournalHealth::Ok
     );
+}
+
+// SPEC's bound-entry rule uses the current receiver while the original emitted
+// effect and immutable native claim survive both migrations.
+fn migrate_receiver(
+    store: &mut Store,
+    clock: &mut FixedClock,
+    instance: &str,
+    name: &str,
+    invalid: bool,
+) {
+    let identity = &store.state.instance_machines[instance];
+    let mut replacement = store.state.machines[identity].compiled.spec.to_value();
+    let digest = fsm_core::hashes::digest_of(identity).unwrap();
+    let Value::Obj(fields) = &mut replacement else {
+        unreachable!()
+    };
+    fields.insert("name".into(), Value::Str(name.into()));
+    let states = fields["states"]
+        .as_arr()
+        .unwrap()
+        .iter()
+        .filter(|state| state.get("terminal") != Some(&Value::Bool(true)))
+        .map(|state| {
+            let name = state.get("name").unwrap().as_str().unwrap();
+            (name.into(), Value::Str(name.into()))
+        })
+        .collect();
+    fields.insert(
+        "supersedes".into(),
+        Value::Obj(BTreeMap::from([
+            ("machine".into(), Value::Str(digest.into())),
+            ("states".into(), Value::Obj(states)),
+            ("context".into(), Value::Obj(BTreeMap::new())),
+        ])),
+    );
+    let events = fields.get_mut("events").unwrap();
+    let Value::Arr(events) = events else {
+        unreachable!()
+    };
+    let event = events
+        .iter_mut()
+        .find(|event| event.get("name").and_then(Value::as_str) == Some("done"))
+        .unwrap();
+    let Value::Obj(event) = event else {
+        unreachable!()
+    };
+    event.insert(
+        "fields".into(),
+        if invalid {
+            parse(
+                br#"[{"name":"approved","ty":"bool"}]"#,
+                &JsonLimits::DEFAULT,
+            )
+            .unwrap()
+        } else {
+            Value::Arr(Vec::new())
+        },
+    );
+    store
+        .define_machine_on(clock, replacement, false, false)
+        .unwrap();
+    store
+        .migrate_instance_on(clock, instance, name, name)
+        .unwrap();
+}
+
+#[test]
+fn receiver_migration_fixture_preserves_pending_identity_and_repairs_contract() {
+    let mut store = Store::open_memory().unwrap();
+    let mut clock = FixedClock::new(2000, 0);
+    let machine = parse(br#"{
+      "format":"fsm.machine/1","name":"migration-fixture","context":[],
+      "events":[{"name":"done","fields":[]}],"effects":[{"name":"notify","fields":[]}],
+      "states":[{"name":"running","entry":{"emit":[{"effect":"notify"}]}},{"name":"finished","terminal":true}],
+      "initial":"running","transitions":[{"from":"running","on":"done","to":"finished"}]
+    }"#, &JsonLimits::DEFAULT).unwrap();
+    store
+        .define_machine_on(&mut clock, machine, false, false)
+        .unwrap();
+    store
+        .create_instance_ctx_on(
+            &mut clock,
+            "migration-fixture",
+            "original",
+            "create",
+            None,
+            &BTreeMap::new(),
+            &[],
+        )
+        .unwrap();
+    let historical = resolve(&store, &store.state.instances["original"].pending[0]).unwrap();
+    let table = HandlerTable::parse(r#"{"format":"fsm.handlers/1","handlers":[{"effect":"notify","argv":["/operator/notify"],"timeout_ms":1000,"on_ok":{"event":"done","payload":{}}}]}"#).unwrap();
+    check_pending(&store, &historical, &table).unwrap();
+    migrate_receiver(&mut store, &mut clock, "original", "invalid-receiver", true);
+    assert_eq!(resolve(&store, &historical.effect_id).unwrap(), historical);
+    assert_eq!(
+        check_pending(&store, &historical, &table).unwrap_err().code,
+        "exec/contract_invalid"
+    );
+    migrate_receiver(
+        &mut store,
+        &mut clock,
+        "original",
+        "repaired-receiver",
+        false,
+    );
+    assert_eq!(resolve(&store, &historical.effect_id).unwrap(), historical);
+    check_pending(&store, &historical, &table).unwrap();
 }
 
 // Only the initial dispatch borrows a writer; while another caller owns it,
