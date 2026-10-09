@@ -58,6 +58,7 @@ enum Scenario {
     MissingArgumentRepair,
     UnknownRepair,
     Fairness,
+    Contention,
 }
 
 #[test]
@@ -70,6 +71,18 @@ fn standalone_native_missing_argument_preserves_work_until_repair() {
 #[ignore = "requires disposable native CI and exact staged process/MCP fixture"]
 fn borrowed_native_missing_argument_preserves_work_until_repair() {
     observe(true, Scenario::MissingArgumentRepair);
+}
+
+#[test]
+#[ignore = "requires disposable native CI and exact staged process/MCP fixture"]
+fn standalone_native_timeout_reaps_original_tree_while_writer_is_held() {
+    observe(false, Scenario::Contention);
+}
+
+#[test]
+#[ignore = "requires disposable native CI and exact staged process/MCP fixture"]
+fn borrowed_native_timeout_reaps_original_tree_while_writer_is_held() {
+    observe(true, Scenario::Contention);
 }
 
 fn observe(borrowed: bool, scenario: Scenario) {
@@ -105,6 +118,14 @@ fn observe(borrowed: bool, scenario: Scenario) {
             .unwrap()
             .argv
             .push("{absent}".into());
+    }
+    if matches!(scenario, Scenario::Contention) {
+        restore.on_ok = None;
+        table.max_inflight = 2;
+        let notify = table.handlers.get_mut("notify").unwrap();
+        notify.timeout_ms = 5000;
+        notify.retry.attempts = 1;
+        notify.on_failed = notify.on_ok.clone();
     }
     table.handlers.insert("restore".into(), restore);
     let mut clock = FixedClock::new(2000, 0);
@@ -182,7 +203,11 @@ fn observe(borrowed: bool, scenario: Scenario) {
     } else {
         "error exec/contract_invalid"
     };
-    for _ in 0..3 {
+    for _ in 0..if matches!(scenario, Scenario::Contention) {
+        0
+    } else {
+        3
+    } {
         let lines = tick(&mut watcher, &mut scheduler, &mut runner, &mut clock);
         assert!(lines.iter().any(|line| line == diagnostic), "{lines:?}");
         assert!(
@@ -195,6 +220,7 @@ fn observe(borrowed: bool, scenario: Scenario) {
         assert!(scheduler.inflight_effect(&effect_id).is_none());
     }
     let completed_instance = match scenario {
+        Scenario::Contention => "original",
         Scenario::MissingArgumentRepair => {
             assert_eq!(
                 table
@@ -259,7 +285,18 @@ fn observe(borrowed: bool, scenario: Scenario) {
         );
         std::thread::sleep(Duration::from_millis(5));
     }
-    fs::write(resource.join("root-release"), b"release").unwrap();
+    if matches!(scenario, Scenario::Contention) {
+        hold_writer_through_timeout(
+            &store_path,
+            &resource,
+            &mut watcher,
+            &mut scheduler,
+            &mut runner,
+            &mut clock,
+        );
+    } else {
+        fs::write(resource.join("root-release"), b"release").unwrap();
+    }
     loop {
         let lines = tick(&mut watcher, &mut scheduler, &mut runner, &mut clock);
         let current = Store::open_read_only(&store_path).unwrap();
@@ -307,6 +344,132 @@ fn observe(borrowed: bool, scenario: Scenario) {
         fsm_store::journal_io::verify(&store_path).health,
         fsm_store::journal_io::JournalHealth::Ok
     );
+}
+
+// Only the initial dispatch borrows a writer; while another caller owns it,
+// standalone acquisition must fail without blocking the original native owner.
+fn hold_writer_through_timeout(
+    store_path: &std::path::Path,
+    resource: &std::path::Path,
+    watcher: &mut Watcher,
+    scheduler: &mut Scheduler,
+    runner: &mut Runner,
+    clock: &mut FixedClock,
+) {
+    let identities: Vec<_> = ["root", "child", "grandchild"]
+        .into_iter()
+        .map(|role| {
+            let pid = fs::read_to_string(resource.join(format!("{role}-entered"))).unwrap();
+            let pid: u32 = pid.trim().parse().unwrap();
+            let identity = process_identity(pid).expect("original fixture must still be live");
+            (pid, identity)
+        })
+        .collect();
+    let candidate = fs::read(resource.join("root-candidate")).unwrap();
+    let mut competing = Store::open(store_path).unwrap();
+    assert_eq!(competing.state.execution.unresolved().count(), 1);
+    assert_eq!(
+        competing
+            .records
+            .iter()
+            .filter(|record| record.kind == fsm_core::record::RecordKind::ExecutionClaimed)
+            .count(),
+        1
+    );
+    competing
+        .create_instance_ctx_on(
+            clock,
+            "native-admission",
+            "blocked",
+            "create-blocked",
+            None,
+            &BTreeMap::new(),
+            &[],
+        )
+        .unwrap();
+    let records = competing.records.clone();
+    let state = competing.state.clone();
+    let deadline = Instant::now() + Duration::from_secs(12);
+    let mut writer_refused = false;
+    loop {
+        let outcome = tick_reporting(
+            watcher,
+            scheduler,
+            runner,
+            &mut Pipeline,
+            store_path,
+            clock,
+            2000,
+        );
+        writer_refused |= outcome.writer_unavailable;
+        let current = Store::open_read_only(store_path).unwrap();
+        assert_eq!(
+            current.records, records,
+            "writer contention published an execution decision"
+        );
+        assert!(fsm_store::snapshot::store_states_eq(&state, &current.state));
+        assert_eq!(
+            fs::read(resource.join("root-candidate")).unwrap(),
+            candidate,
+            "competing work entered a second root handler"
+        );
+        for (role, (pid, _)) in ["root", "child", "grandchild"].into_iter().zip(&identities) {
+            assert_eq!(
+                fs::read_to_string(resource.join(format!("{role}-entered")))
+                    .unwrap()
+                    .trim(),
+                pid.to_string(),
+                "competing work entered a second descendant"
+            );
+        }
+        assert!(!resource.join("root-release").exists());
+        assert!(
+            !resource.join("root-published").exists(),
+            "held handler published a result"
+        );
+        assert!(
+            runner.local_native_claims().next().is_some(),
+            "writer contention lost the original owner"
+        );
+        if identities
+            .iter()
+            .all(|(pid, identity)| process_identity(*pid).as_ref() != Some(identity))
+        {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "timeout did not reap the original process tree while writer was held"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(
+        writer_refused,
+        "eligible second instance never reached writer contention"
+    );
+    competing
+        .cancel_instance_reason_on(clock, "blocked", "cancel-blocked", "fixture cleanup")
+        .unwrap();
+    drop(competing);
+}
+
+// Linux start time disambiguates PID reuse; absence of the original identity
+// proves reap rather than merely observing a stopped or zombie process.
+fn process_identity(pid: u32) -> Option<String> {
+    let stat = match fs::read_to_string(format!("/proc/{pid}/stat")) {
+        Ok(stat) => stat,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(error) => panic!("cannot observe original process {pid}: {error}"),
+    };
+    Some(
+        stat.rsplit_once(')')
+            .unwrap()
+            .1
+            .split_whitespace()
+            .nth(19)
+            .unwrap()
+            .into(),
+    )
 }
 
 fn manifest() -> Value {

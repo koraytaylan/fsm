@@ -21,7 +21,7 @@ manual work, refuse changed receiver contracts after migration and preserve
 acknowledged recovery keys until repair. Prior guard sensitivity and scoped
 reviews retain their original ranges, indexed by frozen verdict
 `636348f8b670a0efa300617801dc592875fd261b9d4086e6d0f51f0a2d5e1163`.
-Sixteen provisioned process/MCP axes remain unexecuted and eight protected Rust
+Twenty provisioned process/MCP axes remain unexecuted and ten protected Rust
 cases remain ignored locally; unprovisioned routing proves no native side-effect
 acceptance. Complete task 9103 inventory and plan-end gates remain outstanding;
 full-prefix reconstruction cost stays documented.
@@ -37,8 +37,12 @@ indexes prior scoped proofs; metadata fixtures do not close physical acceptance.
 Focused regression checkpoint `8b659d64` passes 49 tick, retry, scheduler,
 composition and chaos cases; verdict
 `eedbf3f61b365721543985fc1eadab72632c3e2511c5b8f0232ae554659bf0e9`.
-The combined genuine native competing-writer/timeout cleanup case is still
-absent from the sixteen-axis inventory; these regressions do not close it.
+The provisioned inventory now includes both initial writer entry paths crossed
+with process/MCP timeout cleanup under a competing writer: original process
+identities must disappear before writer release, blocked work creates no claim
+or marker, and the retained original owner subsequently settles once.
+Focused admission cases (12) and mocked producer/verifier cases (25) pass;
+physical execution remains outstanding until provisioned plan-end CI.
 
 CLI focused range `62bdbd5d..2cd48842` passes ten real-binary contract cases,
 17 executor documentation cases and five legacy session cases, CLI all-target
