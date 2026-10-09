@@ -121,6 +121,15 @@ comparison. The separate scheduling inventory now adds process/MCP retry
 observers: protected authority timeout must produce an actual attempted
 settlement, injected logical time must preserve the prefix one tick before
 backoff and admit attempt two exactly at expiry, and the successor must finish
-without a session or another command. These observers compile and the expanded
-producer/verifier faults pass; runtime verification is still outstanding and
-the remaining written 8903 inventory and full integration gate stay open.
+without a session or another command. Frozen `cbce4d03` passes all four scheduling cases on both toolchains in
+[CI 37917765237](https://github.com/koraytaylan/fsm/actions/runs/37917765237),
+independent retained-report digest
+`c479e4812a78e9be68ea4b29a3f735cf519e2a05e2549e03edac249abb3936c1`.
+The actual first stopped outcome is timeout, its attempted settlement retains
+logical timestamp 2000, time 2009 preserves the complete prefix, and time 2010
+claims attempt two; the genuine successor completes without another command.
+Protected authority runtime establishes the timeout result; this does not yet
+prove the private scheduler's logical timeout boundary. The remaining written
+compensation, completion fairness, interrupted acknowledgement, construction
+and full integration inventory stays open; no landing OID is assigned and
+staged executable bytes remain without independent comparison.
