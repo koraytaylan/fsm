@@ -15,6 +15,17 @@ use std::{
 const WORKER_SLOTS: usize = 128;
 const TRANSPORT_CHARGE: usize = 16 * 1024 * 1024;
 const RESPONSE_STORAGE: usize = 2 * 1024 * 1024;
+pub(crate) const CAPACITY_EXHAUSTED: &str = "native transport worker capacity exhausted";
+
+#[cfg(test)]
+pub(crate) fn exhaust_capacity() -> impl Sized {
+    let budget = Arc::new(Budget::default());
+    let scope = Scope::enter(Some(&budget));
+    let tickets = (0..WORKER_SLOTS)
+        .map(|_| reserve_current().unwrap().unwrap())
+        .collect::<Vec<_>>();
+    (scope, tickets)
+}
 
 #[derive(Default)]
 pub(crate) struct Budget(AtomicUsize);
@@ -63,7 +74,7 @@ pub(super) fn reserve_current() -> Result<Option<Arc<Ticket>>, String> {
             if count >= WORKER_SLOTS
                 || count.saturating_mul(TRANSPORT_CHARGE) >= WORKER_SLOTS * TRANSPORT_CHARGE
             {
-                return Err("native transport worker capacity exhausted".into());
+                return Err(CAPACITY_EXHAUSTED.into());
             }
             match budget.0.compare_exchange_weak(
                 count,

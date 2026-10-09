@@ -2993,3 +2993,5 @@ A runner retaining an original native completion can reconcile delivery performe
 An already verified native completion uses its original closure-bound healthy physical writer to deliver its exact acknowledgement handoff; warm and cold delivery share accepted-event retirement checks, while only cold discovery requires its additional protected operator route.
 
 After native recovery persists an attempted settlement, watcher-driven scheduling derives the next attempt and backoff from that original settlement just as it does for a legacy attempt record; interrupted and acknowledged settlements do not add failed attempts, and restart does not renew the journaled backoff.
+
+Native preparation refused by worker capacity before helper dispatch stays queued for a later owner turn; it does not create an unknown allocation or publish an attempt outcome.

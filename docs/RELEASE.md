@@ -1720,3 +1720,5 @@ fixture permits two transient descriptors/tasks and 16 MiB RSS growth, and
 requires twelve claim/stop/settlement/event records. This extension remains
 unverified natively and does not complete 9404 or establish an unlimited-run
 resource bound.
+
+Native preparation refused by worker capacity before helper dispatch stays queued for a later owner turn; it does not create an unknown allocation or publish an attempt outcome.

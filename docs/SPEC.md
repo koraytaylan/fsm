@@ -3675,3 +3675,5 @@ Warm native completion reconciliation MUST validate the exact replayed acknowled
 Warm original completion delivery MUST retain its existing verified closure and healthy physical-writer authorization; it MUST NOT add cold-discovery operator routing as a substitute for that proof. Warm and cold paths MUST share exact accepted-event fold retirement checks, while cold adoption MUST retain its additional original protected route and operator validation.
 
 Executor watcher retry observations MUST derive failed attempt number and original backoff timestamp from both legacy EffectAttempted records and native ExecutionSettled records whose disposition is attempted; acknowledged and interrupted native settlements MUST NOT consume failed attempts or establish a backoff timestamp, and restart MUST retain the original journal timestamp rather than renewing the deadline.
+
+Native preparation refused by worker capacity before helper dispatch stays queued for a later owner turn; it does not create an unknown allocation or publish an attempt outcome.

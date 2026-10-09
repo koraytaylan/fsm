@@ -1731,3 +1731,5 @@ Warm native completion reconciliation now recognizes another host's accepted ori
 Verified warm completion delivery preserves the established closure-bound physical-writer policy; sharing accepted-event retirement checks with cold delivery does not add cold-discovery operator routing to this existing API, and introduces no signature, format, hash or error-code change.
 
 Watcher retry observations now include native attempted settlements alongside legacy attempt records, preserving original attempt numbers and journal timestamps across recovery; this corrects retry scheduling without changing public signatures, record formats, hash domains, error codes or immutable retry policy.
+
+Native preparation refused by worker capacity before helper dispatch stays queued for a later owner turn; it does not create an unknown allocation or publish an attempt outcome.

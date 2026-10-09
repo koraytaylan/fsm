@@ -151,6 +151,11 @@ impl NativeAdmissions {
                 TRANSPORT_TIMEOUT,
             ) {
                 Ok(preparation) => Phase::Preparing(preparation),
+                // Reservation refusal precedes helper dispatch (SPEC worker capacity).
+                // No allocation occurred, so retain this effect for a later turn.
+                Err(error) if error == super::native_client::worker::CAPACITY_EXHAUSTED => {
+                    Phase::Queued
+                }
                 Err(error) => {
                     self.cleanup_diagnostic.get_or_insert_with(|| {
                         bounded_diagnostic("native-preparation-uncertain ", &error)
@@ -554,6 +559,21 @@ mod tests {
         };
         assert!(admissions.take_cleanup_diagnostic().is_some());
         assert!(admissions.take_cleanup_diagnostic().is_none());
+    }
+
+    #[test]
+    fn exhausted_worker_capacity_keeps_original_preparation_queued() {
+        let capacity = super::super::native_client::worker::exhaust_capacity();
+        let (mut admissions, scheduler, effect) = reservation(Phase::Queued);
+        admissions.start_queued(&AtomicBool::new(false));
+        assert!(matches!(
+            admissions.pending[&effect.effect_id].phase,
+            Phase::Queued
+        ));
+        assert_eq!(scheduler.inflight_effect(&effect.effect_id), Some(&effect));
+        assert!(!admissions.uncertain());
+        assert!(admissions.take_cleanup_diagnostic().is_none());
+        drop(capacity);
     }
 
     #[test]
