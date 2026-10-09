@@ -151,22 +151,21 @@ ordered completion, stale-report bypass and plan-end gates remain outstanding.
 
 Manual Phase R binds the six-task bundle to validation base `15172d8298f271abfd0bd1d5b47617d1108ceefc` after plans 0022 and 0020 complete: closed frontmatter, repository-relative footprints and the acyclic local dependency graph pass, with uncreated deliverables explicitly inventoried; task-cache validation digest `4298d27510c4726206598590ca50efd51e0aeca49c5605aae9f004697820f1f7`. Task 9101 completes its focused inventory at `efcb4f9e`, with 67 stable effect/configuration/public-surface cases and focused lint/format/diff checks passing; self-review verdict `dfd37ee9a1867119e4c63a048ad58b1030b7db590fe118b95dcee1edff82f9a1`; task 9102 completes at `ed811ab6` with eleven focused outcome tests and self-review verdict `b9a671329f5a8177a34529118e6925015757c21b9a064f5d5371820bd71ac271`; task 9103 is in progress; prior independent preparation remains subject to current task acceptance, and admission/MCP/final acceptance remain incomplete. Full gates run at plan completion.
 
-Focused native admission checkpoint `be50b287` passes all forty genuine
+Focused native admission checkpoint `84ee51de` passes all forty genuine
 process/MCP standalone/borrowed axes on stable and MSRV, including refusal/repair,
 fairness, timeout/reap under contention, warm/cold retry, manual repair, atomic
 ack-only settlement, acknowledged recovery, stale bound-entry refusal and original
-bound cancellation. Root authenticates the original closures and exact settlement
-inventory before every marker. Cancelled pre-entry owners now close independently
-of writer access, retaining capacity until authenticated interruption settles;
-the fixture requires actual settlement backpressure before writer release.
-Forty-one focused Rust cases and executor all-target clippy/format/size/diff pass.
-The CI post-verifier rejects the producer's nonliteral inventory; its unchanged
-forty rows are now literal, with a real-source regression and 28 focused
-producer/evidence cases passing. Frozen review
-`d2aae16a923b68a3a7d755b76ab81aad7434c2b42a55f803f4923ff5424b6316`
-indexes physical reports and scoped verdicts outside the repository; corrected
-frozen CI verification, native guard sensitivity and plan-end gates remain open.
-Task 9103 remains in progress.
+bound cancellation. Both focused CI jobs and independent frozen evidence
+verification pass. Cancelled pre-entry owners now close independently of writer
+access, retaining capacity until authenticated interruption settles; the fixture
+requires actual settlement backpressure before writer release. Root authenticates
+original closures and exact settlement inventory before every marker.
+Forty-one focused Rust cases, 28 producer/evidence cases and executor all-target
+clippy/format/size/diff pass. Frozen verdict
+`2d7bf695f4e4e5e0d7633ea426af27d030633c446e4a0c3ec47b81d082365989`
+indexes the physical reports and scoped reviews outside the repository.
+Native guard sensitivity and plan-end gates remain open; task 9103 remains
+in progress.
 
 Bound entry now reuses its freshly reconstructed effect from the same immutable
 writer, removing its duplicate prefix replay while retaining concrete admission
