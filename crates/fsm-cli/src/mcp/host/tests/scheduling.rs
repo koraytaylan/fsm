@@ -559,11 +559,22 @@ fn autonomous_schedule_continuously_ready_application_gets_each_bounded_turn() {
         // The initial backlog covers all sixteen progressing decision passes;
         // replenishment additionally exercises admission while the owner runs.
         if index < 56 {
-            replies.push_back(
-                sessions[index % 4]
+            // Reply delivery can precede original reservation retirement; a
+            // full host may therefore legitimately refuse immediate refill.
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            let reply = loop {
+                match sessions[index % 4]
                     .submit(super::command("instance_get", r#"{"instance_id":"chain"}"#))
-                    .unwrap(),
-            );
+                {
+                    Ok(reply) => break reply,
+                    Err(super::super::AdmissionError::Busy) => {
+                        assert!(std::time::Instant::now() < deadline, "refill stayed busy");
+                        std::thread::yield_now();
+                    }
+                    Err(error) => panic!("refill refused: {error:?}"),
+                }
+            };
+            replies.push_back(reply);
         }
     }
     assert!(replies.is_empty());
