@@ -19,8 +19,8 @@ touches:
   - docs/SPEC.md
   - docs/API-POLICY.md
   - docs/EMBEDDING.md
-status: in_progress
-merged_as: ""
+status: done
+merged_as: "efcb4f9e2811fc388d65af9ce13f6fe5b3068b97"
 ---
 # Executor Contract Effect Analysis
 
@@ -48,3 +48,14 @@ A declared effect schema is not a list of arguments that every emit actually sup
 - `cargo test -p fsm-execute --test public_surface`, the relevant existing configuration/template tests, core compiler/hash goldens, and the zero-dependency gate continue to pass.
 
 - **Done when:** the production effect-analysis API passes the complete independent `contract_effects` inventory and exact report goldens, distinguishes invalid/unknown/manual as specified, preserves existing compiler and template semantics, and the applicable CONTRIBUTING gate succeeds.
+
+Frozen acceptance:
+
+The reviewed effect-analysis inventory passes fifteen effect cases, 35
+configuration cases and seventeen public-surface cases, including exact
+report goldens, private-literal exclusion, closure deduplication, hard limits
+and the two-site required-argument regression; focused target clippy,
+formatting and diff checks pass. Final self-review has no unresolved
+task-scope finding; verdict digest `dfd37ee9a1867119e4c63a048ad58b1030b7db590fe118b95dcee1edff82f9a1`.
+No independent reviewer or fresh full/platform gate is claimed; those gates
+remain due at plan 0021 completion under the explicit user cadence.

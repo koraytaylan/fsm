@@ -16,7 +16,7 @@ touches:
   - crates/fsm-execute/tests/fixtures/public_surface.txt
   - docs/SPEC.md
   - docs/EMBEDDING.md
-status: planned
+status: in_progress
 merged_as: ""
 ---
 # Executor Contract Outcome Validation
