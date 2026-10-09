@@ -111,7 +111,7 @@ impl OwnedNativeExecutor {
         let Some(store) = self.store.as_mut() else {
             return Vec::new();
         };
-        super::tick_with(
+        let mut lines = super::tick_with(
             &mut self.watcher,
             &mut self.scheduler,
             &mut self.runner,
@@ -119,7 +119,9 @@ impl OwnedNativeExecutor {
             store,
             clock,
             now_ms,
-        )
+        );
+        lines.extend(self.runner.take_native_cleanup_diagnostic());
+        lines
     }
 
     /// Observe original completions and bounded closure work without admission.

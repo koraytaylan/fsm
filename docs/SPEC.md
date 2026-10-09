@@ -3690,3 +3690,10 @@ Warm original completion delivery MUST retain its existing verified closure and 
 Executor watcher retry observations MUST derive failed attempt number and original backoff timestamp from both legacy EffectAttempted records and native ExecutionSettled records whose disposition is attempted; acknowledged and interrupted native settlements MUST NOT consume failed attempts or establish a backoff timestamp, and restart MUST retain the original journal timestamp rather than renewing the deadline.
 
 Native preparation refused by worker capacity before helper dispatch stays queued for a later owner turn; it does not create an unknown allocation or publish an attempt outcome.
+
+
+Owned native ordinary decision ticks also return retained bounded transport
+uncertainty diagnostics through the existing operator output path, as
+admission-free observation already does; a short poll interval cannot hide
+those diagnostics by continually scheduling decisions. Diagnostic publication
+changes no claim, outcome, closure proof, journal bytes or error code.

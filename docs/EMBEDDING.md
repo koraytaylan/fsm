@@ -3009,3 +3009,10 @@ production uses the monotonic clock, while deterministic acceptance advances
 wait deadlines without client commands or real sleeps. An exact wait deadline
 is ready immediately. Original lifecycle shutdown deadlines remain unchanged;
 no public signature, record format, hash domain or error code changes.
+
+
+Owned native ordinary decision ticks also return retained bounded transport
+uncertainty diagnostics through the existing operator output path, as
+admission-free observation already does; a short poll interval cannot hide
+those diagnostics by continually scheduling decisions. Diagnostic publication
+changes no claim, outcome, closure proof, journal bytes or error code.
