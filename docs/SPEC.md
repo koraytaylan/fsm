@@ -1414,6 +1414,13 @@ leave the journal, pending work, retry ledgers and request-id inventory unchange
 This read-only check alone MUST NOT authorize a physical start: the shared
 service still needs final writer/generation validation and lifecycle control.
 
+Prepared native admission MUST repeat the pending-contract check against the
+healthy durable writer before entering uncertain claim publication, and MUST
+require the prepared handler to equal its current loaded-table entry. Refusal
+MUST cancel that preparation while retaining its original domain for authenticated
+cleanup; it MUST NOT publish a claim or consume an attempt. This pre-claim check
+does not replace final bound-entry validation or acknowledged-outcome recovery.
+
 ## CLI executor machine checks
 
 `fsm execute --check --handlers <file>` MAY select exactly one of

@@ -1469,6 +1469,13 @@ structural checking; parsing it alone does not enforce machine/table
 compatibility at spawn. Existing tables and pending effects keep their current
 behavior until shared contract admission is integrated.
 
+Native preparation already checks the observed pending contract before queuing;
+the prepared-to-claim boundary repeats that check against the current writer
+and requires the original handler to match the loaded table. Refusal leaves the
+effect pending and retains the prepared domain for cleanup without publishing a
+claim. Final bound-entry checks, successful-analysis caching and acknowledged
+outcome recovery acceptance remain part of the unfinished shared admission task.
+
 One operator-owned JSON file, read once at startup, before any store is opened.
 It is the security boundary of the whole design: it closes the set of commands
 the executor can ever run.

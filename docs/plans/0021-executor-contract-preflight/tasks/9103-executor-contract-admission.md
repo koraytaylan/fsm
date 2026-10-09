@@ -15,12 +15,15 @@ touches:
   - crates/fsm-execute/src/sched.rs
   - crates/fsm-execute/src/service.rs
   - crates/fsm-execute/src/run/pipeline.rs
+  - crates/fsm-execute/src/run/native_admission.rs
+  - crates/fsm-execute/src/run/native_owners.rs
   - crates/fsm-execute/tests/contract_admission.rs
   - crates/fsm-execute/tests/fixtures/contract/
   - crates/fsm-execute/tests/fixtures/public_surface.txt
   - docs/SPEC.md
   - docs/EMBEDDING.md
   - docs/API-POLICY.md
+  - docs/RELEASE.md
 status: in_progress
 merged_as: ""
 ---

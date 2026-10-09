@@ -417,7 +417,10 @@ impl NativeOwners {
             if self.admission_is_closed() {
                 return self.apply_completed(store, clock, pipeline, scheduler);
             }
-            let request = match self.admissions.take_ready(store)? {
+            let request = match self
+                .admissions
+                .take_ready(store, scheduler.handler_table())?
+            {
                 Ok(request) => request,
                 Err(error) => return Some(Err(error)),
             };

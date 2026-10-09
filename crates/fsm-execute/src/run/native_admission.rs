@@ -1,7 +1,12 @@
 //! Retained pre-claim admission; helper retirement never proves domain absence.
 
 use super::native_client::{NativePreparation, NativePreparedCleanup, NativePreparedOwner};
-use crate::{config::HandlerSpec, effect::PendingEffect, error::ExecError, sched::Scheduler};
+use crate::{
+    config::{HandlerSpec, HandlerTable},
+    effect::PendingEffect,
+    error::ExecError,
+    sched::Scheduler,
+};
 use fsm_core::record::execution::{Admission, Claim, NativeDomain};
 use fsm_store::store::Store;
 use std::{
@@ -338,6 +343,7 @@ impl NativeAdmissions {
     pub(super) fn take_ready(
         &mut self,
         store: &Store,
+        table: &HandlerTable,
     ) -> Option<Result<AdmissionRequest, ExecError>> {
         let pending = self
             .pending
@@ -352,6 +358,24 @@ impl NativeAdmissions {
         if !eligible(store, &pending.effect) {
             pending.cancelled = true;
             return Some(Err(deferred()));
+        }
+        // SPEC pending-contract refusal precedes any uncertain claim publication.
+        // Keep the original prepared domain for authenticated cleanup on refusal.
+        let admission =
+            crate::contract::check_pending(store, &pending.effect, table).and_then(|()| {
+                if table.handlers.get(&pending.effect.effect_name) == Some(&pending.handler) {
+                    Ok(())
+                } else {
+                    Err(ExecError::new(
+                        "exec/contract_unknown",
+                        "prepared handler contract no longer matches the loaded table",
+                    )
+                    .hint("retire the original preparation and observe pending work again"))
+                }
+            });
+        if let Err(error) = admission {
+            pending.cancelled = true;
+            return Some(Err(error));
         }
         let Phase::Prepared(domain) = &pending.phase else {
             return Some(Err(deferred()));
@@ -559,6 +583,144 @@ mod tests {
         };
         assert!(admissions.take_cleanup_diagnostic().is_some());
         assert!(admissions.take_cleanup_diagnostic().is_none());
+    }
+
+    struct AdmissionDirectory(std::path::PathBuf);
+
+    impl Drop for AdmissionDirectory {
+        fn drop(&mut self) {
+            std::fs::remove_dir_all(&self.0).unwrap();
+        }
+    }
+
+    fn prepared_contract() -> (AdmissionDirectory, Store, NativeAdmissions, HandlerTable) {
+        static SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let directory = AdmissionDirectory(std::env::temp_dir().join(format!(
+            "fsm-prepared-contract-{}-{}",
+            std::process::id(),
+            SEQUENCE.fetch_add(1, Ordering::Relaxed)
+        )));
+        std::fs::create_dir(&directory.0).unwrap();
+        let mut store = Store::open(&directory.0).unwrap();
+        let mut clock = fsm_store::clock::FixedClock::new(1000, 1);
+        let machine = fsm_core::json::parse(
+            br#"{"format":"fsm.machine/1","name":"prepared","context":[],
+            "events":[],"effects":[{"name":"notify","fields":[]}],
+            "states":[{"name":"ready","entry":{"emit":[{"effect":"notify"}]}}],
+            "initial":"ready","transitions":[]}"#,
+            &fsm_core::json::JsonLimits::DEFAULT,
+        )
+        .unwrap();
+        store
+            .define_machine_on(&mut clock, machine, false, false)
+            .unwrap();
+        store
+            .create_instance_ctx_on(
+                &mut clock,
+                "prepared",
+                "prepared-instance",
+                "create",
+                None,
+                &BTreeMap::new(),
+                &[],
+            )
+            .unwrap();
+        let effect = crate::effect::resolve(
+            &store,
+            &store.state.instances["prepared-instance"].pending[0],
+        )
+        .unwrap();
+        // Reservation metadata only: no authority, native allocation or claim is created.
+        store.state.execution =
+            fsm_core::record::execution::ExecutionState::new(Admission::Enabled);
+        let fixture = fsm_core::json::parse(
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../fsm-core/tests/fixtures/execution-handoff.json"
+            )),
+            &fsm_core::json::JsonLimits::DEFAULT,
+        )
+        .unwrap();
+        let domain =
+            NativeDomain::from_value(fixture.get("claim").unwrap().get("domain").unwrap()).unwrap();
+        let (mut admissions, scheduler, original) = reservation(Phase::Prepared(domain));
+        let mut pending = admissions.pending.remove(&original.effect_id).unwrap();
+        pending.effect = effect.clone();
+        admissions.pending.insert(effect.effect_id, pending);
+        (
+            directory,
+            store,
+            admissions,
+            scheduler.handler_table().clone(),
+        )
+    }
+
+    fn refuses_prepared_contract(change: impl FnOnce(&mut HandlerTable), code: &str) {
+        let (_directory, store, mut admissions, mut table) = prepared_contract();
+        change(&mut table);
+        let state = store.state.clone();
+        let records = store.records.clone();
+        let sequence = store.journal.last_seq;
+        let error = match admissions.take_ready(&store, &table).unwrap() {
+            Err(error) => error,
+            Ok(_) => panic!("incompatible preparation authorized claim publication"),
+        };
+        assert_eq!(error.code, code);
+        assert!(fsm_store::snapshot::store_states_eq(&state, &store.state));
+        assert_eq!(store.records, records);
+        assert_eq!(store.journal.last_seq, sequence);
+        let pending = admissions.pending.values().next().unwrap();
+        assert!(pending.cancelled);
+        assert!(matches!(pending.phase, Phase::Prepared(_)));
+        assert!(!admissions.ready());
+    }
+
+    #[test]
+    fn prepared_claim_refuses_invalid_current_outcome_without_publication() {
+        refuses_prepared_contract(
+            |table| {
+                table.handlers.get_mut("notify").unwrap().on_ok = Some(crate::config::Advance {
+                    event: "undeclared".into(),
+                    payload: fsm_core::json::Value::Obj(BTreeMap::new()),
+                    stamps: Vec::new(),
+                });
+            },
+            "exec/contract_invalid",
+        );
+    }
+
+    #[test]
+    fn prepared_claim_refuses_changed_private_command_without_publication() {
+        refuses_prepared_contract(
+            |table| {
+                table.handlers.get_mut("notify").unwrap().argv =
+                    vec!["/operator/replacement".into()];
+            },
+            "exec/contract_unknown",
+        );
+    }
+
+    #[test]
+    fn prepared_claim_refuses_new_manual_disposition_without_publication() {
+        refuses_prepared_contract(
+            |table| {
+                table.handlers.remove("notify");
+                table.manual_effects.insert("notify".into());
+            },
+            "exec/contract_unknown",
+        );
+    }
+
+    #[test]
+    fn compatible_preparation_reaches_publication_phase_without_writing() {
+        let (_directory, store, mut admissions, table) = prepared_contract();
+        let records = store.records.clone();
+        assert!(admissions.take_ready(&store, &table).unwrap().is_ok());
+        assert!(matches!(
+            admissions.pending.values().next().unwrap().phase,
+            Phase::ClaimUncertain(_)
+        ));
+        assert_eq!(store.records, records);
     }
 
     #[test]

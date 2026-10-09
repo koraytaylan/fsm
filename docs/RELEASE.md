@@ -1,5 +1,11 @@
 # Releasing
 
+Prepared native work now rechecks its pending contract and original handler
+against the current writer and loaded table before claim publication; refusal
+retains the original domain for cleanup without consuming an attempt or
+changing persisted formats. Final entry, caching and recovery acceptance for
+plan 0021 admission remain incomplete.
+
 Hosted HTTP ordinary tool calls no longer wait behind an unanswered question
 in the same session; they reach the existing count/byte admission directly,
 preserving cancellation and the question waiter's exclusive reverse mailbox.
