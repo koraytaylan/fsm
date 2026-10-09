@@ -177,6 +177,63 @@ fn native_http_success_retry_and_compensation_with_zero_sessions() {
     );
 }
 
+#[cfg(target_os = "linux")]
+pub(super) fn delete_during_active_handler(directory: &Directory, client: &mut Client) {
+    use fsm_store::store::Store;
+    assert!(directory.1.is_some(), "genuine native fixture required");
+    let marker = directory.resource().join("tree-live");
+    let deadline = Instant::now() + Duration::from_secs(8);
+    let identities = loop {
+        if let Ok(bytes) = fs::read_to_string(&marker)
+            && bytes.split_whitespace().count() == 2
+        {
+            break bytes;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "original handler tree never entered"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    let processes = identities
+        .split_whitespace()
+        .map(|identifier| workflow_race::process_identity(identifier.parse().unwrap()))
+        .collect::<Vec<_>>();
+    let before = Store::open_read_only(&directory.store()).unwrap();
+    assert_eq!(before.state.execution.unresolved().count(), 1);
+    client.http.as_mut().unwrap().delete_session();
+    assert!(client.http.as_ref().unwrap().session.is_none());
+    std::thread::sleep(Duration::from_millis(100));
+    assert!(client.process.try_wait().unwrap().is_none());
+    assert_eq!(fs::read_to_string(&marker).unwrap(), identities);
+    for process in processes {
+        assert_eq!(workflow_race::process_identity(process.0), process);
+    }
+    assert_eq!(
+        Store::open_read_only(&directory.store()).unwrap().records,
+        before.records
+    );
+    assert!(matches!(Store::open(&directory.store()), Err(error) if error.code == "store/lock"));
+    fs::write(
+        directory.resource().join("tree-release"),
+        b"original completion",
+    )
+    .unwrap();
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "requires native provisioning; task 9002 and focused native CI"]
+fn native_http_delete_preserves_an_active_handler_and_completes_once() {
+    run_scenario_mode(
+        "http-delete-active",
+        "succeeded",
+        &OPERATIONS,
+        "active",
+        ExecutionMode::Http,
+    );
+}
+
 #[test]
 fn http_fixture_reinitializes_after_delete_before_observing_history() {
     use fsm_cli::http::{

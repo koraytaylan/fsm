@@ -137,7 +137,8 @@ fn table(helper: &Path, resource: &Path, failures: &str) -> Value {
             .unwrap(),
         );
     }
-    if failures.starts_with("crash-")
+    if failures == "http-delete-active"
+        || failures.starts_with("crash-")
         || failures.starts_with("full-disk")
         || failures.starts_with("failed-stop")
         || failures.starts_with("expired-drain")
@@ -154,7 +155,8 @@ fn table(helper: &Path, resource: &Path, failures: &str) -> Value {
         };
         // Signal cases must close through lease EOF before the handler deadline;
         // the eight-second closure observation cannot pass on this 30-second timeout.
-        let timeout = if failures.ends_with("-term")
+        let timeout = if failures == "http-delete-active"
+            || failures.ends_with("-term")
             || failures.ends_with("-int")
             || failures.starts_with("full-disk")
             || failures.starts_with("failed-stop")
@@ -490,6 +492,10 @@ pub(super) fn run() {
         cli.clone()
     };
     let cases = [
+        (
+            "workflow_http::native_http_delete_preserves_an_active_handler_and_completes_once",
+            vec!["http-delete-active"],
+        ),
         (
             "workflow_http::native_http_success_retry_and_compensation_with_zero_sessions",
             vec!["", "quiet-retry", "perform_work"],

@@ -655,6 +655,13 @@ fn run_scenario_mode(
             value(r#"{"instance_id":"inst-run","request_id":"begin","event":{"name":"begin"}}"#),
         );
     }
+    #[cfg(target_os = "linux")]
+    if failures == "http-delete-active" {
+        workflow_http::delete_during_active_handler(&directory, &mut client);
+    } else if let Some(http) = &mut client.http {
+        http.delete_session();
+    }
+    #[cfg(not(target_os = "linux"))]
     if let Some(http) = &mut client.http {
         http.delete_session();
     }

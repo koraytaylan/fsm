@@ -41,6 +41,7 @@ pub(super) fn holds_tree(argument: &str) -> bool {
     matches!(
         argument,
         "handler-failures=race"
+            | "handler-failures=http-delete-active"
             | "handler-failures=crash-launch"
             | "handler-failures=crash-stop"
             | "handler-failures=crash-embedded-launch"
@@ -279,7 +280,7 @@ pub(super) fn contend(directory: &Directory, client: &mut Client) -> Competitor 
     competitor
 }
 
-fn process_identity(identifier: u32) -> (u32, String) {
+pub(super) fn process_identity(identifier: u32) -> (u32, String) {
     let stat = fs::read_to_string(format!("/proc/{identifier}/stat")).unwrap();
     let fields: Vec<&str> = stat
         .rsplit_once(") ")

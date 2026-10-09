@@ -241,3 +241,11 @@ Focused startup acceptance:
   case, CLI all-target clippy and format/size/diff checks pass. This establishes
   transport session-count admission, not simultaneous host command-count
   saturation; the remaining acceptance and plan-end gates still apply.
+- A focused provisioned HTTP case now holds the first original handler and its
+  descendant behind an explicit release barrier before deleting the only session.
+  It requires unchanged process identities and journal records, retained writer
+  ownership, then releases that same tree and uses the existing seven-call,
+  settlement, resource, zero-session completion and original-owner exit checks.
+  Fixture compilation, CLI all-target clippy, ten producer checks and
+  format/size/diff checks pass; native execution must pass before this case can
+  establish active-handler DELETE acceptance.
