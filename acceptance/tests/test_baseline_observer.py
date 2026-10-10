@@ -2,6 +2,9 @@
 import contextlib
 import io
 import json
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -9,6 +12,8 @@ from unittest.mock import patch
 from acceptance.suite import run, scenarios
 from acceptance.suite.evidence import validate_bundle
 from acceptance.suite.fsm import Result, Scratch
+from acceptance.suite import fsm
+from acceptance.suite.mcp import StdioClient
 
 
 class BaselineInventoryTests(unittest.TestCase):
@@ -82,6 +87,49 @@ class BaselineRefusalTests(unittest.TestCase):
     def test_fabricated_claim_after_refusal_fails(self):
         with self.assertRaises(AssertionError):
             self.observe(mutation=True)
+
+
+class BaselineUtf8Tests(unittest.TestCase):
+    def test_cli_output_preserves_utf8_under_a_non_utf8_default_encoding(self):
+        text = "original UTF-8: \u2713 \u2014 \u00e9"
+        code = "import sys;sys.stdout.buffer.write(" + repr(text.encode()) + ")"
+        with patch.object(fsm, "FSM", sys.executable), patch.object(subprocess, "_text_encoding", return_value="cp1252"):
+            self.assertEqual(fsm.run("-c", code, timeout=3).ok().out, text)
+
+    def test_mcp_reply_preserves_utf8_under_a_non_utf8_default_encoding(self):
+        text = "original UTF-8: \u2713 \u2014 \u00e9"
+        code = """import json,sys
+for line in sys.stdin.buffer:
+ value=json.loads(line.decode('utf-8'))
+ response=dict(jsonrpc='2.0',id=value['id'],result=dict(text='original UTF-8: \\u2713 \\u2014 \\u00e9'))
+ sys.stdout.buffer.write((json.dumps(response,ensure_ascii=False)+'\\n').encode('utf-8'));sys.stdout.buffer.flush()
+"""
+        with patch.object(subprocess, "_text_encoding", return_value="cp1252"), StdioClient([sys.executable, "-c", code]) as client:
+            self.assertEqual(client.request("labelled-unicode-stub", timeout=3)["text"], text)
+
+
+class BaselineStoreRetentionTests(unittest.TestCase):
+    def test_failed_original_store_retains_its_path_identity_and_bytes(self):
+        scratch = Scratch("labelled-retained-store", preserve_on_failure=True)
+        self.addCleanup(shutil.rmtree, scratch.path, True)
+        with self.assertRaisesRegex(RuntimeError, "labelled failure"):
+            with scratch:
+                store = Path(scratch.dir("store"))
+                (store / "original-record").write_text("labelled original store bytes")
+                original = store.stat()
+                raise RuntimeError("labelled failure")
+        self.assertEqual((store.stat().st_dev, store.stat().st_ino), (original.st_dev, original.st_ino))
+        self.assertEqual((store / "original-record").read_text(), "labelled original store bytes")
+
+    def test_success_and_ordinary_failed_scratch_still_retire(self):
+        with Scratch("labelled-healthy-store", preserve_on_failure=True) as scratch:
+            path = Path(scratch.path)
+        self.assertFalse(path.exists())
+        with self.assertRaises(RuntimeError):
+            with Scratch("labelled-disposable-store") as scratch:
+                path = Path(scratch.path)
+                raise RuntimeError("labelled disposable failure")
+        self.assertFalse(path.exists())
 
 
 if __name__ == "__main__":

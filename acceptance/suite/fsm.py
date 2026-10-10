@@ -69,7 +69,7 @@ def run(*args: str, data_dir: str | None = None, env: dict | None = None,
         argv.append(f"--data-dir={data_dir}")
     environment = {**os.environ, "NO_COLOR": "1", **(env or {})}
     completed = subprocess.run(
-        argv, capture_output=True, text=True, timeout=timeout,
+        argv, capture_output=True, text=True, encoding="utf-8", timeout=timeout,
         env=environment, cwd=cwd,
     )
     return Result(completed.returncode, completed.stdout, completed.stderr, argv)
@@ -90,14 +90,16 @@ def fixture_machine(name: str) -> str:
 class Scratch:
     """A throwaway directory, removed when the scenario ends."""
 
-    def __init__(self, tag: str) -> None:
+    def __init__(self, tag: str, preserve_on_failure: bool = False) -> None:
+        self.preserve_on_failure = preserve_on_failure
         self.path = tempfile.mkdtemp(prefix=f"fsm-acceptance-{tag}-", dir=task_cache())
 
     def __enter__(self) -> "Scratch":
         return self
 
-    def __exit__(self, *_exc) -> None:
-        shutil.rmtree(self.path, ignore_errors=True)
+    def __exit__(self, exception_type, *_exc) -> None:
+        if not (self.preserve_on_failure and exception_type is not None):
+            shutil.rmtree(self.path, ignore_errors=True)
 
     def join(self, *parts: str) -> str:
         path = os.path.join(self.path, *parts)
@@ -137,7 +139,7 @@ class Executing:
         self.process = subprocess.Popen(
             [FSM, "execute", f"--handlers={handlers}", f"--data-dir={data_dir}",
              "--poll-interval-ms=50", *extra],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8",
             env={**os.environ, "NO_COLOR": "1"},
         )
 
@@ -194,7 +196,7 @@ class Serving:
         self.port = port
         self.process = subprocess.Popen(
             [FSM, "serve", f"--http={port}", f"--data-dir={data_dir}", *extra],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8",
             env={**os.environ, "NO_COLOR": "1"},
         )
         self.stdout_capture = BoundedCapture(self.process.stdout)

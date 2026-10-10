@@ -110,6 +110,13 @@ def main() -> int:
         shutil.copy2(receipt, evidence / "build-receipt.json")
         for directory in temporary.glob("installed-native-*"):
             shutil.copytree(directory, evidence / directory.name)
+        if scenario == "baseline":
+            retained_stores = [directory for pattern in ("fsm-acceptance-executor-*", "fsm-acceptance-policy-*")
+                               for directory in temporary.glob(pattern)]
+            if len(retained_stores) > 2:
+                raise RuntimeError("retained baseline store inventory exceeds its bound")
+            for directory in retained_stores:
+                shutil.copytree(directory, evidence / ("failed-" + directory.name), symlinks=True)
         reports = list((evidence / "reports").glob("*/report.json"))
         if result.returncode != 0 or len(reports) != 1:
             raise RuntimeError("installed autonomous scenario failed or its report is missing")

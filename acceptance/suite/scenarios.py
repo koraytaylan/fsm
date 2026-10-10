@@ -60,7 +60,7 @@ def tools_list_is_complete_and_within_its_budget(report) -> None:
         )
         tools = client.tools()
         report.equal(len(tools), EXPECTED_TOOLS, f"tools/list offers {EXPECTED_TOOLS} tools")
-        measured = len(json.dumps({"tools": tools}, separators=(",", ":")))
+        measured = len(json.dumps({"tools": tools}, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
         report.note(f"tools/list measures {measured} bytes")
         report.true(
             measured < TOOLS_LIST_CEILING,
@@ -507,12 +507,19 @@ def _baseline_execute(report, store, table, native, resource, instance, failed):
     from .executor_scenarios import _wait_for_files, _fixture_rows, _retire_execution_owner, read_journal_prefix, observe_trace
     expected = 2 if failed else 1
     with _restart_host(_Path(store), _Path(table), "standalone") as (_, host):
-        _wait_for_files(lambda: len(_fixture_rows(resource / "results.jsonl")) == expected, host, 30)
-        def completed():
-            shown = fsm.run_json("instance", "show", instance, data_dir=store)
-            return shown["leaf"] == ("cancelled" if failed else "shipping") and not shown["effects_pending"]
-        _wait_for_files(completed, host, 10)
-        _retire_execution_owner(report, host, _Path(store), native.namespace, "standalone")
+        try:
+            _wait_for_files(lambda: len(_fixture_rows(resource / "results.jsonl")) == expected, host, 30)
+            def completed():
+                shown = fsm.run_json("instance", "show", instance, data_dir=store)
+                return shown["leaf"] == ("cancelled" if failed else "shipping") and not shown["effects_pending"]
+            _wait_for_files(completed, host, 10)
+            _retire_execution_owner(report, host, _Path(store), native.namespace, "standalone")
+        except Exception:
+            report.note("FSM_INSTALLED_BASELINE_FAILURE_EVIDENCE " + json.dumps(dict(
+                namespace=native.namespace, instance=instance,
+                stderr=bytes(host.acceptance_stderr).decode("utf-8", errors="replace"),
+                journal=read_journal_prefix(_Path(store))), sort_keys=True))
+            raise
     report.equal(host.returncode, 0, "the original baseline executor confirms its own retirement")
     records = read_journal_prefix(_Path(store))
     results = _fixture_rows(resource / "results.jsonl")
@@ -535,7 +542,7 @@ def _baseline_execute(report, store, table, native, resource, instance, failed):
 
 def the_executor_settles_a_pending_effect_and_advances_the_instance(report) -> None:
     """Real Linux containment; other platforms prove unsupported pre-launch refusal."""
-    with fsm.Scratch("executor") as scratch:
+    with fsm.Scratch("executor", preserve_on_failure=True) as scratch:
         store = scratch.dir("store")
         fsm.run("machine", "add", fsm.example("order_lifecycle.json"), data_dir=store).ok()
         fsm.run("instance", "new", "order_lifecycle", "--request-id=x1", data_dir=store).ok()
@@ -552,14 +559,14 @@ def the_executor_settles_a_pending_effect_and_advances_the_instance(report) -> N
             report.equal(after.get("effects_pending") or [], [], "the executor acknowledged the effect")
             history = fsm.run_json("instance", "history", "inst-x1", data_dir=store)
             kinds = [entry.get("kind") for entry in history.get("entries", [])]
-            report.true("EffectAcked" in kinds, f"the ack is journalled: {kinds}")
+            report.equal(kinds.count("ExecutionSettled"), 1, f"the native acknowledgement is journalled: {kinds}")
             report.equal(after.get("leaf"), "shipping", "the advance the table declares was applied")
         report.true(native.cleaned, "every original successful baseline domain closes before fixture retirement")
 
 
 def the_executor_exhausts_retries_onto_the_failure_path(report) -> None:
     """Actual retry exhaustion on Linux; unsupported hosts retain pending work."""
-    with fsm.Scratch("policy") as scratch:
+    with fsm.Scratch("policy", preserve_on_failure=True) as scratch:
         store = scratch.dir("store")
         fsm.run("machine", "add", fsm.example("order_lifecycle.json"), data_dir=store).ok()
         fsm.run("instance", "new", "order_lifecycle", "--request-id=p1", data_dir=store).ok()
@@ -572,7 +579,7 @@ def the_executor_exhausts_retries_onto_the_failure_path(report) -> None:
             _baseline_execute(report, store, table, native, resource, "inst-p1", True)
             history = fsm.run_json("instance", "history", "inst-p1", data_dir=store)
             kinds = [entry.get("kind") for entry in history.get("entries", [])]
-            report.true(any(kind in ("EffectAttempted", "EffectAcked") for kind in kinds), f"the attempts and the settlement are journalled: {kinds}")
+            report.equal(kinds.count("ExecutionSettled"), 2, f"the exact native attempt and acknowledgement are journalled: {kinds}")
             after = fsm.run_json("instance", "show", "inst-p1", data_dir=store)
             report.note(f"after exhaustion the instance is at {after.get('leaf')} ({after.get('status')})")
             report.true(after.get("leaf") == "cancelled" or after.get("status") == "cancelled", "exhaustion fired the machine's declared failure path rather than stalling")
