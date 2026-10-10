@@ -46,7 +46,7 @@ def main() -> int:
     parser.add_argument('only', nargs='?')
     arguments = parser.parse_args()
     selected = [name for name, _ in run.discover(arguments.only)]
-    counts = dict(zip(SCENARIOS[:12], CELLS[:12]))
+    counts = dict(zip(SCENARIOS[:-2], CELLS[:-2]))
     counts.update(the_executor_exhausts_retries_onto_the_failure_path=1,
                   the_executor_settles_a_pending_effect_and_advances_the_instance=1)
     cells = sum(counts.get(name, 0) for name in selected)

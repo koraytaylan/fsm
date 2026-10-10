@@ -920,6 +920,14 @@ actual passing run. Offline filters such as `seal` retain the ordinary Podman pa
 the focused `seal` dispatch checks its evidence-volume writes with the original
 root user inside the rootless container, without opting into native containment.
 
+The installed claim-cut scenario uses GDB hardware breakpoints outside the
+candidate to stop the ordinary standalone owner after its claim is durable and
+before binding; mapped executable instructions must match the original file.
+Its disposable systemd unit enforces 1 GiB memory, zero swap, a 45-second runtime
+and control-group termination, including on observer failure; original claim,
+forced termination, closure-before-entry and sequential recovery observations
+remain distinct, and a missing symbol or hardware facility fails the scenario.
+
 `acceptance/` builds an image with `cargo install --path crates/fsm-cli
 --locked`, the same command a consumer runs, and drives that binary from a
 client that shares no code with it: a standard-library MCP implementation

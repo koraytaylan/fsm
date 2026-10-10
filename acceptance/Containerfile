@@ -33,7 +33,7 @@ FROM docker.io/library/debian:bookworm-slim
 ENV TMPDIR=/root/.cache/fsm-acceptance-run/temporary
 RUN mkdir -p "$TMPDIR" \
     && apt-get update \
-    && apt-get install -y --no-install-recommends python3 ca-certificates git sudo systemd-sysv dbus mount \
+    && apt-get install -y --no-install-recommends python3 ca-certificates git sudo systemd-sysv dbus mount gdb \
     && useradd --create-home --uid 1000 --shell /bin/bash fsm \
     && printf 'fsm ALL=(ALL) NOPASSWD: ALL\n' > /etc/sudoers.d/fsm-acceptance \
     && chmod 0440 /etc/sudoers.d/fsm-acceptance \

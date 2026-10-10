@@ -717,6 +717,15 @@ SCENARIOS = (executor_contract_fixtures_are_checked_without_external_work,
              executor_supervisor_death_refuses_until_a_new_epoch_recovers_original_work)
 
 
+def executor_standalone_claim_cut_recovers_without_unclaimed_entry(report) -> None:
+    from .executor_crash import installed_claim_cut
+    for kind in ('process', 'mcp'):
+        installed_claim_cut(report, kind)
+
+
+SCENARIOS += (executor_standalone_claim_cut_recovers_without_unclaimed_entry,)
+
+
 def _name(value) -> bool:
     return isinstance(value, str) and 0 < len(value) <= MAX_TRACE_TEXT
 

@@ -25,6 +25,7 @@ on:
           - executor_active_drain_preserves_original_success_and_pending_work
           - executor_stdio_paused_and_retired_output_preserves_native_work
           - executor_supervisor_death_refuses_until_a_new_epoch_recovers_original_work
+          - executor_standalone_claim_cut_recovers_without_unclaimed_entry
           - full
 
 permissions:
@@ -53,6 +54,11 @@ jobs:
       - run: rustup toolchain install stable --profile minimal
       - name: Focused independent observer checks
         run: python3 -m unittest discover -s acceptance/tests -p 'test*observer.py'
+      - name: Install the external hardware observer
+        if: ${{ inputs.scenario == 'executor_standalone_claim_cut_recovers_without_unclaimed_entry' || inputs.scenario == 'full' }}
+        run: |
+          sudo -n env "TMPDIR=$TMPDIR" apt-get update
+          sudo -n env "TMPDIR=$TMPDIR" apt-get install -y --no-install-recommends gdb
       - name: Consumer install and actual contained workflows
         env:
           FSM_INSTALLED_CANDIDATE: ${{ inputs.candidate }}
