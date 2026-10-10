@@ -101,9 +101,8 @@ class StdioClient:
         self._stderr = bytearray()
 
         def errors():
-            while chunk := self.process.stderr.read(4096):
-                encoded = chunk.encode("utf-8")
-                self._stderr.extend(encoded[:max(0, 65_536 - len(self._stderr))])
+            while chunk := self.process.stderr.buffer.read(4096):
+                self._stderr.extend(chunk[:max(0, 65_536 - len(self._stderr))])
 
         self._error_worker = threading.Thread(target=errors, daemon=True)
         self._error_worker.start()

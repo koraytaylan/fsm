@@ -461,7 +461,7 @@ for line in sys.stdin:
 
     def test_stdio_drains_diagnostics_without_waiting_for_a_reply(self):
         program = '''import sys, json
-sys.stderr.write("x" * 200000)
+sys.stderr.buffer.write(b"\\xff" * 200000)
 sys.stderr.flush()
 for line in sys.stdin:
     request = json.loads(line)
