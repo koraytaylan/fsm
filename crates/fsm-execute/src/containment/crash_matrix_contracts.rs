@@ -67,23 +67,31 @@ pub(super) fn publish_sensitivity(
     case: Scenario,
     passed: bool,
 ) {
-    // Root independently checks the actual physical observation and entry permit;
-    // verify() already authenticated closure and memory receipts for every launch.
+    // Closing revokes entry grants; the durable launch intent and physical PID
+    // observation survive original closure, whose memory evidence verify() checks.
     let entered = !fs::read(resource.join("root-entered")).unwrap().is_empty();
-    let entries = fs::read_dir(&fixture.directory)
+    let launches = fs::read_dir(&fixture.directory)
         .unwrap()
         .filter_map(|entry| {
             let entry = entry.unwrap();
             let name = entry.file_name();
             let name = name.to_str().unwrap();
-            (name.starts_with("entry-") && name.ends_with(".json")).then_some(entry.path())
+            (name.starts_with("launch-") && name.ends_with(".json")).then_some(entry.path())
         })
         .count();
     assert_eq!(
-        entries,
+        launches,
         usize::from(entered),
-        "physical entry and protected permit disagree"
+        "physical entry and protected launch disagree"
     );
+    for entry in fs::read_dir(&fixture.directory).unwrap() {
+        let name = entry.unwrap().file_name();
+        let name = name.to_str().unwrap();
+        assert!(
+            !name.starts_with("entry-"),
+            "original closure retained an entry grant"
+        );
+    }
     assert_eq!(
         passed, !entered,
         "observer verdict differs from Root entry proof"
