@@ -1,5 +1,9 @@
 # Releasing
 
+Degraded HTTP initialization now returns its original JSON-RPC reply instead
+of replacing it with the trailing diagnostic; the diagnostic remains available
+in the same session's bounded SSE history, with no format or version changes.
+
 Contract-check discovery now fits the existing 38,000-byte tools/list budget
 through shorter guidance; schemas retain their constraints, older tools retain
 their relative order, and degraded-tool discovery includes independent draft

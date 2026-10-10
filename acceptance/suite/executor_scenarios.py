@@ -378,6 +378,15 @@ def _installed_refusal(report, transport: str, kind: str, mode: str) -> None:
             before = _journal_bytes(store)
             with _installed_client(store, table_path, transport) as (client, host):
                 client.initialize()
+                diagnostic = None
+                if mode == "degraded" and transport == "http":
+                    client.open_stream(last_event_id="0")
+                    diagnostic = client.await_event(timeout=2)
+                    report.equal(diagnostic.get("method"), "notifications/message", "the original HTTP session retains its initialization diagnostic")
+                    report.true(diagnostic.get("params", {}).get("data", {}).get("degraded") is True,
+                                "the retained notification identifies the actual degraded store")
+                    report.true("store/non_canonical" in diagnostic["params"]["data"]["detail"],
+                                "the retained diagnostic carries the original canonical-byte failure")
                 capability = json.loads(client.request("resources/read", {"uri": "fsm://executor"})["contents"][0]["text"])
                 report.equal(capability["mode"], mode, "discovery exposes the actual fallback mode")
                 report.equal(capability["progress"], "external" if mode == "read-only" else "unavailable",
@@ -411,7 +420,7 @@ def _installed_refusal(report, transport: str, kind: str, mode: str) -> None:
                 report.note("FSM_INSTALLED_REFUSAL_EVIDENCE " + json.dumps(dict(
                     namespace=native.namespace, transport=transport, handler_kind=kind, mode=mode,
                     instance=instance, pending=pending, capability=capability, draft=draft,
-                    first_refusal=first, after=second, journal=read_journal_prefix(store),
+                    first_refusal=first, after=second, diagnostic=diagnostic, journal=read_journal_prefix(store),
                     journal_sha256={name: hashlib.sha256(value).hexdigest() for name, value in before.items()}), sort_keys=True))
                 if transport == "http":
                     report.true(client.delete_session() in (200, 204), "the fallback HTTP session can be deleted")

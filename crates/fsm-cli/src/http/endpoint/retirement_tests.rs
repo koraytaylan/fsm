@@ -51,6 +51,44 @@ fn session_header(response: &str) -> String {
 }
 
 #[test]
+fn degraded_http_initialize_keeps_its_reply_and_original_session_diagnostic() {
+    let endpoint = Endpoint::new(DEFAULT_PATH, None, "degraded").with_degraded(
+        std::env::temp_dir(),
+        "store/non_canonical: controlled fixture fault".into(),
+    );
+    let mut output = Vec::new();
+    endpoint
+        .serve(
+            &request(INITIALIZE, None),
+            &mut FixedClock::new(1000, 0),
+            &mut output,
+        )
+        .unwrap();
+    let response = String::from_utf8(output).unwrap();
+    let id = session_header(&response);
+    let body = response.split_once("\r\n\r\n").unwrap().1;
+    let reply = parse(body.as_bytes(), &JsonLimits::DEFAULT).unwrap();
+    assert_eq!(reply.get("id"), Some(&Value::Num("1".into())));
+    assert!(reply.get("result").is_some(), "{reply:?}");
+    assert!(reply.get("method").is_none(), "{reply:?}");
+    let state = endpoint.session_live(&id).unwrap();
+    let diagnostics = state.stream.resume_after(0).unwrap();
+    assert_eq!(diagnostics.len(), 1);
+    let diagnostic = parse(&diagnostics[0].data, &JsonLimits::DEFAULT).unwrap();
+    assert_eq!(
+        diagnostic.get("method").and_then(Value::as_str),
+        Some("notifications/message")
+    );
+    assert_eq!(
+        diagnostic
+            .get("params")
+            .and_then(|parameters| parameters.get("data"))
+            .and_then(|data| data.get("degraded")),
+        Some(&Value::Bool(true))
+    );
+}
+
+#[test]
 fn expiry_retires_every_resource_without_waiting_for_protocol_state_or_reviving_ids() {
     let endpoint = Arc::new(Endpoint::new(DEFAULT_PATH, None, ""));
     let id = initialize(&endpoint, 1000);

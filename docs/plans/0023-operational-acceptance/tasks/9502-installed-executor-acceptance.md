@@ -7,6 +7,12 @@ depends_on:
   - acceptance-evidence-reports
 gated: false
 touches:
+  - crates/fsm-cli/src/http/endpoint.rs
+  - crates/fsm-cli/src/http/endpoint/retirement_tests.rs
+  - docs/SPEC.md
+  - docs/API-POLICY.md
+  - docs/EMBEDDING.md
+  - docs/RELEASE.md
   - .github/workflows/installed-executor-check.yml
   - acceptance/run-installed-executor.py
   - acceptance/suite/native_fixture.py

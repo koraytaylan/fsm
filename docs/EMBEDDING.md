@@ -1288,6 +1288,10 @@ initialization and serves `store_doctor` from the original directory, while
 store-dependent calls refuse and no handler starts. These fallback modes do
 not run an embedded executor even when `--execute` was requested.
 
+Buffered JSON initialization returns the matching reply even when a degraded
+store emits a diagnostic afterwards; the diagnostic remains in that session's
+SSE history for its event-stream client.
+
 `initialize` mints a session and returns it in `Mcp-Session-Id`. Every later
 request must carry that header. A request without it is `400`; one naming a
 session this server does not have is **`404`, and `404` means re-initialize**

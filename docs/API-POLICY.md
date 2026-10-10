@@ -1,5 +1,10 @@
 # API and version policy
 
+Buffered HTTP JSON replies now select the original request ID rather than the
+last output line, preserving trailing degraded-store diagnostics in the same
+session's bounded SSE history; this transport correction changes no public
+signature, format, error code or version.
+
 Ordinary hosted HTTP tool calls now reach the existing command admission while
 an elicitation in the same session waits, retaining the original cancellation
 registry and leaving its reverse mailbox to the question waiter. This private

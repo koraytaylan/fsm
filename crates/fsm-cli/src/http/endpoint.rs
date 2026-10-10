@@ -358,6 +358,7 @@ impl Endpoint {
         streaming_output: Option<&Notifier>,
     ) -> std::io::Result<()> {
         let (id, method, params) = call;
+        let response_id = id.clone();
         let now_ms = clock.now_ms();
         // `initialize` mints the session; everything else must name one.
         let session_id = if method == "initialize" {
@@ -539,9 +540,21 @@ impl Endpoint {
             }
             return Ok(());
         }
-        // The last line is the response; anything before it was written by a
-        // handler that had nothing to stream to.
-        let response = written.lines().next_back().unwrap_or("{}").to_string();
+        // SPEC's buffered JSON POST rule: initialization can log a degraded
+        // diagnostic after its reply; line order does not identify a response.
+        let mut response = "{}";
+        for line in written.lines() {
+            if let Ok(frame) = parse(line.as_bytes(), &JsonLimits::DEFAULT) {
+                if frame.get("id") == Some(&response_id) {
+                    response = line;
+                } else if frame.get("id").is_none() && frame.get("method").is_some() {
+                    feed_out.send(&frame).inspect_err(|_| {
+                        self.sessions.close(&session_id);
+                    })?;
+                }
+            }
+        }
+        let response = response.to_string();
         let mut answer = Response::json(200, response.into_bytes());
         if method == "initialize" {
             answer = answer.with_header("Mcp-Session-Id", &session_id);

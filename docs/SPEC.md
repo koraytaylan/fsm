@@ -1,5 +1,10 @@
 # fsm — normative specification
 
+Buffered JSON POST replies MUST select the response for the original JSON-RPC
+request ID; notifications written before or after that response MUST NOT replace
+it. Those notifications MUST remain available in the original session's SSE
+history under its existing event and byte bounds.
+
 HTTP buffered responses MUST independently bound aggregate retained Vec
 capacity to 8 MiB across all frames. Exact-bound capacity MUST be accepted;
 excess MUST discard the buffer and refuse later suffix writes and publication.

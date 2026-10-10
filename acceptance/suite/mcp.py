@@ -384,12 +384,15 @@ class HttpClient:
                     continue
         raise McpError(f"{name} returned no structured result: {json.dumps(result)}")
 
-    def open_stream(self) -> None:
+    def open_stream(self, *, last_event_id: str | None = None) -> None:
         """Hold a GET open for server-sent events, on its own connection."""
         if self._stream_reader is not None:
             raise McpError("a client event stream is already open")
         self._stream_connection = self._connection()
-        self._stream_connection.request("GET", self.path, headers=self._headers(True))
+        headers = self._headers(True)
+        if last_event_id is not None:
+            headers["Last-Event-ID"] = last_event_id
+        self._stream_connection.request("GET", self.path, headers=headers)
         self._stream_socket = self._stream_connection.sock
         self._stream = self._stream_connection.getresponse()
         if self._stream.status != 200:
