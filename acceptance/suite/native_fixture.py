@@ -337,8 +337,13 @@ print(json.dumps(dict(namespace=namespace,records=rows),sort_keys=True))
         if error is not None:
             raise RuntimeError("native fixture retirement incomplete: " + str(error)) from error
 
-    def __exit__(self, exception_type, *_rest):
-        self._retire(exception_type is None)
+    def __exit__(self, exception_type, exception, _traceback):
+        try:
+            self._retire(exception_type is None)
+        except Exception as retirement:
+            if exception is None:
+                raise
+            raise RuntimeError(f"{exception}; fixture retirement also failed: {retirement}") from exception
 
 
 def sys_executable() -> str:

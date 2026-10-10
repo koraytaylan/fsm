@@ -197,11 +197,17 @@ def installed_restart(report, kind: str, control: str, transport: str) -> None:
         raise ValueError("unsupported installed owner interruption cell")
     fixture = Path(fsm.REPO) / "acceptance/fixtures/executor_handler.py"
     machine = Path(fsm.REPO) / "acceptance/fixtures/executor_workflow.json"
-    with fsm.Scratch("restart-installed") as scratch, DisposableAuthority(fixture) as native:
+    with fsm.Scratch("restart-installed", preserve_on_failure=True) as scratch, DisposableAuthority(fixture) as native:
         store = Path(scratch.dir("store"))
         fsm.run("machine", "add", str(machine), data_dir=str(store)).ok()
-        table_path = native.approve(store, workflow_table(native.resource, native.handler,
-            kind=kind, outcome="success", release=native.release))
+        table = workflow_table(native.resource, native.handler,
+            kind=kind, outcome="success", release=native.release)
+        # The host can spend ten seconds stopping before recovery begins;
+        # a ten-second fixture barrier must not invent a result during that cut.
+        validation = next(handler for handler in table["handlers"] if handler["effect"] == "validate_resource")
+        validation["argv"][validation["argv"].index("--wait-seconds") + 1] = "60"
+        validation["timeout_ms"] = 70_000
+        table_path = native.approve(store, table)
         if transport == "standalone":
             created = fsm.run_json("instance", "new", "acceptance_workflow",
                 "--request-id=restart-installed-create", data_dir=str(store))

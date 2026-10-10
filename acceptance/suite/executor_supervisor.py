@@ -77,7 +77,7 @@ def installed_supervisor_restart(report, kind: str, transport: str) -> None:
         raise ValueError("unsupported installed supervisor death cell")
     fixture = Path(fsm.REPO) / "acceptance/fixtures/executor_handler.py"
     machine = Path(fsm.REPO) / "acceptance/fixtures/executor_workflow.json"
-    with fsm.Scratch("supervisor-installed") as scratch, DisposableAuthority(fixture) as native:
+    with fsm.Scratch("supervisor-installed", preserve_on_failure=True) as scratch, DisposableAuthority(fixture) as native:
         store = Path(scratch.dir("store"))
         fsm.run("machine", "add", str(machine), data_dir=str(store)).ok()
         table = workflow_table(native.resource, native.handler, kind=kind, outcome="success", release=native.release)

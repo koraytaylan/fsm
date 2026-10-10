@@ -67,7 +67,7 @@ def installed_active_drain(report, transport: str, kind: str) -> None:
         raise ValueError("unsupported installed active drain cell")
     fixture = Path(fsm.REPO) / "acceptance/fixtures/executor_handler.py"
     machine = Path(fsm.REPO) / "acceptance/fixtures/executor_workflow.json"
-    with fsm.Scratch("drain-installed") as scratch, DisposableAuthority(fixture) as native:
+    with fsm.Scratch("drain-installed", preserve_on_failure=True) as scratch, DisposableAuthority(fixture) as native:
         store = Path(scratch.dir("store"))
         fsm.run("machine", "add", str(machine), data_dir=str(store)).ok()
         table = native.approve(store, workflow_table(native.resource, native.handler,

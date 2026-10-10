@@ -67,6 +67,19 @@ def validate_installed_report(report: dict, scenario: str, candidate: str, binar
         raise ValueError("installed scenario evidence is incomplete or inconsistent")
 
 
+def retain_failed_stores(temporary: Path, evidence: Path, cells: int) -> None:
+    """Retain only this task's failed stores, without following their symlinks."""
+    tags = ("executor", "policy", "restart-installed", "quiet-installed",
+            "refusing-installed", "paused-stdio", "drain-installed", "supervisor-installed")
+    stores = [directory for tag in tags for directory in temporary.glob(f"fsm-acceptance-{tag}-*")]
+    if len(stores) > max(2, cells):
+        raise RuntimeError("retained original store inventory exceeds its bound")
+    for directory in stores:
+        if directory.is_symlink() or not directory.is_dir():
+            raise RuntimeError("retained original store is not a task directory")
+        shutil.copytree(directory, evidence / ("failed-" + directory.name), symlinks=True)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--candidate", required=True)
@@ -142,13 +155,7 @@ def main() -> int:
         shutil.copy2(receipt, evidence / "build-receipt.json")
         for directory in temporary.glob("installed-native-*"):
             shutil.copytree(directory, evidence / directory.name)
-        if scenario in {"baseline", "full"}:
-            retained_stores = [directory for pattern in ("fsm-acceptance-executor-*", "fsm-acceptance-policy-*")
-                               for directory in temporary.glob(pattern)]
-            if len(retained_stores) > 2:
-                raise RuntimeError("retained baseline store inventory exceeds its bound")
-            for directory in retained_stores:
-                shutil.copytree(directory, evidence / ("failed-" + directory.name), symlinks=True)
+        retain_failed_stores(temporary, evidence, cells)
         reports = list((evidence / "reports").glob("*/report.json"))
         if result.returncode != 0 or len(reports) != 1:
             raise RuntimeError("installed autonomous scenario failed or its report is missing")

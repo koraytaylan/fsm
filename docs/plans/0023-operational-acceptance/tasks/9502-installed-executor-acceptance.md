@@ -43,6 +43,7 @@ touches:
   - acceptance/tests/test_baseline_observer.py
   - acceptance/tests/test_installed_inventory_observer.py
   - acceptance/tests/test_notification_observer.py
+  - acceptance/tests/test_native_failure_observer.py
   - acceptance/fixtures/executor_handler.py
   - acceptance/fixtures/executor_workflow.json
   - acceptance/Containerfile

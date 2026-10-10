@@ -422,7 +422,7 @@ def _assert_refusal(report, client, instance: str, mode: str) -> dict:
 def _installed_refusal(report, transport: str, kind: str, mode: str) -> None:
     fixture = Path(fsm.REPO) / "acceptance/fixtures/executor_handler.py"
     machine = Path(fsm.REPO) / "acceptance/fixtures/executor_workflow.json"
-    with fsm.Scratch("refusing-installed") as scratch, DisposableAuthority(fixture) as native:
+    with fsm.Scratch("refusing-installed", preserve_on_failure=True) as scratch, DisposableAuthority(fixture) as native:
         store = Path(scratch.dir("store"))
         fsm.run("machine", "add", str(machine), data_dir=str(store)).ok()
         table = workflow_table(native.resource, native.handler, kind=kind, outcome="success")
@@ -594,7 +594,7 @@ def _installed_workflow(report, transport: str, kind: str, outcome: str, *,
     events, exit_codes, mutations, expected_state, terminal = expected[outcome]
     failure_class = "nonzero_exit" if kind == "process" else "mcp_error"
     stopped_statuses = tuple("ok" if code == 0 else failure_class for code in exit_codes)
-    with fsm.Scratch("quiet-installed") as scratch, DisposableAuthority(fixture) as native:
+    with fsm.Scratch("quiet-installed", preserve_on_failure=True) as scratch, DisposableAuthority(fixture) as native:
         store = Path(scratch.dir("store"))
         fsm.run("machine", "add", str(machine), data_dir=str(store)).ok()
         table = workflow_table(native.resource, native.handler, kind=kind, outcome=outcome,

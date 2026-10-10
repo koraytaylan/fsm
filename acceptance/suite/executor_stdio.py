@@ -67,7 +67,7 @@ def installed_paused_stdio(report, kind: str) -> None:
     # SPEC context declarations: inert typed data makes one bounded read reply
     # larger than the real kernel pipe, without publishing a progress request.
     definition["context"] = [{"name": "observer_padding", "ty": "str", "init": PADDING}]
-    with fsm.Scratch("paused-stdio") as scratch, DisposableAuthority(fixture) as native:
+    with fsm.Scratch("paused-stdio", preserve_on_failure=True) as scratch, DisposableAuthority(fixture) as native:
         store = Path(scratch.dir("store"))
         machine = scratch.write("workflow.json", json.dumps(definition))
         fsm.run("machine", "add", machine, data_dir=str(store)).ok()
