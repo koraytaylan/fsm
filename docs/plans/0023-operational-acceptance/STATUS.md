@@ -298,6 +298,23 @@ named guard controls pass; filtered proof remains release-ineligible.
 Frozen implementing-author review digest:
 `c6018826fd1a6a2e79763d01609605fb5f55ccd9308610348934c2c6aecbdbbb`.
 
+Frozen helper-closure acceptance for `1a88f70d..97c8e82d` establishes four
+process/MCP standalone/stdio cells at the unchanged installed Root helper's
+exact hardware entry after domain closure and before result publication:
+[disposable installed evidence](https://github.com/koraytaylan/fsm/actions/runs/38067488641)
+retains 168 passing assertions, twenty original native closures, 92 journal
+records, 56 raw trace records and four explicit successor-owner drains.
+Independent host and owned-inferior retirement preserve the original claim;
+the same-configuration helper's next irreversible epoch permits receipt-only
+recovery without fabricating an original result, followed by sequential real
+successor work, restoration, verification/replay and owned fixture/helper removal.
+Replay revalidates 1,306 source blobs and retained CLI/helper bytes; protected
+debugger artifacts preserve their original bytes through repeated capture.
+31 focused and 160 disposable observer checks, three named guard controls and
+syntax/size checks pass; original failed attempts remain failed in the task cache,
+and filtered proof remains release-ineligible, with frozen author review digest:
+`0df648c68a58a3b8d97c56485ddaa077a6dc702391b3c43b29c5b32cfedab606`.
+
 Task 9502 remains in progress: remaining installed crash cuts are outstanding.
 Sustained native operation, nine human-reviewed uncoached
 live-model sessions, Desktop compatibility and independent final review remain
