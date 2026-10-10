@@ -1,7 +1,9 @@
 """Shared installed-inventory and original-failure artifact checks."""
 import json
+import os
 from pathlib import Path
 import shutil
+import stat
 
 SCENARIOS = ("executor_stdio_process_success_progresses_with_a_quiet_client",
              "executor_stdio_outcome_matrix_progresses_with_quiet_clients",
@@ -65,4 +67,24 @@ def retain_failed_stores(temporary: Path, evidence: Path, cells: int) -> None:
     for directory in stores:
         if directory.is_symlink() or not directory.is_dir():
             raise RuntimeError("retained original store is not a task directory")
-        shutil.copytree(directory, evidence / ("failed-" + directory.name), symlinks=True)
+        endpoints = []
+        def retain_stream_identity(parent, names):
+            if Path(parent) != directory / 'debugger':
+                return []
+            omitted = []
+            for name in names:
+                if name not in ('stdin.fifo', 'stdout.fifo', 'stderr.fifo'):
+                    continue
+                path = Path(parent) / name
+                metadata = path.lstat()
+                if (not stat.S_ISFIFO(metadata.st_mode) or metadata.st_uid != os.geteuid()
+                    or metadata.st_mode & 0o077):
+                    raise RuntimeError('retained original stdio endpoint is not a private owned FIFO')
+                endpoints.append(dict(path=str(path.relative_to(directory)),device=metadata.st_dev,
+                    inode=metadata.st_ino,uid=metadata.st_uid,mode=metadata.st_mode))
+                omitted.append(name)
+            return omitted
+        destination = evidence / ("failed-" + directory.name)
+        shutil.copytree(directory, destination, symlinks=True, ignore=retain_stream_identity)
+        if endpoints:
+            (destination / 'original-stdio-endpoints.json').write_text(json.dumps(endpoints, sort_keys=True), encoding='utf-8')

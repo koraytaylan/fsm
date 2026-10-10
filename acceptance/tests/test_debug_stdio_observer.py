@@ -11,6 +11,7 @@ import unittest
 from acceptance.suite.executor_debug_stdio import StdioPipes, validate_stdio
 from acceptance.suite.fsm import Scratch
 from acceptance.suite.mcp import StdioClient, PROTOCOL_VERSION
+from acceptance.suite.installed import retain_failed_stores
 
 
 class DebugStdioTests(unittest.TestCase):
@@ -75,3 +76,20 @@ for line in sys.stdin:
                 pipes.release_guards()
                 if child.poll() is None:child.kill();child.wait(timeout=5)
                 if client is not None:client.close()
+
+    def test_failed_store_retains_original_bytes_and_fifo_identities_without_reading_streams(self):
+        with Scratch('labelled-fifo-retention') as scratch:
+            root=Path(scratch.path);store=root/'fsm-acceptance-settlement-cut-installed-labelled'
+            (store/'debugger').mkdir(parents=True);(store/'store').mkdir()
+            (store/'store'/'journal.jsonl').write_bytes(b'labelled original failure bytes\n')
+            import os
+            for name in ('stdin','stdout','stderr'):os.mkfifo(store/'debugger'/(name+'.fifo'),0o600)
+            evidence=root/'evidence';evidence.mkdir()
+            retain_failed_stores(root,evidence,1)
+            retained=evidence/('failed-'+store.name)
+            self.assertEqual((retained/'store'/'journal.jsonl').read_bytes(),b'labelled original failure bytes\n')
+            identities=json.loads((retained/'original-stdio-endpoints.json').read_text())
+            self.assertEqual({row['path'] for row in identities},{'debugger/'+name+'.fifo' for name in ('stdin','stdout','stderr')})
+            for row in identities:
+                self.assertEqual(row['inode'],(store/row['path']).stat().st_ino)
+                self.assertFalse((retained/row['path']).exists())
