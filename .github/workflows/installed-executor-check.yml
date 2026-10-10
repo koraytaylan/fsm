@@ -24,6 +24,7 @@ on:
           - executor_standalone_shutdown_and_restart_preserve_original_claims
           - executor_active_drain_preserves_original_success_and_pending_work
           - executor_stdio_paused_and_retired_output_preserves_native_work
+          - executor_supervisor_death_refuses_until_a_new_epoch_recovers_original_work
 
 permissions:
   contents: read

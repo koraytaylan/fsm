@@ -68,8 +68,8 @@ def process_observation(identity: dict) -> dict:
                 pid=pid, pid_starttime=starttime, observed_stat=encoded.decode("utf-8"))
 
 
-def original_completion(response: dict, attestation: dict, original_claim: dict) -> dict:
-    """SPEC's private response hash authenticates a cancellation payload."""
+def original_interrupted_completion(response: dict, attestation: dict, original_claim: dict) -> dict | None:
+    """Authenticate an original interrupted response, including no candidate."""
     result = response.get("result", {})
     claim = result.get("claim", {})
     journal_hash = "sha256:" + original_claim["hash"]
@@ -87,9 +87,17 @@ def original_completion(response: dict, attestation: dict, original_claim: dict)
         or attestation.get("journal_claim") != journal_hash
         or attestation.get("response_hash") != response_hash
         or result.get("failure_class") is not None
-        or result.get("candidate") != {"error": "exec/cancelled", "status": -1}):
+        or (result.get("candidate") is not None and result["candidate"] != {"error": "exec/cancelled", "status": -1})):
         raise ValueError("the original cancellation result lacks its matching protected attestation")
-    return result["candidate"]
+    return result.get("candidate")
+
+
+def original_completion(response: dict, attestation: dict, original_claim: dict) -> dict:
+    """The existing owner-interruption cells require an authenticated payload."""
+    candidate = original_interrupted_completion(response, attestation, original_claim)
+    if candidate is None:
+        raise ValueError("the original cancellation result lacks its matching protected attestation")
+    return candidate
 
 
 def interruption_ledger(records: list[dict], instance: str, original_run: int,

@@ -20,19 +20,66 @@ from .fsm import task_cache
 
 AUTHORITY = Path("/usr/libexec/fsm-containment-authority")
 BASE = Path("/var/lib/fsm-containment")
-BROKER_OWNER = """import os,re,select,subprocess,sys,time
+BROKER_OWNER = """import json,os,re,select,subprocess,sys,time
+from pathlib import Path
 namespace=sys.argv[1]
 if not re.fullmatch('[a-f0-9]{32}',namespace): raise ValueError('invalid fixture namespace')
 os.umask(0o077)
-child=subprocess.Popen(['/usr/libexec/fsm-containment-authority','serve',namespace,'1'],stdin=subprocess.DEVNULL)
+directory=Path('/var/lib/fsm-containment')/namespace/'authority-1'
+stage=Path('/usr/libexec/fsm-acceptance-'+namespace)
+def start():
+ return subprocess.Popen(['/usr/libexec/fsm-containment-authority','serve',namespace,'1'],stdin=subprocess.DEVNULL)
+def identity():
+ with Path('/proc',str(child.pid),'stat').open('rb') as stream: raw=stream.read(4097)
+ fields=raw.rpartition(b') ')[2].split()
+ if len(raw)>4096 or len(fields)<20 or not fields[19].isdigit(): raise ValueError('owned broker birth identity invalid')
+ return dict(pid=child.pid,pid_starttime=fields[19].decode())
+def route():
+ with (directory/'broker/route.json').open('rb') as stream: raw=stream.read(65537)
+ if len(raw)>65536: raise ValueError('owned broker route exceeds bound')
+ value=json.loads(raw)
+ if not isinstance(value,dict) or value.get('format')!='fsm.native-broker-route/1' or type(value.get('epoch')) is not int: raise ValueError('owned broker route invalid')
+ return value
+def publish(phase, process, status, observed_route):
+ value=dict(format='fsm.acceptance-supervisor/1',namespace=namespace,phase=phase,process=process,returncode=status,route=observed_route)
+ pending=stage/('supervisor-'+phase+'.pending')
+ with pending.open('xb') as stream:
+  stream.write(json.dumps(value,sort_keys=True,separators=(',',':')).encode());stream.flush();os.fchmod(stream.fileno(),0o444);os.fsync(stream.fileno())
+ os.rename(pending,stage/('supervisor-'+phase+'.json'))
+ descriptor=os.open(stage,os.O_RDONLY)
+ try: os.fsync(descriptor)
+ finally: os.close(descriptor)
+child=start()
 explicit=False
+killed=False
+restarted=False
 try:
  deadline=time.monotonic()+120
- while child.poll() is None and time.monotonic()<deadline:
+ while time.monotonic()<deadline:
+  status=child.poll()
+  if status is not None and not (killed and not restarted): raise RuntimeError('owned broker exited unexpectedly')
   ready,_,_=select.select([sys.stdin.buffer],[],[],0.05)
   if ready:
-   explicit=os.read(sys.stdin.fileno(),1)==b'Q'
-   break
+   command=os.read(sys.stdin.fileno(),1)
+   if command==b'Q':
+    explicit=True;break
+   if command==b'K' and not killed and status is None:
+    original=identity();original_route=route()
+    if original_route['epoch']!=1: raise ValueError('original broker epoch differs')
+    child.kill();child.wait(timeout=5)
+    if child.returncode!=-9: raise RuntimeError('owned broker forced kill was not observed')
+    publish('dead',original,child.returncode,original_route);killed=True
+   elif command==b'R' and killed and not restarted and status==-9:
+    child=start();ready_deadline=min(deadline,time.monotonic()+10)
+    while True:
+     if child.poll() is not None: raise RuntimeError('successor broker exited before its route')
+     observed=route()
+     if observed['epoch']==2: break
+     if observed['epoch']!=1 or time.monotonic()>=ready_deadline: raise RuntimeError('successor broker epoch was not published')
+     time.sleep(0.01)
+    if observed['configuration']!=original_route['configuration']: raise ValueError('successor broker configuration differs')
+    publish('restarted',identity(),None,observed);restarted=True
+   else: raise ValueError('invalid owned broker control sequence')
 finally:
  if child.poll() is None:
   child.terminate()
@@ -188,6 +235,40 @@ class DisposableAuthority:
         self.process.wait(timeout=15)
         if self.process.returncode != 0:
             raise RuntimeError("disposable broker retirement was not observed")
+
+    def _supervisor_command(self, command: bytes, phase: str) -> dict:
+        require_disposable_runner()
+        if (command, phase) not in ((b"K", "dead"), (b"R", "restarted")) or self.process is None or self.process.poll() is not None:
+            raise ValueError("supervisor command requires its original live owned coordinator")
+        self.process.stdin.write(command)
+        self.process.stdin.flush()
+        marker = self.stage / ("supervisor-" + phase + ".json")
+        deadline = time.monotonic() + 12
+        while not marker.exists():
+            if self.process.poll() is not None or time.monotonic() >= deadline:
+                raise RuntimeError("owned supervisor did not publish its original " + phase + " observation")
+            time.sleep(0.01)
+        metadata = marker.lstat()
+        import stat
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != 0 or stat.S_IMODE(metadata.st_mode) != 0o444:
+            raise ValueError("supervisor observation is not the original protected regular record")
+        with marker.open("rb") as stream:
+            encoded = stream.read(65_537)
+        if len(encoded) > 65_536:
+            raise ValueError("supervisor observation exceeds its byte bound")
+        observed = dict(value=json.loads(encoded), path=str(marker), uid=metadata.st_uid,
+            mode=stat.S_IMODE(metadata.st_mode), device=metadata.st_dev, inode=metadata.st_ino,
+            sha256=hashlib.sha256(encoded).hexdigest())
+        (self.cache / ("supervisor-" + phase + ".json")).write_text(json.dumps(observed, sort_keys=True), encoding="utf-8")
+        return observed
+
+    def kill_broker(self) -> dict:
+        """The Root coordinator kills and reaps only its original owned child."""
+        return self._supervisor_command(b"K", "dead")
+
+    def restart_broker(self) -> dict:
+        """A fresh child must publish the next irreversible original epoch."""
+        return self._supervisor_command(b"R", "restarted")
 
     def _remove_owned(self) -> None:
         # Fixed code validates inode identity and allowed parents again as root;

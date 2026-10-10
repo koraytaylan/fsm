@@ -353,6 +353,14 @@ def executor_stdio_paused_and_retired_output_preserves_native_work(report) -> No
         installed_restart(report, kind, "retired-output", "stdio")
 
 
+def executor_supervisor_death_refuses_until_a_new_epoch_recovers_original_work(report) -> None:
+    """Kill the independent broker; original live work requires proved recovery."""
+    from .executor_supervisor import installed_supervisor_restart
+    for transport in ("stdio", "http", "standalone"):
+        for kind in ("process", "mcp"):
+            installed_supervisor_restart(report, kind, transport)
+
+
 @contextmanager
 def _unread_http_subscription(client, uri: str):
     """A separate actual subscriber retains its body unread until retirement."""
@@ -690,7 +698,8 @@ SCENARIOS = (executor_contract_fixtures_are_checked_without_external_work,
              executor_http_shutdown_and_restart_preserve_original_claims,
              executor_standalone_shutdown_and_restart_preserve_original_claims,
              executor_active_drain_preserves_original_success_and_pending_work,
-             executor_stdio_paused_and_retired_output_preserves_native_work)
+             executor_stdio_paused_and_retired_output_preserves_native_work,
+             executor_supervisor_death_refuses_until_a_new_epoch_recovers_original_work)
 
 
 def _name(value) -> bool:

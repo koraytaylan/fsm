@@ -294,7 +294,7 @@ def main() -> int:
         return 0 if args.mode == "exit-ok" else 3
     if (args.root is None or (args.mode == "operation" and args.operation is None) or not args.run or not args.resource
         or len(args.run) > 223 or len(args.resource) > 256 or not 1 <= args.items <= 16
-        or not 0 < args.wait_seconds <= 10
+        or not 0 < args.wait_seconds <= 60
         or (args.failure == "partial" and args.operation != "process")
         or (args.failure == "restore" and args.operation != "restore")):
         parser.error("operation needs bounded root/run/resource/operation inputs")
