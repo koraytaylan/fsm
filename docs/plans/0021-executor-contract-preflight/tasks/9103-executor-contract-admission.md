@@ -36,6 +36,8 @@ touches:
   - crates/fsm-execute/tests/contract_admission/provisioned/settlement.rs
   - crates/fsm-execute/src/containment/crash_matrix_native_tests.rs
   - crates/fsm-execute/src/containment/crash_matrix_contracts.rs
+  - crates/fsm-execute/src/containment/broker.rs
+  - crates/fsm-execute/src/containment/workflow_failure_diagnostics.rs
   - crates/fsm-execute/src/containment/broker_disconnect_native_tests.rs
   - crates/fsm-execute/src/containment/supervisor_fresh_native_probe.rs
   - crates/fsm-execute/src/containment/supervisor_admission_native_probe.rs
