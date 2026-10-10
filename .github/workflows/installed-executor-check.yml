@@ -58,7 +58,7 @@ jobs:
         if: ${{ inputs.scenario == 'executor_standalone_claim_cut_recovers_without_unclaimed_entry' || inputs.scenario == 'full' }}
         run: |
           sudo -n env "TMPDIR=$TMPDIR" apt-get update
-          sudo -n env "TMPDIR=$TMPDIR" apt-get install -y --no-install-recommends gdb
+          sudo -n env "TMPDIR=$TMPDIR" apt-get install -y --no-install-recommends gdb binutils
       - name: Consumer install and actual contained workflows
         env:
           FSM_INSTALLED_CANDIDATE: ${{ inputs.candidate }}

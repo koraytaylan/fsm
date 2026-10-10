@@ -1,8 +1,13 @@
 """Labelled hardware/journal fault controls, never installed native proof."""
 import copy
+from pathlib import Path
+import runpy
+from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 from acceptance.suite.executor_crash import SYMBOL, validate_cut, claim_prefix
+from acceptance.suite.fsm import Scratch
 
 
 class ExactClaimCutTests(unittest.TestCase):
@@ -10,6 +15,7 @@ class ExactClaimCutTests(unittest.TestCase):
         return dict(schema='fsm.installed-hardware-cut/1', cut='claimed-before-binding',
             symbol=SYMBOL, breakpoint_type='hardware', breakpoint_hits=1,
             pc=4100, breakpoint_address=4100, original=dict(pid=123, pid_starttime='456'),
+            raw_symbol='_RNlabelled_symbol', demangled_symbol=SYMBOL, symbol_offset=4096,
             all_threads_stopped=True, threads=2, binary_sha256='a'*64,
             mapped_code=[dict(begin=4096,end=8192,file_offset=4096,bytes=4096,
                 mapped_sha256='b'*64,file_sha256='b'*64)])
@@ -50,3 +56,26 @@ class ExactClaimCutTests(unittest.TestCase):
         for value in values:
             with self.subTest(value=value),self.assertRaises(ValueError):
                 claim_prefix(value,'fixture')
+
+    def test_pending_hardware_breakpoint_refuses_before_a_labelled_inferior_can_run(self):
+        commands=[]
+        def execute(command, **_kwargs):
+            commands.append(command)
+            if command=='quit 1': raise SystemExit(1)
+            if command=='run': raise RuntimeError('labelled inferior would have launched')
+        breakpoint=SimpleNamespace(pending=True,type=2,locations=[SimpleNamespace(address=4096)])
+        debugger=SimpleNamespace(execute=execute,BP_HARDWARE_BREAKPOINT=2,
+            Breakpoint=lambda *_args,**_kwargs:breakpoint,
+            events=SimpleNamespace(stop=SimpleNamespace(connect=lambda _callback:None,disconnect=lambda _callback:None)),
+            selected_inferior=lambda:SimpleNamespace(pid=0))
+        symbols=[SimpleNamespace(stdout='00001000 T '+SYMBOL+'\n'),
+            SimpleNamespace(stdout='00001000 T _RNlabelled_symbol\n')]
+        script=Path(__file__).resolve().parents[1]/'fixtures/installed_debugger.py'
+        with Scratch('labelled-pending-debugger-stub') as scratch:
+            binary=Path(scratch.write('binary','labelled executable stub'))
+            with patch.dict('sys.modules',{'gdb':debugger}), patch.dict('os.environ',
+                dict(GITHUB_ACTIONS='true',FSM_ACCEPTANCE_DISPOSABLE_NATIVE='1',
+                    FSM_BIN=str(binary),FSM_DEBUGGER_DIRECTORY=scratch.path)),\
+                patch('os.geteuid',return_value=1000),patch('subprocess.run',side_effect=symbols):
+                with self.assertRaises(SystemExit): runpy.run_path(str(script),run_name='__main__')
+        self.assertNotIn('run',commands)

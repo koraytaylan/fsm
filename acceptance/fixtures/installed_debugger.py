@@ -7,11 +7,34 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
+import subprocess
 import time
 
 import gdb
 
 SYMBOL = 'fsm_execute::run::pipeline::Pipeline::start_native'
+DEMANGLED = (SYMBOL, '<fsm_execute::run::pipeline::Pipeline>::start_native')
+
+
+def resolve_symbol(binary):
+    outputs = []
+    for arguments in (['-C'], []):
+        result = subprocess.run(['nm', '--defined-only', *arguments, str(binary)],
+            capture_output=True, text=True, check=True, timeout=10)
+        if len(result.stdout.encode()) > 16_777_216:
+            raise ValueError('original installed symbol inventory exceeds its bound')
+        outputs.append(result.stdout.splitlines())
+    matches = [row.split(maxsplit=2) for row in outputs[0]
+        if len(row.split(maxsplit=2)) == 3 and row.split(maxsplit=2)[2] in DEMANGLED]
+    if len(matches) != 1 or matches[0][1] not in ('t', 'T'):
+        raise ValueError('the exact installed pre-binding symbol is missing or ambiguous')
+    offset, kind, demangled = matches[0]
+    raw = [row.split(maxsplit=2)[2] for row in outputs[1]
+        if len(row.split(maxsplit=2)) == 3 and row.split(maxsplit=2)[:2] == [offset, kind]]
+    if len(raw) != 1 or not re.fullmatch(r'_(?:R|ZN)[A-Za-z0-9_]+', raw[0]):
+        raise ValueError('the exact original Rust symbol is not unique')
+    return dict(raw_symbol=raw[0], demangled_symbol=demangled, symbol_offset=int(offset, 16))
 
 
 def publish(directory, name, value):
@@ -69,9 +92,13 @@ def main():
     binary = Path(os.environ['FSM_BIN']).resolve()
     original_hash = hashlib.sha256(binary.read_bytes()).hexdigest()
     for command in ('set pagination off', 'set confirm off', 'set non-stop off',
+                    'set language c', 'set breakpoint pending off',
                     'set follow-fork-mode parent', 'set detach-on-fork on'):
         gdb.execute(command, to_string=True)
-    breakpoint = gdb.Breakpoint("'" + SYMBOL + "'", type=gdb.BP_HARDWARE_BREAKPOINT)
+    symbol = resolve_symbol(binary)
+    breakpoint = gdb.Breakpoint("*'" + symbol['raw_symbol'] + "'", type=gdb.BP_HARDWARE_BREAKPOINT)
+    if breakpoint.pending or breakpoint.type != gdb.BP_HARDWARE_BREAKPOINT or len(breakpoint.locations) != 1:
+        raise ValueError('a missing or pending hardware cut cannot launch the original executable')
     stops = []
 
     def stop(event):
@@ -96,7 +123,7 @@ def main():
             pc=gdb.selected_frame().pc(), breakpoint_address=locations[0].address,
             original=original, all_threads_stopped=True, threads=len(threads),
             binary_sha256=original_hash, mapped_code=mapped, debugger_version=gdb.VERSION,
-            startup_diagnostic=startup)
+            startup_diagnostic=startup, **symbol)
         publish(directory, 'ready', ready)
         deadline = time.monotonic() + 20
         while not (directory / 'kill').exists():

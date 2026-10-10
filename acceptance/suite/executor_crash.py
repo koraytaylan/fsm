@@ -27,6 +27,10 @@ def validate_cut(value: dict, binary_hash: str) -> dict:
     maps = value.get('mapped_code', [])
     if (value.get('schema') != 'fsm.installed-hardware-cut/1'
         or value.get('cut') != 'claimed-before-binding' or value.get('symbol') != SYMBOL
+        or not isinstance(value.get('raw_symbol'), str)
+        or not re.fullmatch(r'_(?:R|ZN)[A-Za-z0-9_]+', value['raw_symbol'])
+        or value.get('demangled_symbol') not in (SYMBOL, '<fsm_execute::run::pipeline::Pipeline>::start_native')
+        or type(value.get('symbol_offset')) is not int or value['symbol_offset'] <= 0
         or value.get('breakpoint_type') != 'hardware' or value.get('breakpoint_hits') != 1
         or type(value.get('pc')) is not int or value['pc'] <= 0
         or value.get('breakpoint_address') != value['pc']
