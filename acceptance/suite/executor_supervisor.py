@@ -43,6 +43,19 @@ def supervisor_observation(record: dict, namespace: str, phase: str, prior: dict
         or str(int(process["pid_starttime"])) != process["pid_starttime"]):
         raise ValueError("supervisor original birth identity is malformed")
     route = value["route"]
+    validate_supervisor_route(route, phase)
+    if phase == "dead":
+        if type(value["returncode"]) is not int or value["returncode"] != -9 or prior is not None:
+            raise ValueError("supervisor original forced kill was not observed")
+    elif (value["returncode"] is not None or prior is None
+        or prior.get("phase") != "dead" or prior.get("namespace") != namespace
+        or process == prior.get("process") or route["configuration"] != prior.get("route", {}).get("configuration")
+        or route["socket"] == prior.get("route", {}).get("socket")):
+        raise ValueError("supervisor successor must have a new identity, epoch and original configuration")
+    return value
+
+
+def validate_supervisor_route(route: dict, phase: str) -> None:
     if (not isinstance(route, dict) or set(route) != {"format", "configuration", "epoch", "socket"}
         or route["format"] != "fsm.native-broker-route/1"
         or type(route["epoch"]) is not int or route["epoch"] != (1 if phase == "dead" else 2)
@@ -61,15 +74,6 @@ def supervisor_observation(record: dict, namespace: str, phase: str, prior: dict
         or authority["inode"] == 0 or not isinstance(configuration.get("boot"), str)
         or not re.fullmatch("[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}", configuration["boot"])):
         raise ValueError("supervisor original protected configuration differs")
-    if phase == "dead":
-        if type(value["returncode"]) is not int or value["returncode"] != -9 or prior is not None:
-            raise ValueError("supervisor original forced kill was not observed")
-    elif (value["returncode"] is not None or prior is None
-        or prior.get("phase") != "dead" or prior.get("namespace") != namespace
-        or process == prior.get("process") or route["configuration"] != prior.get("route", {}).get("configuration")
-        or route["socket"] == prior.get("route", {}).get("socket")):
-        raise ValueError("supervisor successor must have a new identity, epoch and original configuration")
-    return value
 
 
 def installed_supervisor_restart(report, kind: str, transport: str) -> None:

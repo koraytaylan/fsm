@@ -23,7 +23,8 @@ SYMBOL = 'fsm_execute::run::pipeline::Pipeline::start_native'
 CUT_SYMBOLS = {'claimed-before-binding': SYMBOL,
     'stopped-before-settlement': 'fsm_execute::run::pipeline::Pipeline::settle_native_stopped',
     'acked-before-event': 'fsm_execute::run::pipeline::Pipeline::deliver_native_handoff',
-    'event-after-advance': 'fsm_execute::run::pipeline::Pipeline::deliver_native_handoff'}
+    'event-after-advance': 'fsm_execute::run::pipeline::Pipeline::deliver_native_handoff',
+    'closed-before-result-publication': 'fsm_containment_authority::authority::runner::completion_record::publish'}
 
 
 def validate_cut(value: dict, binary_hash: str, cut: str = 'claimed-before-binding') -> dict:
@@ -31,7 +32,8 @@ def validate_cut(value: dict, binary_hash: str, cut: str = 'claimed-before-bindi
     original = value.get('original', {})
     maps = value.get('mapped_code', [])
     symbol = CUT_SYMBOLS[cut]
-    display = '<fsm_execute::run::pipeline::Pipeline>::' + symbol.rsplit('::', 1)[1]
+    display = ('<fsm_execute::run::pipeline::Pipeline>::' + symbol.rsplit('::', 1)[1]
+               if symbol.startswith('fsm_execute::') else symbol)
     if (value.get('schema') != 'fsm.installed-hardware-cut/1'
         or value.get('cut') != cut or value.get('symbol') != symbol
         or not isinstance(value.get('raw_symbol'), str)

@@ -940,6 +940,14 @@ then uses separate private FIFO stdin/stdout/stderr under the external debugger.
 Original descriptor identities must match those endpoints; debugger diagnostics
 cannot stand in for protocol responses, and fresh stdio recovery must preserve
 the exact original claim, successful result or accepted event at each cut.
+The helper-closure cut hardware-stops the unchanged installed Root helper after
+its original domain and claim-bound closure receipt are durable, before result
+attestation or completed-response publication; the original host and helper
+are independently killed and reaped, and a same-configuration helper at the
+next irreversible epoch permits receipt-only recovery and quiet successor work.
+Protected debugger records remain separate from authority records and numeric
+host wait receipts; the fresh Root observer unit enforces 1 GiB, zero swap,
+a two-minute runtime and control-group retirement on observer failure.
 
 `acceptance/` builds an image with `cargo install --path crates/fsm-cli
 --locked`, the same command a consumer runs, and drives that binary from a

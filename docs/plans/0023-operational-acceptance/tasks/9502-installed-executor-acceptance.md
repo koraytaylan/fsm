@@ -30,6 +30,8 @@ touches:
   - acceptance/suite/executor_scenarios.py
   - acceptance/suite/executor_lifecycle.py
   - acceptance/suite/executor_crash.py
+  - acceptance/suite/executor_helper_cut.py
+  - acceptance/suite/native_debugger.py
   - acceptance/suite/executor_debug_stdio.py
   - acceptance/suite/executor_settlement.py
   - acceptance/suite/executor_control.py
@@ -44,6 +46,7 @@ touches:
   - acceptance/tests/test_http_post_observer.py
   - acceptance/tests/test_executor_lifecycle_observer.py
   - acceptance/tests/test_claim_cut_observer.py
+  - acceptance/tests/test_helper_cut_observer.py
   - acceptance/tests/test_settlement_cut_observer.py
   - acceptance/tests/test_event_cut_observer.py
   - acceptance/tests/test_debug_stdio_observer.py
@@ -58,6 +61,7 @@ touches:
   - acceptance/tests/test_container_observer.py
   - acceptance/fixtures/container_init.sh
   - acceptance/fixtures/installed_debugger.py
+  - acceptance/fixtures/installed_broker_owner.py
   - acceptance/fixtures/executor_handler.py
   - acceptance/fixtures/executor_workflow.json
   - acceptance/Containerfile

@@ -195,16 +195,19 @@ class DisposableAuthority:
         privileged(str(AUTHORITY), "catalogue", self.namespace, "1", str(protected))
         privileged(str(AUTHORITY), "provision-broker", self.namespace, "1", str(os.geteuid()))
         self.log = (self.cache / "broker.log").open("wb")
-        self.process = subprocess.Popen(
-            ["sudo", "-n", sys_executable(), "-c", BROKER_OWNER, self.namespace],
-            stdin=subprocess.PIPE, stdout=self.log, stderr=subprocess.STDOUT,
-            start_new_session=True, umask=0o077)
+        self.process = self._start_broker()
         deadline = time.monotonic() + 10
         while not (self.directory / "broker" / "route.json").exists():
             if self.process.poll() is not None or time.monotonic() >= deadline:
                 raise RuntimeError("disposable broker did not publish its protected route")
             time.sleep(0.01)
         return table_path
+
+    def _start_broker(self):
+        return subprocess.Popen(
+            ["sudo", "-n", sys_executable(), "-c", BROKER_OWNER, self.namespace],
+            stdin=subprocess.PIPE, stdout=self.log, stderr=subprocess.STDOUT,
+            start_new_session=True, umask=0o077)
 
     def _closed_domains(self) -> list[dict]:
         counter = json.loads(privileged("cat", str(self.directory / "counter.json")))

@@ -1,4 +1,4 @@
-"""Disposable GDB observer: stop an unchanged installed CLI at exact cuts.
+"""Disposable GDB observer: stop unchanged installed executables at exact cuts.
 
 Loaded by GDB's Python interpreter, never by the installed executable; the
 hardware breakpoint changes no candidate instruction or fixture outcome.
@@ -16,12 +16,14 @@ import time
 import gdb
 
 CUT = os.environ.get('FSM_DEBUGGER_CUT', 'claimed-before-binding')
+AUTHORITY_SYMBOL = 'fsm_containment_authority::authority::runner::completion_record::publish'
 METHODS = {'claimed-before-binding': 'start_native',
     'stopped-before-settlement': 'settle_native_stopped',
     'acked-before-event': 'deliver_native_handoff',
     'event-after-advance': 'deliver_native_handoff'}
-SYMBOL = 'fsm_execute::run::pipeline::Pipeline::' + METHODS[CUT]
-DEMANGLED = (SYMBOL, '<fsm_execute::run::pipeline::Pipeline>::' + METHODS[CUT])
+ROOT_CUT = CUT == 'closed-before-result-publication'
+SYMBOL = AUTHORITY_SYMBOL if ROOT_CUT else 'fsm_execute::run::pipeline::Pipeline::' + METHODS[CUT]
+DEMANGLED = (SYMBOL,) if ROOT_CUT else (SYMBOL, '<fsm_execute::run::pipeline::Pipeline>::' + METHODS[CUT])
 
 
 def resolve_symbol(binary):
@@ -49,8 +51,15 @@ def publish(directory, name, value):
     with pending.open('x', encoding='utf-8') as stream:
         json.dump(value, stream, sort_keys=True)
         stream.flush()
+        if ROOT_CUT:
+            os.fchmod(stream.fileno(), 0o444)
         os.fsync(stream.fileno())
     pending.rename(directory / (name + '.json'))
+    descriptor = os.open(directory, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def identity(pid):
@@ -109,16 +118,28 @@ def stopped_observation(inferior, breakpoint, stops, expected, binary, binary_ha
 
 def main():
     if (os.environ.get('GITHUB_ACTIONS') != 'true'
-        or os.environ.get('FSM_ACCEPTANCE_DISPOSABLE_NATIVE') != '1' or os.geteuid() == 0):
-        raise ValueError('installed debugger requires the ordinary disposable CI operator')
+        or os.environ.get('FSM_ACCEPTANCE_DISPOSABLE_NATIVE') != '1'
+        or (os.geteuid() == 0) is not ROOT_CUT):
+        raise ValueError('installed debugger requires its exact disposable CI execution role')
     directory = Path(os.environ['FSM_DEBUGGER_DIRECTORY']).resolve()
     binary = Path(os.environ['FSM_BIN']).resolve()
+    if ROOT_CUT:
+        metadata = directory.lstat()
+        executable = binary.lstat()
+        if (binary != Path('/usr/libexec/fsm-containment-authority')
+            or not stat.S_ISREG(executable.st_mode) or executable.st_uid != 0
+            or executable.st_mode & 0o022 or metadata.st_uid != 0
+            or not stat.S_ISDIR(metadata.st_mode) or metadata.st_mode & 0o022
+            or not re.fullmatch('/usr/libexec/fsm-acceptance-[a-f0-9]{32}/debugger', str(directory))):
+            raise ValueError('Root observer requires the protected installed helper and fresh fixture directory')
     original_hash = hashlib.sha256(binary.read_bytes()).hexdigest()
     for command in ('set pagination off', 'set confirm off', 'set non-stop off',
                     'set language c', 'set breakpoint pending off',
                     'set follow-fork-mode parent', 'set detach-on-fork on', 'target native'):
         gdb.execute(command, to_string=True)
     transport = os.environ.get('FSM_DEBUGGER_TRANSPORT', 'standalone')
+    if ROOT_CUT and transport != 'standalone':
+        raise ValueError('Root helper observation cannot redirect candidate stdio')
     if transport == 'stdio':
         redirects = []
         for number, name in enumerate(('stdin', 'stdout', 'stderr')):
