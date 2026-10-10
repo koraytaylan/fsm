@@ -4,6 +4,9 @@
 #[path = "contract_mcp/native.rs"]
 mod native;
 
+#[path = "contract_mcp/degraded.rs"]
+mod degraded;
+
 #[cfg(target_os = "linux")]
 #[test]
 #[ignore = "requires disposable native CI, protected original operator table and exact staged CLI/test artifacts"]
