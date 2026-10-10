@@ -65,6 +65,16 @@ format and size checks pass; frozen review
 `34b5c9201da3c0b62828cdc03b67a22dd9d66adf86e5f14435ee6cacc75606d8`.
 All forty native admission cases independently replay on both toolchains at
 `02471b86`; the corrected full integration checkpoint remains outstanding.
+Discovery repairs land at `ffc25cd1`: degraded-tool inventory and valid-selector
+probes agree, wire goldens include contract checking, and private native table
+access follows its callers' platform guard. Shorter guidance retains closed
+schemas and measures 37,908 bytes under the unchanged 38,000-byte ceiling.
+Fifty focused tests and feature-enabled CLI all-target lint, formatting, size
+and range checks pass; frozen review
+`59ad72cc15a55aa8ec0faf6da9e5e9495304e3724db826b16596120601584305`.
+Affected portable gates remain pending while the tracked native run continues;
+its evidence retains the exact preceding source and makes no claim that CLI
+executable bytes match this successor.
 Tasks 9103/9201 remain in progress and 9202/9203 remain planned pending their
 written acceptance inventories and plan-end gates; live-model acceptance belongs
 to plan 0023 and is not claimed by these protocol clients.
