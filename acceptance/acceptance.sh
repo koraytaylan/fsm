@@ -4,7 +4,7 @@
 #   acceptance/acceptance.sh                 # every scenario
 #   acceptance/acceptance.sh seal            # only scenarios whose name matches
 #   RUST_VERSION=1.89.0 acceptance/acceptance.sh
-#   FSM_EVIDENCE_DIR=/tmp/fsm-evidence acceptance/acceptance.sh
+#   FSM_EVIDENCE_DIR="$HOME/.cache/fsm-evidence" acceptance/acceptance.sh
 #
 # Requires host Python 3 and Podman. The source snapshot excludes Git metadata
 # and credentials; reports, controlled-build receipts and diagnostics survive
@@ -19,11 +19,17 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(cd "$here/.." && pwd)"
 image="${FSM_ACCEPTANCE_IMAGE:-fsm-acceptance}"
 rust="${RUST_VERSION:-1.89.0}"
-evidence="${FSM_EVIDENCE_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/fsm-acceptance.XXXXXXXX")}"
+cache_root="${XDG_CACHE_HOME:-$HOME/.cache}/fsm-acceptance"
+mkdir -p "$cache_root"
+task_directory="$(mktemp -d "$cache_root/run.XXXXXXXX")"
+trap 'rm -rf "$task_directory"' EXIT
+export TMPDIR="$task_directory/temporary"
+mkdir -p "$TMPDIR"
+evidence="${FSM_EVIDENCE_DIR:-$(mktemp -d "$cache_root/evidence.XXXXXXXX")}"
 mkdir -p "$evidence"
 evidence="$(cd "$evidence" && pwd)"
-context_parent="$(mktemp -d "${TMPDIR:-/tmp}/fsm-acceptance-source.XXXXXXXX")"
-trap 'rm -rf "$context_parent"' EXIT
+context_parent="$task_directory/context"
+mkdir -p "$context_parent"
 PYTHONDONTWRITEBYTECODE=1 python3 "$here/suite/evidence.py" snapshot "$root" "$context_parent/source"
 
 echo "building $image (rust $rust)…"
