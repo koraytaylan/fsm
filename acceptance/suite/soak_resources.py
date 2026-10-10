@@ -7,6 +7,9 @@ need their own fixture identities and authenticated original closure records.
 from itertools import islice
 import os
 from pathlib import Path
+import stat
+import sys
+import time
 
 from .soak import bounded_integer
 
@@ -80,3 +83,60 @@ def observe_live_host(identity, proc_root=Path('/proc')):
     return dict(identity=dict(identity), metrics=metrics, stat_before=before.decode('utf-8'),
                 stat_after=after.decode('utf-8'), status=status.decode('utf-8'),
                 descriptors=descriptors, thread_children=children, clock_ticks_per_second=frequency)
+
+
+def observe_pipe_queues(identity):
+    """Read queued kernel bytes without consuming any owned process stream.
+
+    This measures pipe backlog, not Rust heap buffers or retained journal
+    output; RSS accounts for the host heap separately, and the final native
+    sampler must also inventory its contained domains' pipes. Duplicates of
+    one pipe inode are counted once, and every observer copy closes before
+    returning so it cannot hold EOF open across the next workload action.
+    """
+    if sys.platform != 'linux':
+        raise ValueError('required pipe-queue observation needs Linux')
+    import array
+    import fcntl
+    import termios
+    # Establish the exact birth and complete descriptor inventory first.
+    host = observe_live_host(identity)
+    root = Path('/proc') / str(identity['pid'])
+    deadline = time.monotonic() + 2
+    pipes = {}
+    for number in host['descriptors']:
+        if time.monotonic() >= deadline:
+            raise TimeoutError('required pipe-queue observation exceeded its deadline')
+        path = root / 'fd' / number
+        target = os.readlink(path)
+        if not target.startswith('pipe:['):
+            continue
+        if not target.endswith(']') or not target[6:-1].isascii() or not target[6:-1].isdecimal():
+            raise ValueError('original pipe descriptor identity is malformed')
+        metadata = path.stat()
+        if not stat.S_ISFIFO(metadata.st_mode) or metadata.st_ino != int(target[6:-1]):
+            raise ValueError('original pipe descriptor identity changed')
+        key = (metadata.st_dev, metadata.st_ino)
+        if key in pipes:
+            pipes[key]['descriptors'].append(number)
+            continue
+        # O_NONBLOCK avoids opening a read end waiting for a writer; ioctl
+        # observes only, and no read/write is issued to the original queue.
+        descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
+        try:
+            copied = os.fstat(descriptor)
+            if ((copied.st_dev, copied.st_ino) != key or not stat.S_ISFIFO(copied.st_mode)):
+                raise ValueError('copied pipe observation differs from its original descriptor')
+            queued = array.array('i', [0])
+            fcntl.ioctl(descriptor, termios.FIONREAD, queued, True)
+            bounded_integer(queued[0], 0, (1 << 31) - 1, 'observed pipe queue')
+            pipes[key] = dict(device=key[0], inode=key[1], target=target,
+                              descriptors=[number], queued_bytes=queued[0])
+        finally:
+            os.close(descriptor)
+    after = _read(root / 'stat', 4096)
+    _stat(after, identity)
+    total = sum(row['queued_bytes'] for row in pipes.values())
+    bounded_integer(total, 0, (1 << 63) - 1, 'observed total pipe queues')
+    return dict(identity=dict(identity), queued_pipe_bytes=total, pipes=list(pipes.values()),
+                stat_before=host['stat_before'], stat_after=after.decode('utf-8'))

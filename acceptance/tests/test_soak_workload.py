@@ -7,11 +7,14 @@ from pathlib import Path
 import subprocess
 import sys
 import time
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
 from acceptance.suite.fsm import Scratch
-from acceptance.suite.soak_resources import observe_live_host
+from acceptance.suite.soak_resources import observe_live_host, observe_pipe_queues
+from acceptance.suite.soak_fixtures import block_inputs, completed_ledger, resource_names
+from acceptance.suite.native_fixture import DisposableAuthority
 from acceptance.suite.soak_workload import observe_completed_cycle
 
 FIXTURE = Path(__file__).resolve().parents[1] / 'fixtures/executor_handler.py'
@@ -224,6 +227,87 @@ class HostObservationTests(unittest.TestCase):
             child.terminate(); child.wait(timeout=5)
             child.stdout.close()
         with self.assertRaises(FileNotFoundError): observe_live_host(dict(pid=child.pid,pid_starttime=birth))
+
+    @unittest.skipUnless(sys.platform == 'linux', 'actual Linux pipe-queue observation')
+    def test_actual_pipe_bytes_are_observed_without_consuming_or_retaining_the_original_stream(self):
+        program = 'import os,sys; os.write(1,b"queued original data"); os.write(2,b"ready\\n"); sys.stdin.read(1)'
+        child = subprocess.Popen([sys.executable, '-c', program], stdin=subprocess.PIPE,
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            self.assertEqual(child.stderr.readline(), b'ready\n')
+            birth = Path('/proc',str(child.pid),'stat').read_bytes().rpartition(b') ')[2].split()[19].decode()
+            original_stat = os.fstat
+            def changed_copy(descriptor):
+                metadata = original_stat(descriptor)
+                return SimpleNamespace(st_dev=metadata.st_dev+1,st_ino=metadata.st_ino,st_mode=metadata.st_mode)
+            with patch('acceptance.suite.soak_resources.os.fstat',side_effect=changed_copy):
+                with self.assertRaisesRegex(ValueError,'differs'):
+                    observe_pipe_queues(dict(pid=child.pid,pid_starttime=birth))
+            result = observe_pipe_queues(dict(pid=child.pid,pid_starttime=birth))
+            self.assertEqual(result['queued_pipe_bytes'], len(b'queued original data'))
+            self.assertEqual(child.stdout.read(len(b'queued original data')), b'queued original data')
+            child.stdin.write(b'Q'); child.stdin.flush(); child.wait(timeout=5)
+            self.assertEqual(child.stdout.read(), b'')
+        finally:
+            if child.poll() is None: child.terminate(); child.wait(timeout=5)
+            for pipe in (child.stdin,child.stdout,child.stderr): pipe.close()
+
+
+class FixtureCatalogTests(unittest.TestCase):
+    def inputs(self, kind):
+        return block_inputs(kind, Path('/fixture-resource'), Path('/fixture-handler.py'),
+                            FIXTURE.with_name('executor_workflow.json'))
+
+    def test_authored_catalog_bounds_and_distinct_resources_hold_for_both_handler_kinds(self):
+        for kind in ('process','mcp'):
+            inputs = self.inputs(kind)
+            self.assertEqual(len(inputs['machines']), 13)
+            self.assertEqual(inputs['resources'], resource_names())
+            self.assertEqual(len(set(inputs['resources'])), 13)
+            self.assertEqual(len(inputs['table']['handlers']), 48)
+            self.assertEqual(inputs['table']['max_inflight'], 1)
+            retry = next(row for row in inputs['table']['handlers'] if row['effect']=='soak_retry_validate_resource')
+            self.assertEqual(retry['retry'],dict(attempts=2,backoff_ms=25,
+                on=['nonzero_exit' if kind=='process' else 'mcp_error']))
+            self.assertIn('--fail-first', retry['argv'])
+            deadline = next(row for row in inputs['table']['handlers'] if row['effect']=='soak_deadline_validate_resource')
+            self.assertEqual(deadline['timeout_ms'],500); self.assertIn('--descendant',deadline['argv'])
+            right = inputs['machines']['contention-right']
+            left = inputs['machines']['contention']
+            self.assertEqual(right['effects'],left['effects'])
+            self.assertEqual(right['states'][1]['entry']['emit'][0]['args']['resource'], '"soak-contention-right"')
+
+    def test_completed_ledgers_are_literal_and_manual_or_interrupted_cases_cannot_use_them(self):
+        self.assertEqual(completed_ledger('compensate'),dict(resource='soak-compensate',
+            attempts=[('validate',0),('suspend',0),('process',3),('restore',0)],
+            mutations=['suspend','process:0','restore'],state={'suspended':False,'items':[0]}))
+        self.assertEqual(completed_ledger('retry')['attempts'][:2],[('validate',3),('validate',0)])
+        for case in ('manual','deadline','cancel','unknown'):
+            with self.assertRaises(ValueError): completed_ledger(case)
+        with self.assertRaises(ValueError): completed_ledger('success','invented')
+        self.assertEqual(completed_ledger('contention','soak-contention-right')['resource'],'soak-contention-right')
+
+    def test_resource_provisioning_requires_a_frozen_bounded_unique_inventory(self):
+        for names in ([], (), ['supplier'], ('supplier','supplier'), ('',), tuple(str(i) for i in range(33))):
+            with self.assertRaises(ValueError): DisposableAuthority(FIXTURE,resources=names)
+        self.assertEqual(DisposableAuthority(FIXTURE).resources, ('supplier',))
+        self.assertEqual(DisposableAuthority(FIXTURE,resources=resource_names()).resources, resource_names())
+        maximum=tuple(str(i) for i in range(32))
+        self.assertEqual(DisposableAuthority(FIXTURE,resources=maximum).resources,maximum)
+
+    @unittest.skipUnless(os.environ.get('FSM_OPERATIONAL_CHECK_BIN'), 'explicit installed offline CLI artifact')
+    def test_authored_machines_pass_the_real_installed_offline_contract_without_starting_operations(self):
+        for kind in ('process','mcp'):
+            with Scratch('operational-offline-catalog') as scratch:
+                inputs = self.inputs(kind); root = Path(scratch.path)
+                table = root/'handlers.json'; table.write_text(json.dumps(inputs['table']))
+                for case, specification in inputs['machines'].items():
+                    machine = root/(case+'.json'); machine.write_text(json.dumps(specification))
+                    result = subprocess.run([os.environ['FSM_OPERATIONAL_CHECK_BIN'],'execute','--check',
+                        '--handlers',str(table),'--machine-file',str(machine),'--json'],
+                        capture_output=True,text=True,timeout=10)
+                    self.assertEqual(result.returncode,0,result.stderr+result.stdout)
+                    self.assertEqual(json.loads(result.stdout)['status'],'compatible')
 
 
 if __name__ == '__main__':

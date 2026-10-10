@@ -11,10 +11,13 @@ touches:
   - acceptance/suite/metrics.py
   - acceptance/suite/soak_workload.py
   - acceptance/suite/soak_resources.py
+  - acceptance/suite/soak_fixtures.py
+  - acceptance/suite/soak_socket_queues.py
   - acceptance/suite/native_fixture.py
   - acceptance/suite/evidence.py
   - acceptance/tests/test_soak.py
   - acceptance/tests/test_soak_workload.py
+  - acceptance/tests/test_soak_socket_queues.py
   - acceptance/tests/test_tree_observer.py
   - acceptance/profiles/operational.json
   - acceptance/fixtures/executor_handler.py

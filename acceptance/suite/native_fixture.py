@@ -117,7 +117,12 @@ class DisposableAuthority:
     original authority and diagnostic files on the disposable runner.
     """
 
-    def __init__(self, handler: Path):
+    def __init__(self, handler: Path, *, resources=("supplier",)):
+        if (not isinstance(resources, tuple) or not 1 <= len(resources) <= 32
+            or any(not isinstance(name, str) or not 1 <= len(name) <= 256 for name in resources)
+            or len(set(resources)) != len(resources)):
+            raise ValueError('fixture resources must be a bounded unique immutable inventory')
+        self.resources = resources
         self.handler_source = handler.resolve()
         self.namespace = uuid.uuid4().hex
         self.directory = BASE / self.namespace / "authority-1"
@@ -165,9 +170,10 @@ class DisposableAuthority:
             # Different DynamicUser identities share only these fixture logs.
             for name in ("trace.jsonl", "results.jsonl", "entries.jsonl", "descendants.jsonl", "noise.jsonl", "timings.jsonl"):
                 privileged("install", "-m", "0666", "/dev/null", str(self.resource / name))
-            for name, value in (("sequence.json", 0),
-                                (hashlib.sha256(b"supplier").hexdigest() + ".json",
-                                 {"suspended": False, "items": []})):
+            slots = [("sequence.json", 0)] + [
+                (hashlib.sha256(resource.encode()).hexdigest() + ".json",
+                 {"suspended": False, "items": []}) for resource in self.resources]
+            for name, value in slots:
                 source = self.cache / name
                 source.write_text(json.dumps(value), encoding="utf-8")
                 privileged("install", "-m", "0666", str(source), str(self.resource / name))
