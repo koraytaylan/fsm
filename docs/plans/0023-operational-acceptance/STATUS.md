@@ -252,6 +252,21 @@ controls and formatting/size checks pass; filtered proof remains release-ineligi
 Frozen implementing-author review digest:
 `e56b05b6c3d9e322c5f3404589684f2accb994cfe6c23909b1d1f34834387588`.
 
+Frozen completion-cut acceptance for `fba7f4be..e1d0b436` establishes four
+standalone process/MCP cuts after successful durable stopping and after
+acknowledgement before its advance event:
+[disposable installed evidence](https://github.com/koraytaylan/fsm/actions/runs/38062793474)
+retains 152 passing assertions, sixteen original domain closures, eighty journal
+records, 48 raw trace records and four explicit successor-owner drains.
+Replay revalidates 1,299 source blobs and unchanged installed executable/helper
+bytes; original successful results and claim-bound receipts survive forced
+owner retirement, with exactly one acknowledgement, advance and invocation per
+operation before quiet completion, restoration and owned fixture/helper removal.
+146 disposable observer checks, nineteen focused checks, three named guard
+controls and syntax/size checks pass; filtered proof remains release-ineligible.
+Frozen implementing-author review digest:
+`5d5b50e6b3cc71ced5cd94a1c468aa84cf8b742c8a6698f5cd91d53d50572155`.
+
 Task 9502 remains in progress: remaining installed crash cuts are outstanding.
 Sustained native operation, nine human-reviewed uncoached
 live-model sessions, Desktop compatibility and independent final review remain
