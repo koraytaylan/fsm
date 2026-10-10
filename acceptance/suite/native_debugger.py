@@ -9,13 +9,20 @@ import stat
 import subprocess
 
 from . import fsm
-from .evidence import digest
 from .executor_crash import validate_cut
 from .executor_lifecycle import process_observation
 from .executor_scenarios import _wait_for_files
 from .native_fixture import AUTHORITY, DisposableAuthority, privileged, require_disposable_runner
 
 CUT = 'closed-before-result-publication'
+
+
+def helper_digest():
+    encoded = privileged('sha256sum', str(AUTHORITY))
+    fields = encoded.split()
+    if len(fields) != 2 or not re.fullmatch('[a-f0-9]{64}', fields[0]) or fields[1] != str(AUTHORITY):
+        raise ValueError('the protected original helper digest differs')
+    return fields[0]
 
 
 def protected_observation(path: Path) -> dict:
@@ -93,7 +100,7 @@ class DebuggedAuthority(DisposableAuthority):
         commands.write_text('python\nimport runpy\nrunpy.run_path(' +
             repr(str(self.stage / 'installed_debugger.py')) + ', run_name="__main__")\nend\n')
         privileged('install', '-m', '0444', str(commands), str(self.stage / 'observer.gdb'))
-        self.debugger_hash = digest(AUTHORITY)
+        self.debugger_hash = helper_digest()
         self.debugger_unit = 'fsm-acceptance-helper-cut-' + self.namespace
         return subprocess.Popen(['sudo', '-n', 'systemd-run', '--quiet', '--wait', '--pipe',
             '--collect', '--unit=' + self.debugger_unit, '--property=RuntimeMaxSec=120s',
@@ -136,7 +143,7 @@ class DebuggedAuthority(DisposableAuthority):
             path = self.debugger_directory / name
             if path.exists():
                 shutil.copy2(path, retained / name)
-        if digest(AUTHORITY) != self.debugger_hash:
+        if hasattr(self, 'debugger_hash') and helper_digest() != self.debugger_hash:
             raise ValueError('the original installed helper bytes changed')
 
     def _capture_records(self):

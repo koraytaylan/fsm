@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from acceptance.suite.executor_crash import CUT_SYMBOLS, validate_cut
 from acceptance.suite.executor_helper_cut import closed_prefix
-from acceptance.suite.native_debugger import CUT, validate_restart
+from acceptance.suite.native_debugger import CUT, validate_restart, helper_digest
 
 
 class HelperCutTests(unittest.TestCase):
@@ -113,6 +113,15 @@ class HelperCutTests(unittest.TestCase):
             patch('os.geteuid', return_value=1000):
             with self.assertRaises(SystemExit): runpy.run_path(str(script), run_name='__main__')
         self.assertEqual(commands, ['quit 1'])
+
+    def test_protected_helper_hash_uses_the_existing_disposable_authority_boundary(self):
+        with patch('acceptance.suite.native_debugger.privileged',
+            return_value='b'*64+'  /usr/libexec/fsm-containment-authority\n') as authority:
+            self.assertEqual(helper_digest(), 'b'*64)
+            authority.assert_called_once_with('sha256sum', '/usr/libexec/fsm-containment-authority')
+        for encoded in ('b'*64+'  /another/helper\n', 'unknown  /usr/libexec/fsm-containment-authority\n'):
+            with patch('acceptance.suite.native_debugger.privileged', return_value=encoded), self.assertRaises(ValueError):
+                helper_digest()
 
 
 if __name__ == '__main__':
