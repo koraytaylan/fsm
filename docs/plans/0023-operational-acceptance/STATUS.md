@@ -178,8 +178,31 @@ complete-response-hash guard makes its named test fail and restoration re-passes
 Filtered proof remains release-ineligible, with frozen author review digest
 `fb5f47e9e7d4d153f86e693b984d0b8e9d1707d3bf013c5e23b8eb6c1a7e7b2f`.
 
-Task 9502 remains in progress: remaining crash cuts and the pre-existing
-portable acceptance inventory are outstanding.
+Frozen original-inventory acceptance at `51dd2b27db513d2e5794b148ef7c3e309af7d49f`
+establishes all fifteen pre-existing scenarios on native Linux, macOS and Windows:
+[three-platform installed evidence](https://github.com/koraytaylan/fsm/actions/runs/38053283262)
+retains 361 passing assertions and independently revalidates 1,287 source blobs
+and each platform's consumer-installed executable bytes.
+Linux proves actual success and two-attempt exhaustion, exact native settlement
+and original outcome advances, three protected bindings and domain closures,
+two original-owner drains and complete fixture/helper retirement;
+macOS and Windows prove unsupported containment refusal before fixture entry or
+journal mutation, preserving pending work rather than claiming native execution.
+The original 38,000-byte tools/list budget holds at 37,908 UTF-8 bytes on every
+platform, with all 25 shipped tools and the original version/spec checks.
+The preceding failed workflow remains failed: its evidence exposed outdated
+legacy-history assertions, Windows locale decoding and failed-store inode reuse.
+The harness now recognizes authentic native settlements, reads explicit UTF-8
+and preserves a failed original physical store while its authority remains;
+bounded failed-store copies and original diagnostics stay in the task cache.
+121 observer tests and thirteen evidence tests pass; the named journal-preservation,
+UTF-8 and physical-store guards fail when neutralized and pass after restoration.
+Baseline reports remain explicitly filtered and release-ineligible, with frozen
+author review digest
+`76348833466e77aec88eba86d2ac2aec4d7e6e2f919dfd40f76103b3d11f90a3`.
+
+Task 9502 remains in progress: remaining crash cuts and the complete integrated
+installed/consumer suite are outstanding.
 Sustained native operation, nine human-reviewed uncoached
 live-model sessions, Desktop compatibility and independent final review remain
 mandatory and incomplete; no passing skip or synthetic control replaces them.
