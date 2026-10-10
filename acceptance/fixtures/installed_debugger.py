@@ -1,4 +1,4 @@
-"""Disposable GDB observer: stop an unchanged installed CLI before binding.
+"""Disposable GDB observer: stop an unchanged installed CLI at exact cuts.
 
 Loaded by GDB's Python interpreter, never by the installed executable; the
 hardware breakpoint changes no candidate instruction or fixture outcome.
@@ -16,7 +16,8 @@ import gdb
 CUT = os.environ.get('FSM_DEBUGGER_CUT', 'claimed-before-binding')
 METHODS = {'claimed-before-binding': 'start_native',
     'stopped-before-settlement': 'settle_native_stopped',
-    'acked-before-event': 'deliver_native_handoff'}
+    'acked-before-event': 'deliver_native_handoff',
+    'event-after-advance': 'deliver_native_handoff'}
 SYMBOL = 'fsm_execute::run::pipeline::Pipeline::' + METHODS[CUT]
 DEMANGLED = (SYMBOL, '<fsm_execute::run::pipeline::Pipeline>::' + METHODS[CUT])
 
@@ -88,6 +89,22 @@ def code_observations(inferior, binary):
     return observations
 
 
+def stopped_observation(inferior, breakpoint, stops, expected, binary, binary_hash, symbol, cut, diagnostic):
+    locations = breakpoint.locations
+    threads = inferior.threads()
+    if (stops != expected or breakpoint.type != gdb.BP_HARDWARE_BREAKPOINT
+        or breakpoint.hit_count != 1 or len(locations) != 1
+        or not threads or len(threads) > 256 or not all(thread.is_stopped() for thread in threads)
+        or gdb.selected_frame().pc() != locations[0].address):
+        raise ValueError('the exact original hardware breakpoint did not stop every thread')
+    return dict(schema='fsm.installed-hardware-cut/1', cut=cut,
+        symbol=SYMBOL, breakpoint_type='hardware', breakpoint_hits=1,
+        pc=gdb.selected_frame().pc(), breakpoint_address=locations[0].address,
+        original=identity(inferior.pid), all_threads_stopped=True, threads=len(threads),
+        binary_sha256=binary_hash, mapped_code=code_observations(inferior, binary),
+        debugger_version=gdb.VERSION, startup_diagnostic=diagnostic, **symbol)
+
+
 def main():
     if (os.environ.get('GITHUB_ACTIONS') != 'true'
         or os.environ.get('FSM_ACCEPTANCE_DISPOSABLE_NATIVE') != '1' or os.geteuid() == 0):
@@ -113,21 +130,38 @@ def main():
     try:
         startup = gdb.execute('run', to_string=True)
         inferior = gdb.selected_inferior()
-        locations = breakpoint.locations
-        threads = inferior.threads()
-        if (stops != [True] or breakpoint.type != gdb.BP_HARDWARE_BREAKPOINT
-            or breakpoint.hit_count != 1 or len(locations) != 1
-            or not threads or len(threads) > 256 or not all(thread.is_stopped() for thread in threads)
-            or gdb.selected_frame().pc() != locations[0].address):
-            raise ValueError('the exact original hardware breakpoint did not stop every thread')
-        original = identity(inferior.pid)
-        mapped = code_observations(inferior, binary)
-        ready = dict(schema='fsm.installed-hardware-cut/1', cut=CUT,
-            symbol=SYMBOL, breakpoint_type='hardware', breakpoint_hits=1,
-            pc=gdb.selected_frame().pc(), breakpoint_address=locations[0].address,
-            original=original, all_threads_stopped=True, threads=len(threads),
-            binary_sha256=original_hash, mapped_code=mapped, debugger_version=gdb.VERSION,
-            startup_diagnostic=startup, **symbol)
+        first_cut = 'acked-before-event' if CUT == 'event-after-advance' else CUT
+        ready = stopped_observation(inferior, breakpoint, stops, [True], binary,
+            original_hash, symbol, first_cut, startup)
+        if CUT == 'event-after-advance':
+            entry = ready
+            frame = gdb.selected_frame()
+            architecture = frame.architecture().name()
+            if architecture != 'i386:x86-64' or frame.older() is None:
+                raise ValueError('exact return observation requires the supported original x86-64 call frame')
+            stack = int(frame.read_register('rsp'))
+            address = int.from_bytes(bytes(inferior.read_memory(stack, 8)), 'little')
+            caller_pc = frame.older().pc()
+            thread = gdb.selected_thread().global_num
+            if address <= 0 or address != caller_pc or not any(row['begin'] <= address < row['end']
+                    for row in entry['mapped_code']):
+                raise ValueError('original stack return address is not the original executable caller')
+            breakpoint.enabled = False
+            breakpoint = gdb.Breakpoint('*' + hex(address), type=gdb.BP_HARDWARE_BREAKPOINT)
+            if breakpoint.pending or breakpoint.type != gdb.BP_HARDWARE_BREAKPOINT or len(breakpoint.locations) != 1:
+                raise ValueError('the original return address requires an exact hardware breakpoint')
+            continuation = gdb.execute('continue', to_string=True)
+            ready = stopped_observation(inferior, breakpoint, stops, [True, True], binary,
+                original_hash, symbol, CUT, continuation)
+            returned_stack = int(gdb.selected_frame().read_register('rsp'))
+            returned_thread = gdb.selected_thread().global_num
+            if (ready['original'] != entry['original'] or ready['mapped_code'] != entry['mapped_code']
+                or returned_stack != stack + 8 or returned_thread != thread):
+                raise ValueError('the original unchanged call frame did not return on its original thread')
+            ready.update(position='return', entry=entry, return_provenance=dict(architecture=architecture,
+                entry_stack_pointer=stack, return_stack_pointer=returned_stack, stack_return_address=address,
+                caller_pc=caller_pc, entry_thread=thread, return_thread=returned_thread))
+        original = ready['original']
         publish(directory, 'ready', ready)
         deadline = time.monotonic() + 20
         while not (directory / 'kill').exists():

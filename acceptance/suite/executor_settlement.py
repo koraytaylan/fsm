@@ -17,19 +17,21 @@ from .executor_scenarios import (_fixture_rows, _wait_for_files, read_journal_pr
 from .native_fixture import DisposableAuthority, privileged
 
 CUTS = ('stopped-before-settlement', 'acked-before-event')
+SUPPORTED_CUTS = (*CUTS, 'event-after-advance')
 
 
 def completed_prefix(records: list[dict], instance: str, cut: str) -> dict:
     """One original successful result, with no advance or replacement claim."""
-    if cut not in CUTS or not records or len(records) > 128:
+    if cut not in SUPPORTED_CUTS or not records or len(records) > 128:
         raise ValueError('unknown or empty original completion boundary')
     claims = [row for row in records if row['kind'] == 'execution_claimed']
     stopped = [row for row in records if row['kind'] == 'execution_stopped']
     settled = [row for row in records if row['kind'] == 'execution_settled']
     events = [row for row in records if row['kind'] == 'event_applied']
-    expected_settled = 1 if cut == 'acked-before-event' else 0
+    event_cut = cut == 'event-after-advance'
+    expected_settled = 0 if cut == 'stopped-before-settlement' else 1
     if (len(claims) != 1 or len(stopped) != 1 or len(settled) != expected_settled
-        or len(events) != 1 or events[0]['body'].get('event') != 'start'
+        or len(events) != (2 if event_cut else 1) or events[0]['body'].get('event') != 'start'
         or events[0]['body'].get('instance_id') != instance
         or any(row['kind'] in ('effect_acked', 'effect_attempted', 'event_rejected', 'instance_cancelled')
                for row in records)):
@@ -56,7 +58,7 @@ def completed_prefix(records: list[dict], instance: str, cut: str) -> dict:
     acknowledgement = settled[0]; material = acknowledgement['body']
     handoff = material.get('handoff', {})
     fields = ('attempt', 'domain', 'effect_id', 'handler_fingerprint', 'instance_id', 'retry', 'run_id')
-    if (records[-1] != acknowledgement or acknowledgement['seq'] <= stop['seq']
+    if ((not event_cut and records[-1] != acknowledgement) or acknowledgement['seq'] <= stop['seq']
         or type(material.get('run_id')) is not int
         or any(material.get(key) != body.get(key) for key in ('instance_id', 'effect_id', 'run_id'))
         or material.get('disposition') != 'acked' or material.get('outcome') != 'ok'
@@ -69,11 +71,18 @@ def completed_prefix(records: list[dict], instance: str, cut: str) -> dict:
         or handoff.get('acknowledgement_request_id') != material.get('request_id')
         or handoff.get('event_request_id') != 'exec-ev-' + body['effect_id'] + '-validated'):
         raise ValueError('original acknowledgement lacks its exact durable event obligation')
+    if event_cut:
+        advanced = events[1]
+        if (records[-1] != advanced or advanced['seq'] <= acknowledgement['seq']
+            or advanced['body'].get('instance_id') != instance
+            or advanced['body'].get('event') != 'validated'
+            or advanced['body'].get('request_id') != handoff['event_request_id']):
+            raise ValueError('original event cut lacks its exact accepted durable advance')
     return claim
 
 
 def installed_completed_cut(report, kind: str, cut: str) -> None:
-    if kind not in ('process', 'mcp') or cut not in CUTS:
+    if kind not in ('process', 'mcp') or cut not in SUPPORTED_CUTS:
         raise ValueError('unknown installed completion-cut cell')
     fixture = Path(fsm.REPO) / 'acceptance/fixtures/executor_handler.py'
     machine = Path(fsm.REPO) / 'acceptance/fixtures/executor_workflow.json'

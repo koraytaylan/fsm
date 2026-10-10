@@ -44,6 +44,7 @@ touches:
   - acceptance/tests/test_executor_lifecycle_observer.py
   - acceptance/tests/test_claim_cut_observer.py
   - acceptance/tests/test_settlement_cut_observer.py
+  - acceptance/tests/test_event_cut_observer.py
   - acceptance/tests/test_executor_control_observer.py
   - acceptance/tests/test_executor_drain_observer.py
   - acceptance/tests/test_stdio_output_observer.py

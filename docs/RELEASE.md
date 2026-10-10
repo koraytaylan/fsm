@@ -931,6 +931,10 @@ The stopped-result and acknowledged-result cuts use the same external observer
 at exact pre-settlement and pre-event entry points; quiet recovery must retain
 the original successful result, acknowledge and advance exactly once, and
 never repeat validation or allocate a replacement for its completed domain.
+The post-event cut observes the same original call's hardware entry and its
+stack-derived hardware return on x86-64; all threads stop, code stays unchanged,
+and the accepted event is durable before another domain can be claimed.
+Quiet recovery must preserve the original advance without sending it again.
 
 `acceptance/` builds an image with `cargo install --path crates/fsm-cli
 --locked`, the same command a consumer runs, and drives that binary from a

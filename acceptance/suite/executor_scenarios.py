@@ -736,6 +736,15 @@ def executor_standalone_completed_cuts_recover_without_repeating_success(report)
 SCENARIOS += (executor_standalone_completed_cuts_recover_without_repeating_success,)
 
 
+def executor_standalone_event_cut_recovers_without_repeating_advance(report) -> None:
+    from .executor_settlement import installed_completed_cut
+    for kind in ('process', 'mcp'):
+        installed_completed_cut(report, kind, 'event-after-advance')
+
+
+SCENARIOS += (executor_standalone_event_cut_recovers_without_repeating_advance,)
+
+
 def _name(value) -> bool:
     return isinstance(value, str) and 0 < len(value) <= MAX_TRACE_TEXT
 

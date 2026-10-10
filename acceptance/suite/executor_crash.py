@@ -22,7 +22,8 @@ from .native_fixture import DisposableAuthority, privileged, require_disposable_
 SYMBOL = 'fsm_execute::run::pipeline::Pipeline::start_native'
 CUT_SYMBOLS = {'claimed-before-binding': SYMBOL,
     'stopped-before-settlement': 'fsm_execute::run::pipeline::Pipeline::settle_native_stopped',
-    'acked-before-event': 'fsm_execute::run::pipeline::Pipeline::deliver_native_handoff'}
+    'acked-before-event': 'fsm_execute::run::pipeline::Pipeline::deliver_native_handoff',
+    'event-after-advance': 'fsm_execute::run::pipeline::Pipeline::deliver_native_handoff'}
 
 
 def validate_cut(value: dict, binary_hash: str, cut: str = 'claimed-before-binding') -> dict:
@@ -59,6 +60,24 @@ def validate_cut(value: dict, binary_hash: str, cut: str = 'claimed-before-bindi
             raise ValueError('original installed instructions are not unchanged')
     if not any(row['begin'] <= value['pc'] < row['end'] for row in maps):
         raise ValueError('hardware cut is outside the original installed executable')
+    if cut == 'event-after-advance':
+        entry = value.get('entry')
+        provenance = value.get('return_provenance')
+        if value.get('position') != 'return' or not isinstance(entry, dict) or not isinstance(provenance, dict):
+            raise ValueError('original event cut lacks its exact hardware entry and return')
+        validate_cut(entry, binary_hash, 'acked-before-event')
+        if (any(type(provenance.get(key)) is not int or provenance[key] <= 0 for key in
+                ('entry_stack_pointer', 'return_stack_pointer', 'stack_return_address', 'caller_pc', 'entry_thread', 'return_thread'))
+            or provenance.get('architecture') != 'i386:x86-64'
+            or provenance['return_stack_pointer'] != provenance['entry_stack_pointer'] + 8
+            or provenance['stack_return_address'] != provenance['caller_pc']
+            or provenance['stack_return_address'] != value['pc']
+            or provenance['entry_thread'] != provenance['return_thread']
+            or entry['original'] != original or entry['mapped_code'] != maps
+            or any(entry.get(key) != value.get(key) for key in ('raw_symbol', 'demangled_symbol', 'symbol_offset'))):
+            raise ValueError('original event cut is not the same unchanged hardware-observed call return')
+    elif value.get('position', 'entry') != 'entry':
+        raise ValueError('this original cut requires the exact hardware function entry')
     return value
 
 
