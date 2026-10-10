@@ -128,7 +128,8 @@ def debugger(store: Path, table: Path, directory: Path, namespace: str,
         '-iex', 'set debuginfod enabled off', '-x', str(commands), '--args', fsm.FSM,
         *(['execute'] if transport == 'standalone' else ['serve', '--execute']),
         *(['--http=' + str(port)] if transport == 'http' else []),
-        '--handlers=' + str(table), '--data-dir=' + str(store), '--poll-interval-ms=50']
+        '--handlers=' + str(table), '--data-dir=' + str(store),
+        *(['--poll-interval-ms=50'] if transport != 'http' else [])]
     with (directory / 'debugger.log').open('wb') as log:
         process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
         try:
