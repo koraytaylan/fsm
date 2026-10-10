@@ -7,6 +7,21 @@ Its inputs are the candidate SHA, mode and seed; seed 123 is the default.
 The runner identity is `github-ubuntu-24.04-x86_64-stable`.
 Calibration observations alone do not establish a candidate resource pass.
 
+The committed smoke/seed-123 calibration comes from
+[100 native cycles on candidate f0b68c61](https://github.com/koraytaylan/fsm/actions/runs/38089163514),
+covering all 72 case/handler/transport cells in 1,444.95 seconds with 362
+original domain closures, nine verified/replayed blocks and successful cleanup.
+The profile records the original report and implementing-author replay digests;
+this author replay is distinct from the plan's independent final review.
+Nonzero measured maxima have at least twice their observed allowance, rounded
+up to binary memory/count or time buckets; work latency uses an 80-second
+ceiling below the 90-second watchdog. Active capture allowance is twice the
+authored 131,072-byte flood although every sampled queue was empty; quiescent
+children, descendants and queues remain exactly zero, and capture growth is
+zero. Equivalent-host RSS growth allows 16 MiB and descriptor growth allows two.
+These budgets apply only to this named host, smoke profile and seed/workload
+digest; sustained and other native hosts require their own prior calibration.
+
 The entry point on a provisioned disposable Linux CI runner is:
 
 ```sh

@@ -17,5 +17,54 @@
       "maximum_cycles": 1000000
     }
   },
-  "calibrations": {}
+  "calibrations": {
+    "github-ubuntu-24.04-x86_64-stable": {
+      "status": "calibrated",
+      "profile": "smoke",
+      "seed": 123,
+      "source_commit": "f0b68c6125daa63422b696b7fc7346cc4f64b77a",
+      "workload_sha256": "15a2856c8346316fd3f0a5024ca3343d6dc66a26f332e9c27e5587737b87bd90",
+      "evidence_sha256": "99e4ee41ad6efd09f1f9f3fdaf1cea0c27116a4f7c0d348bab239aad6e905f73",
+      "evidence_url": "https://github.com/koraytaylan/fsm/actions/runs/38089163514",
+      "author_replay_sha256": "0411716a1455275abf7089be44fe2fde98dfe62113f393b253bc4aad738d5414",
+      "completed_cycles": 100,
+      "elapsed_ns": 1444947694921,
+      "maximum_observed": {
+        "work_latency_ns": 39838804614,
+        "control_latency_ns": 1528548,
+        "scheduler_lag_ns": 5355471330,
+        "rss_bytes": 71356416,
+        "file_descriptors": 18,
+        "active_children": 3,
+        "surviving_descendants": 1,
+        "capture_bytes": 0,
+        "journal_bytes": 2015738,
+        "disk_bytes": 13609024,
+        "cpu_ns": 111530000000
+      },
+      "maximum_quiescent_growth": {
+        "rss_bytes": 7618560,
+        "file_descriptors": 1,
+        "capture_bytes": 0
+      },
+      "ceilings": {
+        "work_latency_ns": 80000000000,
+        "control_latency_ns": 4000000,
+        "scheduler_lag_ns": 16000000000,
+        "rss_bytes": 268435456,
+        "file_descriptors": 64,
+        "active_children": 8,
+        "surviving_descendants": 2,
+        "capture_bytes": 262144,
+        "journal_bytes": 4194304,
+        "disk_bytes": 33554432,
+        "cpu_ns": 256000000000
+      },
+      "quiescent_growth": {
+        "rss_bytes": 16777216,
+        "file_descriptors": 2,
+        "capture_bytes": 0
+      }
+    }
+  }
 }
