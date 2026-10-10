@@ -12,13 +12,12 @@ import os
 import shutil
 from pathlib import Path
 import sys
-import tempfile
 import time
 import traceback
 
-from . import scenarios
+from . import scenarios, executor_scenarios
 from .evidence import Evidence, candidate, digest
-from .fsm import FSM, REPO
+from .fsm import FSM, REPO, task_cache
 
 
 class Report:
@@ -63,6 +62,7 @@ def discover(only: str | None) -> list[tuple[str, callable]]:
         for name, function in inspect.getmembers(scenarios, inspect.isfunction)
         if not name.startswith("_") and function.__module__ == scenarios.__name__
     ]
+    found.extend((function.__name__, function) for function in executor_scenarios.SCENARIOS)
     if only:
         found = [pair for pair in found if only in pair[0]]
     return sorted(found)
@@ -141,7 +141,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("only", nargs="?")
     parser.add_argument("--evidence-dir", default=os.environ.get(
-        "FSM_EVIDENCE_DIR", str(Path(tempfile.gettempdir()) / "fsm-acceptance-evidence")))
+        "FSM_EVIDENCE_DIR", str(Path(task_cache()) / "fsm-acceptance-evidence")))
     parser.add_argument("--candidate-revision", default=os.environ.get("FSM_CANDIDATE_REVISION"))
     parser.add_argument("--candidate-sha256", default=os.environ.get("FSM_CANDIDATE_SHA256"))
     parser.add_argument("--build-receipt", default=os.environ.get("FSM_BUILD_RECEIPT"))

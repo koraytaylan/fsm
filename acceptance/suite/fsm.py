@@ -9,9 +9,22 @@ import socket
 import subprocess
 import tempfile
 import time
+from pathlib import Path
 
 FSM = os.environ.get("FSM_BIN", "fsm")
 REPO = os.environ.get("FSM_REPO", "/src")
+
+
+def task_cache() -> str:
+    """Use an explicit writable task cache; never accept tempfile's fallback."""
+    configured = os.environ.get("TMPDIR")
+    path = Path(configured if configured else
+                Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "fsm-acceptance")
+    path = path.resolve()
+    if path == Path("/tmp") or Path("/tmp") in path.parents:
+        raise ValueError("acceptance temporary work requires a task cache outside /tmp")
+    path.mkdir(parents=True, exist_ok=True)
+    return str(path)
 
 
 class CliError(RuntimeError):
@@ -77,7 +90,7 @@ class Scratch:
     """A throwaway directory, removed when the scenario ends."""
 
     def __init__(self, tag: str) -> None:
-        self.path = tempfile.mkdtemp(prefix=f"fsm-acceptance-{tag}-")
+        self.path = tempfile.mkdtemp(prefix=f"fsm-acceptance-{tag}-", dir=task_cache())
 
     def __enter__(self) -> "Scratch":
         return self

@@ -1,0 +1,50 @@
+{
+  "format": "fsm.machine/1",
+  "name": "acceptance_workflow",
+  "description": "Validate, suspend, process and restore an independently observed resource.",
+  "context": [],
+  "events": [
+    {"name": "start", "fields": []},
+    {"name": "manual", "fields": []},
+    {"name": "validated", "fields": []},
+    {"name": "suspended", "fields": []},
+    {"name": "processed", "fields": []},
+    {"name": "restored", "fields": []},
+    {"name": "failed", "fields": []}
+  ],
+  "effects": [
+    {"name": "validate_resource", "fields": []},
+    {"name": "suspend_resource", "fields": []},
+    {"name": "process_items", "fields": []},
+    {"name": "restore_resource", "fields": []},
+    {"name": "operator_confirmation", "fields": []}
+  ],
+  "states": [
+    {"name": "idle"},
+    {"name": "validating", "entry": {"emit": [{"effect": "validate_resource", "args": {"resource": "\"supplier\""}}]}},
+    {"name": "suspending", "entry": {"emit": [{"effect": "suspend_resource", "args": {"resource": "\"supplier\""}}]}},
+    {"name": "processing", "entry": {"emit": [{"effect": "process_items", "args": {"resource": "\"supplier\""}}]}},
+    {"name": "restoring", "entry": {"emit": [{"effect": "restore_resource", "args": {"resource": "\"supplier\""}}]}},
+    {"name": "compensating", "entry": {"emit": [{"effect": "restore_resource", "args": {"resource": "\"supplier\""}}]}},
+    {"name": "manual_pause", "entry": {"emit": [{"effect": "operator_confirmation", "args": {}}]}},
+    {"name": "completed", "terminal": true},
+    {"name": "prerequisite_failed", "terminal": true},
+    {"name": "compensated", "terminal": true},
+    {"name": "restoration_failed", "terminal": true}
+  ],
+  "initial": "idle",
+  "transitions": [
+    {"from": "idle", "on": "start", "to": "validating"},
+    {"from": "idle", "on": "manual", "to": "manual_pause"},
+    {"from": "validating", "on": "validated", "to": "suspending"},
+    {"from": "validating", "on": "failed", "to": "prerequisite_failed"},
+    {"from": "suspending", "on": "suspended", "to": "processing"},
+    {"from": "suspending", "on": "failed", "to": "prerequisite_failed"},
+    {"from": "processing", "on": "processed", "to": "restoring"},
+    {"from": "processing", "on": "failed", "to": "compensating"},
+    {"from": "restoring", "on": "restored", "to": "completed"},
+    {"from": "restoring", "on": "failed", "to": "restoration_failed"},
+    {"from": "compensating", "on": "restored", "to": "compensated"},
+    {"from": "compensating", "on": "failed", "to": "restoration_failed"}
+  ]
+}

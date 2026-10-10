@@ -10,13 +10,15 @@ import time
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 import threading
 import queue
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from acceptance.suite.evidence import source_files
-from acceptance.suite.executor_scenarios import observe_trace
+from acceptance.suite.executor_scenarios import observe_trace, workflow_table
+from acceptance.suite.fsm import task_cache, Scratch
 from acceptance.suite.mcp import (StdioClient, HttpClient, FrameReader, McpError,
                                  MAX_FRAME, MAX_QUEUED_FRAMES)
 
@@ -39,7 +41,7 @@ class FixturePortabilityTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
 
     def test_fixture_inputs_are_in_controlled_source_inventory(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(dir=task_cache()) as directory:
             repository = Path(directory)
             fixture = repository / "acceptance" / "fixtures" / "executor_handler.py"
             fixture.parent.mkdir(parents=True)
@@ -170,7 +172,7 @@ class ObserverFaultTests(unittest.TestCase):
 
 class FixtureFiles(unittest.TestCase):
     def setUp(self):
-        self.directory = tempfile.TemporaryDirectory()
+        self.directory = tempfile.TemporaryDirectory(dir=task_cache())
         self.root = Path(self.directory.name)
 
     def tearDown(self):
@@ -377,6 +379,66 @@ class McpFixtureTests(FixtureFiles):
                 client.request("unknown")
             self.assertEqual(client.request("ping"), {})
             self.assertEqual(len(client.tools()), 1)
+
+
+class WorkflowProvisioningTests(FixtureFiles):
+    def test_scratch_uses_explicit_cache_even_if_tempfile_cached_a_fallback(self):
+        with patch.object(tempfile, "tempdir", "/tmp"):
+            with Scratch("explicit-cache") as scratch:
+                path = Path(scratch.path)
+                self.assertEqual(path.parent, Path(task_cache()))
+                self.assertTrue(path.is_dir())
+            self.assertFalse(path.exists())
+
+    def test_invalid_or_unwritable_cache_refuses_without_a_fallback(self):
+        with patch.dict("os.environ", {"TMPDIR": "/tmp"}):
+            with self.assertRaisesRegex(ValueError, "outside /tmp"):
+                task_cache()
+        with patch("acceptance.suite.fsm.Path.mkdir", side_effect=PermissionError("unwritable cache")):
+            with self.assertRaisesRegex(PermissionError, "unwritable cache"):
+                Scratch("refused-cache")
+
+    def test_provisioned_operations_match_each_independent_outcome_ledger(self):
+        outcomes = {
+            "success": ([0, 0, 0, 0], ["suspend", "process:0", "process:1", "restore"],
+                        {"suspended": False, "items": [0, 1]}),
+            "prerequisite-failed": ([3], [], None),
+            "partial-work": ([0, 0, 3, 0], ["suspend", "process:0", "restore"],
+                             {"suspended": False, "items": [0]}),
+            "restore-failed": ([0, 0, 3, 3], ["suspend", "process:0"],
+                               {"suspended": True, "items": [0]}),
+        }
+        for kind in ("process", "mcp"):
+            for outcome, (statuses, ledger, state) in outcomes.items():
+                with self.subTest(kind=kind, outcome=outcome):
+                    root = self.root / kind / outcome
+                    table = workflow_table(root, FIXTURE, kind=kind, outcome=outcome)
+                    actual = []
+                    for handler in table["handlers"][:len(statuses)]:
+                        command = [value.replace("{resource}", "supplier") for value in handler["argv"]]
+                        if kind == "process":
+                            result = subprocess.run(command, capture_output=True, timeout=10)
+                            actual.append(result.returncode)
+                        else:
+                            with StdioClient(command) as client:
+                                client.initialize()
+                                result = client.try_call(handler["tool"], handler["arguments"])
+                                actual.append(result["structuredContent"]["exit_code"])
+                                self.assertEqual(result["isError"], actual[-1] != 0)
+                    self.assertEqual(actual, statuses)
+                    trace = [json.loads(line) for line in (root / "trace.jsonl").read_text().splitlines()]
+                    observe_trace(trace, {"supplier": ledger}, complete=True).assert_passed()
+                    path = root / (hashlib.sha256(b"supplier").hexdigest() + ".json")
+                    if state is None:
+                        self.assertFalse(path.exists())
+                    else:
+                        self.assertEqual(json.loads(path.read_text()), state)
+
+    def test_unknown_fixture_modes_are_rejected_before_any_operation(self):
+        for kind, outcome in [("shell", "success"), ("process", "invented")]:
+            with self.assertRaises(ValueError):
+                workflow_table(self.root, FIXTURE, kind=kind, outcome=outcome)
+        self.assertFalse((self.root / "trace.jsonl").exists())
 
 
 class ClientStreamOwnershipTests(unittest.TestCase):

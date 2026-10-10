@@ -2,16 +2,106 @@
 
 This module does not import an engine, poll a workflow, or repair its state.
 Expected mutation order comes from the handwritten scenario, not candidate
-output. The transport scenarios and native shutdown matrix remain to be wired
-once their production prerequisites exist.
+output. Offline contract checks exercise the installed CLI without launch;
+autonomous transport scenarios and native shutdown acceptance remain pending.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from collections.abc import Iterable, Mapping
+from pathlib import Path
+import sys
+import json
+
+from . import fsm
 
 MAX_TRACE_EVENTS = 100_000
 MAX_TRACE_TEXT = 256
+
+
+def workflow_table(root: Path, fixture: Path, *, kind: str, outcome: str,
+                   release: Path | None = None) -> dict:
+    """Provision independent fixture handlers; this performs no execution.
+
+    Faults are finite and have one attempt so partial work cannot accidentally
+    complete through repeated injected failures; the machine owns compensation.
+    Runtime-native provisioning and installation are separate prerequisites.
+    """
+    if kind not in {"process", "mcp"} or outcome not in {
+        "success", "prerequisite-failed", "partial-work", "restore-failed"
+    }:
+        raise ValueError("unknown workflow fixture kind or outcome")
+    handlers = []
+    for effect, operation, event in [
+        ("validate_resource", "validate", "validated"),
+        ("suspend_resource", "suspend", "suspended"),
+        ("process_items", "process", "processed"),
+        ("restore_resource", "restore", "restored"),
+    ]:
+        failure = "none"
+        if operation == "validate" and outcome == "prerequisite-failed":
+            failure = "before"
+        elif operation == "process" and outcome in {"partial-work", "restore-failed"}:
+            failure = "partial"
+        elif operation == "restore" and outcome == "restore-failed":
+            failure = "restore"
+        command = [sys.executable, str(fixture.resolve()),
+                   "operation" if kind == "process" else "mcp",
+                   "--root", str(root.resolve()), "--run", effect,
+                   "--resource", "{resource}"]
+        if release is not None and operation == "validate":
+            command.extend(["--release", str(release.resolve()), "--wait-seconds", "10"])
+        handler = {"effect": effect, "argv": command, "timeout_ms": 30_000,
+                   "retry": {"attempts": 1, "backoff_ms": 1, "on": ["nonzero_exit"]},
+                   "on_ok": {"event": event, "payload": {}},
+                   "on_failed": {"event": "failed", "payload": {}}}
+        if kind == "process":
+            command.extend(["--operation", operation, "--failure", failure, "--items", "2"])
+        else:
+            handler.update(kind="mcp", tool="operate",
+                           arguments={"operation": operation, "failure": failure, "items": "2"})
+        handlers.append(handler)
+    return {"format": "fsm.handlers/1", "max_inflight": 1,
+            "max_inflight_per_instance": 1, "handlers": handlers,
+            "manual_effects": ["operator_confirmation"]}
+
+
+def executor_contract_fixtures_are_checked_without_external_work(report) -> None:
+    """Actual installed CLI checks; no native launch or lifecycle claim."""
+    fixture = Path(fsm.REPO) / "acceptance" / "fixtures" / "executor_handler.py"
+    machine = Path(fsm.REPO) / "acceptance" / "fixtures" / "executor_workflow.json"
+    with fsm.Scratch("executor-contract") as scratch:
+        for kind in ("process", "mcp"):
+            for outcome in ("success", "prerequisite-failed", "partial-work", "restore-failed"):
+                root = Path(scratch.path) / kind / outcome
+                table = workflow_table(root, fixture, kind=kind, outcome=outcome)
+                path = scratch.write("handlers.json", json.dumps(table))
+                result = fsm.run("execute", "--check", "--handlers", path,
+                                 "--machine-file", str(machine), "--json")
+                report.equal(result.code, 0, f"{kind}/{outcome}: the offline contract is compatible")
+                value = result.json()
+                report.equal(value["status"], "compatible", f"{kind}/{outcome}: the reported verdict agrees")
+                report.true(value["scope"]["effects_checked"] and value["scope"]["outcomes_checked"],
+                            f"{kind}/{outcome}: effects and outcomes were checked")
+                manual = [site["effect"] for site in value["effects"] if site["disposition"] == "manual"]
+                report.equal(manual, ["operator_confirmation"], f"{kind}/{outcome}: the intentional manual pause is visible")
+                report.true(str(root.resolve()) not in result.text,
+                            f"{kind}/{outcome}: private fixture paths are absent from the report")
+                report.true(not root.exists(), f"{kind}/{outcome}: no external fixture operation ran")
+                table["handlers"][0]["on_ok"]["event"] = "undeclared_outcome"
+                path = scratch.write("handlers.json", json.dumps(table))
+                refused = fsm.run("execute", "--check", "--handlers", path,
+                                  "--machine-file", str(machine), "--json")
+                report.equal(refused.code, 1, f"{kind}/{outcome}: an incompatible outcome is refused")
+                report.equal(refused.json()["status"], "invalid", f"{kind}/{outcome}: refusal remains a known contradiction")
+                codes = [finding["code"] for finding in refused.json()["findings"]]
+                report.true("exec/contract_outcome_event" in codes,
+                            f"{kind}/{outcome}: the exact outcome diagnostic teaches the refusal")
+                report.true(not root.exists(), f"{kind}/{outcome}: refusal also leaves external state absent")
+        report.note("Offline checks do not establish autonomous execution, shutdown or transport coverage.")
+
+
+SCENARIOS = (executor_contract_fixtures_are_checked_without_external_work,)
 
 
 def _name(value) -> bool:
