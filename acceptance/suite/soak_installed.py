@@ -235,8 +235,12 @@ class InstalledBlock:
         self.report.equal(rows[0]['bytes'],131072,'the physical flood writes its entire authored byte count')
         stopped=next(row for row in records if row['kind']=='execution_stopped' and row['body'].get('instance_id')==instance)
         candidate=stopped['body']['outcome']['result']
-        self.report.equal(candidate.get('stderr'),'n'*4096,'the candidate retains the exact bounded stderr prefix')
-        self.report.equal(candidate.get('stderr_sha256'),hashlib.sha256(b'n'*131072).hexdigest(),'the candidate identifies the whole bounded flood')
+        if self.kind=='process':
+            self.report.equal(candidate.get('stderr'),'n'*4096,'the process candidate retains the exact bounded stderr prefix')
+            self.report.equal(candidate.get('stderr_sha256'),hashlib.sha256(b'n'*131072).hexdigest(),'the process candidate identifies the whole bounded flood')
+        else:
+            self.report.equal(candidate,dict(structured=dict(exit_code=0,operation='validate')),
+                              'MCP success preserves the exact typed tool answer and omits server logs')
 
     def archive(self,index):
         parent=self.store.parent/'archives';parent.mkdir(exist_ok=True)

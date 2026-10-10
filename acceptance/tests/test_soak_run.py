@@ -206,6 +206,15 @@ class AccountingTests(unittest.TestCase):
             changed={**physical,key:value}
             with patch('acceptance.suite.soak_installed._fixture_rows',return_value=[changed]):
                 with self.assertRaises(AssertionError):block._noise(records,'inst-noise',dict(entries=[original]))
+        block.kind='mcp'
+        answer=dict(structured=dict(exit_code=0,operation='validate'))
+        records[0]['body']['outcome']['result']=answer
+        with patch('acceptance.suite.soak_installed._fixture_rows',return_value=[physical]):
+            block._noise(records,'inst-noise',dict(entries=[original]))
+        for changed in ({**answer,'stderr':'unexpected log'},dict(structured=dict(exit_code=0,operation='process'))):
+            records[0]['body']['outcome']['result']=changed
+            with patch('acceptance.suite.soak_installed._fixture_rows',return_value=[physical]):
+                with self.assertRaises(AssertionError):block._noise(records,'inst-noise',dict(entries=[original]))
 
 
 if __name__=='__main__':unittest.main()

@@ -53,6 +53,10 @@ original native closure and observed process death provide separate proof.
 Cancellation leaves its original effect visible in the cancelled instance;
 interrupted settlement consumes native ownership without acknowledging that
 effect or inventing an outcome event.
+The physical output flood is verified for both handler kinds: process results
+retain the exact 4 KiB stderr prefix and full digest, while successful MCP
+results retain their exact typed tool answer and omit server logs under the
+existing result contract; both must reach zero queued capture bytes.
 The installed verifier checks each host block and the latest archived prefix;
 the installed replay must reproduce the store, and archive manifests must
 continue their retained predecessor hashes.
