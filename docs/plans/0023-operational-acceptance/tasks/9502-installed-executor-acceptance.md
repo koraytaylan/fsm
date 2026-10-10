@@ -19,6 +19,7 @@ touches:
   - docs/EMBEDDING.md
   - docs/RELEASE.md
   - .github/workflows/installed-executor-check.yml
+  - .github/workflows/installed-baseline-check.yml
   - acceptance/run-installed-executor.py
   - acceptance/suite/native_fixture.py
   - acceptance/suite/scenarios.py
@@ -39,6 +40,7 @@ touches:
   - acceptance/tests/test_executor_drain_observer.py
   - acceptance/tests/test_stdio_output_observer.py
   - acceptance/tests/test_supervisor_observer.py
+  - acceptance/tests/test_baseline_observer.py
   - acceptance/fixtures/executor_handler.py
   - acceptance/fixtures/executor_workflow.json
   - acceptance/Containerfile

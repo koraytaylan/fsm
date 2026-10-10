@@ -56,20 +56,23 @@ if os.environ.get("NO_COLOR"):
     GREEN = RED = YELLOW = DIM = RESET = ""
 
 
-def discover(only: str | None) -> list[tuple[str, callable]]:
+def discover(only: str | None, inventory: str = "full") -> list[tuple[str, callable]]:
+    if inventory not in {"full", "baseline"}:
+        raise ValueError("unknown acceptance inventory")
     found = [
         (name, function)
         for name, function in inspect.getmembers(scenarios, inspect.isfunction)
         if not name.startswith("_") and function.__module__ == scenarios.__name__
     ]
-    found.extend((function.__name__, function) for function in executor_scenarios.SCENARIOS)
+    if inventory == "full":
+        found.extend((function.__name__, function) for function in executor_scenarios.SCENARIOS)
     if only:
         found = [pair for pair in found if only in pair[0]]
     return sorted(found)
 
 
-def run_suite(only: str | None, evidence: Evidence) -> int:
-    selected = discover(only)
+def run_suite(only: str | None, evidence: Evidence, inventory: str = "full") -> int:
+    selected = discover(only, inventory)
     if not selected:
         print(f"no scenario matches {only!r}", file=sys.stderr)
         return 2
@@ -140,6 +143,7 @@ class Tee:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("only", nargs="?")
+    parser.add_argument("--inventory", choices=("full", "baseline"), default="full")
     parser.add_argument("--evidence-dir", default=os.environ.get(
         "FSM_EVIDENCE_DIR", str(Path(task_cache()) / "fsm-acceptance-evidence")))
     parser.add_argument("--candidate-revision", default=os.environ.get("FSM_CANDIDATE_REVISION"))
@@ -151,7 +155,9 @@ def main() -> int:
                             candidate(FSM, REPO, arguments.candidate_revision,
                                       arguments.candidate_sha256, arguments.build_receipt),
                             [name for name, _ in discover(None)],
-                            [name for name, _ in discover(arguments.only)], arguments.only)
+                            [name for name, _ in discover(arguments.only, arguments.inventory)],
+                            arguments.only if arguments.inventory == "full" else
+                            "inventory:baseline" + (":" + arguments.only if arguments.only else ""))
         if arguments.build_receipt:
             receipt_artifact = evidence.directory / "build-receipt.json"
             shutil.copyfile(arguments.build_receipt, receipt_artifact)
@@ -167,7 +173,7 @@ def main() -> int:
         with log_path.open("w", encoding="utf-8") as log:
             sys.stdout, sys.stderr = Tee(stdout, log), Tee(stderr, log)
             try:
-                result = run_suite(arguments.only, evidence)
+                result = run_suite(arguments.only, evidence, arguments.inventory)
             finally:
                 sys.stdout, sys.stderr = stdout, stderr
         evidence.report["artifacts"].append({"path": log_path.name, "sha256": digest(log_path)})

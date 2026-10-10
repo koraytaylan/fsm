@@ -1,0 +1,58 @@
+name: installed-baseline-check
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate:
+        description: Immutable develop candidate SHA
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  installed-baseline:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      CARGO_BUILD_JOBS: "1"
+      RUSTUP_TOOLCHAIN: stable
+      PYTHONDONTWRITEBYTECODE: "1"
+      FSM_ACCEPTANCE_DISPOSABLE_NATIVE: "1"
+      NO_COLOR: "1"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.candidate }}
+      - name: Prepare explicit task cache
+        run: |
+          baseline_cache="$HOME/.cache/fsm-baseline-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -p "$baseline_cache"
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            baseline_cache="$(cygpath -w "$baseline_cache")"
+          fi
+          printf 'TMPDIR=%s\nTMP=%s\nTEMP=%s\nCARGO_TARGET_DIR=%s\n' "$baseline_cache" "$baseline_cache" "$baseline_cache" "$baseline_cache/target" >> "$GITHUB_ENV"
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            free -h
+            swapon --show
+          fi
+      - run: rustup toolchain install stable --profile minimal
+      - name: Consumer install and complete original inventory
+        env:
+          FSM_INSTALLED_CANDIDATE: ${{ inputs.candidate }}
+        run: python -u acceptance/run-installed-executor.py --candidate "$FSM_INSTALLED_CANDIDATE" --scenario baseline
+      - name: Retain original baseline evidence including failures
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: installed-baseline-${{ matrix.os }}
+          path: ${{ env.TMPDIR }}/installed-executor-check/evidence
+          if-no-files-found: error

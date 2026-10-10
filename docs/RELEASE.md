@@ -923,7 +923,7 @@ time and fail loudly:
 
 | scenario | the item it replaces |
 |---|---|
-| `tools_list_is_complete_and_within_its_budget` | connect and list all 24 tools, on every host |
+| `tools_list_is_complete_and_within_its_budget` | connect and list all 25 tools, on every host |
 | `the_golden_loop_runs_end_to_end` | run the golden loop end-to-end |
 | `a_rejected_event_is_refused_rather_than_silently_ignored` | — (a refusal reported as success is the failure a host check would have shown) |
 | `the_http_transport_serves_a_session_and_pushes_a_notification` | a real client over HTTP, initialize through teardown, one notification on the SSE stream |

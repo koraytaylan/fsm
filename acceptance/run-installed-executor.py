@@ -30,7 +30,8 @@ SCENARIOS = ("executor_stdio_process_success_progresses_with_a_quiet_client",
              "executor_standalone_shutdown_and_restart_preserve_original_claims",
              "executor_active_drain_preserves_original_success_and_pending_work",
              "executor_stdio_paused_and_retired_output_preserves_native_work",
-             "executor_supervisor_death_refuses_until_a_new_epoch_recovers_original_work")
+             "executor_supervisor_death_refuses_until_a_new_epoch_recovers_original_work",
+             "baseline")
 
 
 def main() -> int:
@@ -39,20 +40,27 @@ def main() -> int:
     parser.add_argument("--scenario", choices=SCENARIOS, default=SCENARIOS[0])
     arguments = parser.parse_args()
     scenario = arguments.scenario
-    cells = (1, 8, 16, 4, 8, 4, 10, 8, 8, 6, 4, 6)[SCENARIOS.index(scenario)]
-    require_disposable_runner()
+    cells = (1, 8, 16, 4, 8, 4, 10, 8, 8, 6, 4, 6, 2)[SCENARIOS.index(scenario)]
+    native = sys.platform == "linux"
+    if native or scenario != "baseline":
+        require_disposable_runner()
+    elif sys.platform not in {"darwin", "win32"} or os.environ.get("GITHUB_ACTIONS") != "true":
+        raise RuntimeError("portable baseline requires an explicit native macOS or Windows CI runner")
+    if not native:
+        cells = 0
     if not re.fullmatch(r"[a-f0-9]{40}", arguments.candidate):
         parser.error("an immutable candidate commit is required")
     if command(["git", "rev-parse", "HEAD"], str(REPO)) != arguments.candidate:
         raise ValueError("checkout differs from the candidate")
-    if AUTHORITY.exists() or BASE.exists():
+    if native and (AUTHORITY.exists() or BASE.exists()):
         raise RuntimeError("focused consumer runner refuses an existing authority installation")
     cache = Path(task_cache()) / "installed-executor-check"
     cache.mkdir()
     evidence = cache / "evidence"
     evidence.mkdir()
     control = dict(schema="fsm.installed-native-check/1", source_commit=arguments.candidate,
-                   scenario=scenario, scope="focused-installed-workflows", cells=cells,
+                   scenario=scenario, scope="installed-baseline" if scenario == "baseline" else "focused-installed-workflows", cells=cells,
+                   platform=sys.platform, unsupported_containment=not native,
                    passed=False, complete_matrix=False, native_handler_execution=False)
     control_path = evidence / "producer.json"
     control_path.write_text(json.dumps(control, indent=2))
@@ -65,20 +73,23 @@ def main() -> int:
         if source_manifest["dirty"]:
             raise ValueError("consumer snapshot is dirty")
         build(source, install_root)
-        binary = install_root / "bin/fsm"
+        binary = install_root / "bin" / ("fsm.exe" if os.name == "nt" else "fsm")
         receipt = install_root / "share/fsm-build.json"
-        subprocess.run(["cargo", "build", "--locked", "-p", "fsm-execute",
-                        "--bin", "fsm-containment-authority"], cwd=source, check=True,
-                       timeout=300, env={**os.environ, "CARGO_BUILD_JOBS": "1",
-                                         "CARGO_PROFILE_DEV_STRIP": "debuginfo"})
-        target = Path(os.environ["CARGO_TARGET_DIR"])
-        authority = target / "debug/fsm-containment-authority"
-        authority_digest = digest(authority)
-        verify_source(source, source_manifest)
-        installer = source / "crates/fsm-execute/tests/lifecycle_platform/authority_install.py"
-        installed = json.loads(privileged(sys.executable, str(installer), "install",
-                                          "--source", str(authority), "--sha256", authority_digest))
-        privileged("mkdir", "-m", "0755", str(BASE))
+        authority = None
+        authority_digest = None
+        if native:
+            subprocess.run(["cargo", "build", "--locked", "-p", "fsm-execute",
+                            "--bin", "fsm-containment-authority"], cwd=source, check=True,
+                           timeout=300, env={**os.environ, "CARGO_BUILD_JOBS": "1",
+                                             "CARGO_PROFILE_DEV_STRIP": "debuginfo"})
+            target = Path(os.environ["CARGO_TARGET_DIR"])
+            authority = target / "debug/fsm-containment-authority"
+            authority_digest = digest(authority)
+            verify_source(source, source_manifest)
+            installer = source / "crates/fsm-execute/tests/lifecycle_platform/authority_install.py"
+            installed = json.loads(privileged(sys.executable, str(installer), "install",
+                                              "--source", str(authority), "--sha256", authority_digest))
+            privileged("mkdir", "-m", "0755", str(BASE))
         temporary = cache / "temporary"
         temporary.mkdir()
         environment = {**os.environ, "TMPDIR": str(temporary), "PYTHONDONTWRITEBYTECODE": "1",
@@ -86,14 +97,16 @@ def main() -> int:
                        "FSM_BUILD_RECEIPT": str(receipt), "FSM_CANDIDATE_REVISION": arguments.candidate,
                        "FSM_CANDIDATE_SHA256": digest(binary), "FSM_EVIDENCE_DIR": str(evidence / "reports")}
         with (evidence / "consumer.log").open("wb") as log:
-            result = subprocess.run([sys.executable, "-m", "acceptance.suite.run", scenario],
+            selection = ["--inventory=baseline"] if scenario == "baseline" else [scenario]
+            result = subprocess.run([sys.executable, "-m", "acceptance.suite.run", *selection],
                                     cwd=source, env=environment, stdout=log, stderr=subprocess.STDOUT,
                                     timeout=360)
         control.update(consumer_invoked=True, consumer_exit=result.returncode,
                        binary_sha256=digest(binary), authority_sha256=authority_digest,
                        build_receipt_sha256=digest(receipt))
         shutil.copy2(binary, evidence / "fsm-installed-binary")
-        shutil.copy2(authority, evidence / "fsm-containment-authority-built")
+        if native:
+            shutil.copy2(authority, evidence / "fsm-containment-authority-built")
         shutil.copy2(receipt, evidence / "build-receipt.json")
         for directory in temporary.glob("installed-native-*"):
             shutil.copytree(directory, evidence / directory.name)
@@ -102,24 +115,29 @@ def main() -> int:
             raise RuntimeError("installed autonomous scenario failed or its report is missing")
         problems = validate_bundle(reports[0])
         report = json.loads(reports[0].read_text())
+        from acceptance.suite.run import discover
+        expected_scenarios = [name for name, _ in discover(None, "baseline")] if scenario == "baseline" else [scenario]
         if (problems or report["verdict"] != "passed" or report["release_eligible"] is not False
             or report["candidate"]["source_commit"] != arguments.candidate
             or report["candidate"]["binary_sha256"] != digest(binary)
             or report["candidate"]["identity_matches"] is not True
             or report["candidate"]["build_provenance_verified"] is not True
-            or report["selected_scenarios"] != [scenario]
-            or len(report["scenarios"]) != 1 or not report["scenarios"][0]["assertions"]):
+            or report["selected_scenarios"] != expected_scenarios
+            or len(report["scenarios"]) != len(expected_scenarios)
+            or any(not row["assertions"] for row in report["scenarios"])):
             raise RuntimeError("installed scenario evidence is incomplete or inconsistent: " + str(problems))
         retirement = list(evidence.glob("installed-native-*/retirement.json"))
         if len(retirement) != cells or any(json.loads(path.read_text())["cleaned"] is not True for path in retirement):
             raise RuntimeError("original native fixture cleanup was not verified")
         verify_source(source, source_manifest)
-        privileged(sys.executable, str(installer), "remove", "--device", str(installed["device"]),
-                   "--inode", str(installed["inode"]), "--sha256", authority_digest)
-        privileged("rmdir", str(BASE))
+        if native:
+            privileged(sys.executable, str(installer), "remove", "--device", str(installed["device"]),
+                       "--inode", str(installed["inode"]), "--sha256", authority_digest)
+            privileged("rmdir", str(BASE))
         success = True
-        control.update(passed=True, native_handler_execution=scenario != SCENARIOS[4], report_sha256=digest(reports[0]),
-                       assertions=len(report["scenarios"][0]["assertions"]), authority_removed=True)
+        control.update(passed=True, native_handler_execution=native and scenario != SCENARIOS[4], report_sha256=digest(reports[0]),
+                       assertions=sum(len(row["assertions"]) for row in report["scenarios"]), authority_removed=True if native else None,
+                       selected_scenarios=expected_scenarios)
         return 0
     except Exception as error:
         control.update(error=str(error), retained_authority=installed is not None and not success)

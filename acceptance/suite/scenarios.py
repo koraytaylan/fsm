@@ -18,12 +18,14 @@ from __future__ import annotations
 import json
 import os
 import sys
+from pathlib import Path as _Path
+from contextlib import contextmanager as _contextmanager, nullcontext as _nullcontext
 
 from . import fsm
 from .mcp import HttpClient, McpError, StdioClient
 
 CASE_REVIEW = "case_review.json"
-EXPECTED_TOOLS = 24
+EXPECTED_TOOLS = 25
 TOOLS_LIST_CEILING = 38_000
 
 
@@ -37,14 +39,14 @@ def _serve(store: str, *extra: str) -> StdioClient:
 
 
 # --------------------------------------------------------------------------
-# manual: <host>: connect, list all 24 tools, run the golden loop end-to-end.
+# manual: <host>: connect, list all 25 tools, run the golden loop end-to-end.
 # --------------------------------------------------------------------------
 
 def tools_list_is_complete_and_within_its_budget(report) -> None:
-    """What "connect and list all 24 tools" was actually checking.
+    """What "connect and list all tools" was actually checking.
 
     The count is the easy half. The other half is that `tools/list` fits: it
-    measures ~36 KiB against a 38 000-byte ceiling, and a host that truncates
+    measures the complete response against a 38 000-byte ceiling, and a host that truncates
     or refuses an oversized payload is exactly what a human clicking through
     Claude Desktop would have noticed.
     """
@@ -461,108 +463,123 @@ def the_executor_validates_a_shipped_handler_table(report) -> None:
                  "the shipped handler table validates")
 
 
-def the_executor_settles_a_pending_effect_and_advances_the_instance(report) -> None:
-    """The shipped binary against a handler an operator would actually write.
+@_contextmanager
+def _baseline_table(scratch, store, failed):
+    from .native_fixture import DisposableAuthority
+    fixture = _Path(fsm.REPO) / "acceptance/fixtures/executor_handler.py"
+    with (DisposableAuthority(fixture) if sys.platform == "linux" else _nullcontext(None)) as native:
+        resource = native.resource if native else _Path(scratch.dir("resource"))
+        handler = native.handler if native else fixture
+        row = dict(effect="request_confirmation", argv=[sys.executable, str(handler), "operation",
+            "--root", str(resource), "--run", "baseline", "--resource", "supplier",
+            "--operation", "validate", "--failure", "before" if failed else "none"],
+            timeout_ms=5000 if failed else 30000,
+            on_ok=dict(event="pick", payload={}), on_failed=dict(event="cancel", payload={}))
+        if failed:
+            row["retry"] = dict(attempts=2, backoff_ms=1, on=["nonzero_exit"])
+        table = dict(format="fsm.handlers/1", handlers=[row])
+        path = native.approve(_Path(store), table) if native else scratch.write("handlers.json", json.dumps(table))
+        yield str(path), native, resource
 
-    The suite proves the loop against a stub; this proves `fsm execute` itself,
-    with a handler table on disk and a real subprocess behind it.
-    """
+
+def _baseline_refusal(report, store, table, resource, instance):
+    from .executor_scenarios import read_journal_prefix, _unique_object, _invalid_constant
+    before = read_journal_prefix(_Path(store))
+    result = fsm.run("execute", f"--handlers={table}", "--json", data_dir=store, timeout=5).failed()
+    errors = [json.loads(line, object_pairs_hook=_unique_object, parse_constant=_invalid_constant)
+              for line in result.err.splitlines() if line.startswith("{")]
+    report.equal(result.out, "", "unsupported containment emits no successful execution output")
+    report.equal(len(errors), 1, "unsupported containment emits one original structured refusal")
+    report.equal(errors[0]["code"], "exec/mode", "unsupported native execution refuses explicitly before launch")
+    report.equal(read_journal_prefix(_Path(store)), before, "unsupported execution leaves durable ownership and journal unchanged")
+    report.equal(list(resource.iterdir()), [], "unsupported execution invokes no fixture and changes no external resource")
+    shown = fsm.run_json("instance", "show", instance, data_dir=store)
+    report.equal(len(shown["effects_pending"]), 1, "unsupported execution preserves the original pending effect")
+    report.equal(shown["leaf"], "picking", "unsupported execution fabricates no advance or failed outcome")
+    report.equal(fsm.run_json("journal", "verify", data_dir=store)["health"], "Ok", "the unchanged refusal journal verifies")
+    report.true(fsm.run_json("journal", "replay", data_dir=store)["agreement"] is True, "the unchanged refusal journal replays")
+    report.note("FSM_INSTALLED_BASELINE_REFUSAL_EVIDENCE " + json.dumps(dict(platform=sys.platform,
+        instance=instance, refusal=errors[0], journal=before, final=shown), sort_keys=True))
+
+
+def _baseline_execute(report, store, table, native, resource, instance, failed):
+    from .executor_lifecycle import _restart_host
+    from .executor_scenarios import _wait_for_files, _fixture_rows, _retire_execution_owner, read_journal_prefix, observe_trace
+    expected = 2 if failed else 1
+    with _restart_host(_Path(store), _Path(table), "standalone") as (_, host):
+        _wait_for_files(lambda: len(_fixture_rows(resource / "results.jsonl")) == expected, host, 30)
+        def completed():
+            shown = fsm.run_json("instance", "show", instance, data_dir=store)
+            return shown["leaf"] == ("cancelled" if failed else "shipping") and not shown["effects_pending"]
+        _wait_for_files(completed, host, 10)
+        _retire_execution_owner(report, host, _Path(store), native.namespace, "standalone")
+    report.equal(host.returncode, 0, "the original baseline executor confirms its own retirement")
+    records = read_journal_prefix(_Path(store))
+    results = _fixture_rows(resource / "results.jsonl")
+    trace = _fixture_rows(resource / "trace.jsonl")
+    report.equal([row["exit_code"] for row in results], [3, 3] if failed else [0], "the original fixture outcomes match the declared success or retry policy")
+    report.equal(observe_trace(trace, {"supplier": []}, complete=True).violations, (), "the raw baseline trace has no overlap, missing work or mutation")
+    claims = [row for row in records if row["kind"] == "execution_claimed"]
+    report.equal([row["body"]["attempt"] for row in claims], [1, 2] if failed else [1], "the original native claims preserve exact attempt numbers")
+    for kind in ("execution_stopped", "execution_settled"):
+        report.equal(len([row for row in records if row["kind"] == kind]), expected, "every original baseline claim has exactly one " + kind)
+    settlements = [row["body"] for row in records if row["kind"] == "execution_settled"]
+    report.equal([row["disposition"] for row in settlements], ["attempted", "acked"] if failed else ["acked"], "native settlement acknowledges once after the exact retry inventory")
+    report.equal(settlements[-1]["outcome"], "failed" if failed else "ok", "the single native acknowledgement retains its original outcome")
+    report.equal([row["body"]["event"] for row in records if row["kind"] == "event_applied"], ["place", "cancel" if failed else "pick"], "the baseline applies exactly one original outcome advance")
+    report.equal(fsm.run_json("journal", "verify", data_dir=store)["health"], "Ok", "the original baseline journal verifies")
+    report.true(fsm.run_json("journal", "replay", data_dir=store)["agreement"] is True, "the original baseline journal replays")
+    report.note("FSM_INSTALLED_BASELINE_EXECUTOR_EVIDENCE " + json.dumps(dict(namespace=native.namespace,
+        instance=instance, failed=failed, journal=records, results=results, trace=trace), sort_keys=True))
+
+
+def the_executor_settles_a_pending_effect_and_advances_the_instance(report) -> None:
+    """Real Linux containment; other platforms prove unsupported pre-launch refusal."""
     with fsm.Scratch("executor") as scratch:
         store = scratch.dir("store")
         fsm.run("machine", "add", fsm.example("order_lifecycle.json"), data_dir=store).ok()
         fsm.run("instance", "new", "order_lifecycle", "--request-id=x1", data_dir=store).ok()
-        fsm.run("instance", "send", "inst-x1", "place", "--request-id=x2",
-                data_dir=store).ok()
+        fsm.run("instance", "send", "inst-x1", "place", "--request-id=x2", data_dir=store).ok()
         before = fsm.run_json("instance", "show", "inst-x1", data_dir=store)
-        pending = before.get("effects_pending") or []
-        report.equal(len(pending), 1, "entering fulfilment left one effect pending")
-
-        table = scratch.write("handlers.json", json.dumps({
-            "format": "fsm.handlers/1",
-            "handlers": [{
-                "effect": "request_confirmation",
-                "argv": [sys.executable, os.path.join(fsm.REPO, "acceptance", "fixtures",
-                                                       "executor_handler.py"), "exit-ok"],
-                "timeout_ms": 30000,
-                "on_ok": {"event": "pick", "payload": {}},
-                "on_failed": {"event": "cancel", "payload": {}},
-            }],
-        }))
-        fsm.run("execute", "--check", f"--handlers={table}", "--json").ok()
-
-        def settled() -> bool:
-            shown = fsm.run("instance", "show", "inst-x1", "--json", data_dir=store)
-            return shown.code == 0 and not (shown.json().get("effects_pending") or [])
-
-        landed = fsm.Executing(store, table).until(settled, timeout=90)
-        report.true(landed, "the executor settled the effect unattended")
-
-        after = fsm.run_json("instance", "show", "inst-x1", data_dir=store)
-        report.equal(after.get("effects_pending") or [], [],
-                     "the executor acknowledged the effect")
-        history = fsm.run_json("instance", "history", "inst-x1", data_dir=store)
-        kinds = [entry.get("kind") for entry in history.get("entries", [])]
-        report.true("EffectAcked" in kinds, f"the ack is journalled: {kinds}")
-        report.equal(after.get("leaf"), "shipping",
-                     "the advance the table declares was applied")
+        report.equal(len(before.get("effects_pending") or []), 1, "entering fulfilment left one effect pending")
+        with _baseline_table(scratch, store, False) as (table, native, resource):
+            fsm.run("execute", "--check", f"--handlers={table}", "--json").ok()
+            if native is None:
+                _baseline_refusal(report, store, table, resource, "inst-x1")
+                return
+            _baseline_execute(report, store, table, native, resource, "inst-x1", False)
+            after = fsm.run_json("instance", "show", "inst-x1", data_dir=store)
+            report.equal(after.get("effects_pending") or [], [], "the executor acknowledged the effect")
+            history = fsm.run_json("instance", "history", "inst-x1", data_dir=store)
+            kinds = [entry.get("kind") for entry in history.get("entries", [])]
+            report.true("EffectAcked" in kinds, f"the ack is journalled: {kinds}")
+            report.equal(after.get("leaf"), "shipping", "the advance the table declares was applied")
+        report.true(native.cleaned, "every original successful baseline domain closes before fixture retirement")
 
 
 def the_executor_exhausts_retries_onto_the_failure_path(report) -> None:
-    """Backoff visible in the history, exhaustion firing the machine's own path.
-
-    A stalled instance and an exhausted one look the same from outside unless
-    something checks; the manual item existed because nothing did.
-    """
+    """Actual retry exhaustion on Linux; unsupported hosts retain pending work."""
     with fsm.Scratch("policy") as scratch:
         store = scratch.dir("store")
         fsm.run("machine", "add", fsm.example("order_lifecycle.json"), data_dir=store).ok()
         fsm.run("instance", "new", "order_lifecycle", "--request-id=p1", data_dir=store).ok()
-        fsm.run("instance", "send", "inst-p1", "place", "--request-id=p2",
-                data_dir=store).ok()
-
-        table = scratch.write("handlers.json", json.dumps({
-            "format": "fsm.handlers/1",
-            "handlers": [{
-                "effect": "request_confirmation",
-                "argv": [sys.executable, os.path.join(fsm.REPO, "acceptance", "fixtures",
-                                                       "executor_handler.py"), "exit-failed"],
-                "timeout_ms": 5000,
-                "retry": {"attempts": 2, "backoff_ms": 1,
-                          "on": ["nonzero_exit"]},
-                "on_ok": {"event": "pick", "payload": {}},
-                "on_failed": {"event": "cancel", "payload": {}},
-            }],
-        }))
-        fsm.run("execute", "--check", f"--handlers={table}", "--json").ok()
-
-        def exhausted() -> bool:
-            shown = fsm.run("instance", "show", "inst-p1", "--json", data_dir=store)
-            if shown.code != 0:
-                return False
-            view = shown.json()
-            return not (view.get("effects_pending") or []) or \
-                view.get("status") == "cancelled"
-
-        landed = fsm.Executing(store, table).until(exhausted, timeout=90)
-        report.true(landed, "the executor ran the handler to exhaustion unattended")
-
-        history = fsm.run_json("instance", "history", "inst-p1", data_dir=store)
-        kinds = [entry.get("kind") for entry in history.get("entries", [])]
-        report.true(
-            any(kind in ("EffectAttempted", "EffectAcked") for kind in kinds),
-            f"the attempts and the settlement are journalled: {kinds}",
-        )
-        after = fsm.run_json("instance", "show", "inst-p1", data_dir=store)
-        report.note(f"after exhaustion the instance is at {after.get('leaf')} "
-                    f"({after.get('status')})")
-        report.true(
-            after.get("leaf") == "cancelled" or after.get("status") == "cancelled",
-            "exhaustion fired the machine's declared failure path rather than stalling",
-        )
-        dead = fsm.run("execute", "--list-dead", f"--handlers={table}", "--json",
-                       data_dir=store)
-        report.true(dead.code == 0, "--list-dead runs against the resulting store")
-        report.note(f"--list-dead reported {len(dead.json().get('dead_letters', []))} entries")
+        fsm.run("instance", "send", "inst-p1", "place", "--request-id=p2", data_dir=store).ok()
+        with _baseline_table(scratch, store, True) as (table, native, resource):
+            fsm.run("execute", "--check", f"--handlers={table}", "--json").ok()
+            if native is None:
+                _baseline_refusal(report, store, table, resource, "inst-p1")
+                return
+            _baseline_execute(report, store, table, native, resource, "inst-p1", True)
+            history = fsm.run_json("instance", "history", "inst-p1", data_dir=store)
+            kinds = [entry.get("kind") for entry in history.get("entries", [])]
+            report.true(any(kind in ("EffectAttempted", "EffectAcked") for kind in kinds), f"the attempts and the settlement are journalled: {kinds}")
+            after = fsm.run_json("instance", "show", "inst-p1", data_dir=store)
+            report.note(f"after exhaustion the instance is at {after.get('leaf')} ({after.get('status')})")
+            report.true(after.get("leaf") == "cancelled" or after.get("status") == "cancelled", "exhaustion fired the machine's declared failure path rather than stalling")
+            dead = fsm.run("execute", "--list-dead", f"--handlers={table}", "--json", data_dir=store)
+            report.true(dead.code == 0, "--list-dead runs against the resulting store")
+            report.note(f"--list-dead reported {len(dead.json().get('dead_letters', []))} entries")
+        report.true(native.cleaned, "every original retry baseline domain closes before fixture retirement")
 
 
 # --------------------------------------------------------------------------
