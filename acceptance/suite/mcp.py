@@ -101,7 +101,7 @@ class StdioClient:
         self._stderr = bytearray()
 
         def errors():
-            while chunk := self.process.stderr.buffer.read(4096):
+            while chunk := self.process.stderr.buffer.read1(4096):
                 self._stderr.extend(chunk[:max(0, 65_536 - len(self._stderr))])
 
         self._error_worker = threading.Thread(target=errors, daemon=True)

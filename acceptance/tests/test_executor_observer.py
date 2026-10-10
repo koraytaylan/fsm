@@ -22,7 +22,7 @@ from acceptance.suite.executor_scenarios import (observe_trace, workflow_table,
                                                read_journal_prefix, observe_success_journal,
                                                observe_workflow_journal, _installed_client,
                                                _retire_http_owner)
-from acceptance.suite.fsm import task_cache, Scratch
+from acceptance.suite.fsm import task_cache, Scratch, BoundedCapture, Serving, CliError
 from acceptance.suite.mcp import (StdioClient, HttpClient, FrameReader, McpError,
                                  MAX_FRAME, MAX_QUEUED_FRAMES)
 from acceptance.suite.native_fixture import (require_disposable_runner, DisposableAuthority,
@@ -461,6 +461,64 @@ class WorkflowProvisioningTests(FixtureFiles):
 
 
 class ClientStreamOwnershipTests(unittest.TestCase):
+    def test_failed_http_startup_retires_its_actual_stub_and_readers(self):
+        process = subprocess.Popen([sys.executable, "-c", "import time;time.sleep(10)"],
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        with patch("acceptance.suite.fsm.subprocess.Popen", return_value=process):
+            serving = Serving("labelled-stub", 1)
+        with patch("acceptance.suite.fsm.time.monotonic", side_effect=[100, 131]):
+            with self.assertRaisesRegex(CliError, "never listened"):
+                serving.__enter__()
+        self.assertIsNotNone(process.poll())
+        self.assertFalse(serving.stdout_capture.worker.is_alive())
+        self.assertFalse(serving.stderr_capture.worker.is_alive())
+        self.assertTrue(process.stdout.closed)
+        self.assertTrue(process.stderr.closed)
+
+    def test_small_live_diagnostics_do_not_wait_for_pipe_eof(self):
+        program = '''import sys
+sys.stderr.write("small-live-diagnostic\\n");sys.stderr.flush()
+request=sys.stdin.readline()
+sys.stderr.buffer.write(b"x"*200000+b"end");sys.stderr.flush()
+'''
+        process = subprocess.Popen([sys.executable, "-c", program], stdin=subprocess.PIPE,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+        capture = BoundedCapture(process.stderr)
+        try:
+            deadline = time.monotonic() + 2
+            while b"small-live-diagnostic" not in capture.data and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertIn(b"small-live-diagnostic", capture.data)
+            self.assertIsNone(process.poll(), "the actual stub remains alive until released")
+            process.stdin.write("release\n");process.stdin.flush();process.stdin.close()
+            self.assertEqual(process.wait(timeout=5), 0)
+            capture.join()
+            self.assertEqual(len(capture.data), 65_536)
+            self.assertTrue(capture.data.endswith(b"end"))
+            self.assertFalse(capture.worker.is_alive())
+        finally:
+            if process.poll() is None:
+                process.kill();process.wait(timeout=5)
+            capture.join()
+            if not process.stdin.closed:
+                process.stdin.close()
+            process.stderr.close()
+
+    def test_stdio_retains_small_diagnostics_while_the_server_is_live(self):
+        program = '''import sys,json
+sys.stderr.write("small-live-diagnostic\\n");sys.stderr.flush()
+for line in sys.stdin:
+ request=json.loads(line)
+ print(json.dumps({"id":request["id"],"result":{}}),flush=True)
+'''
+        with StdioClient([sys.executable, "-c", program]) as client:
+            self.assertEqual(client.request("ping"), {})
+            deadline = time.monotonic() + 2
+            while b"small-live-diagnostic" not in client._stderr and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertIn(b"small-live-diagnostic", client._stderr)
+            self.assertIsNone(client.process.poll())
+
     def test_http_retirement_requires_original_stop_facts_before_wait(self):
         from acceptance.suite.run import Report
         from unittest.mock import Mock

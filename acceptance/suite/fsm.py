@@ -9,6 +9,7 @@ import socket
 import subprocess
 import tempfile
 import time
+import threading
 from pathlib import Path
 
 FSM = os.environ.get("FSM_BIN", "fsm")
@@ -166,6 +167,26 @@ class Executing:
                 self.process.wait(timeout=10)
 
 
+class BoundedCapture:
+    """Continuously drain one child diagnostic pipe, retaining a bounded tail."""
+
+    def __init__(self, pipe):
+        self.data = bytearray()
+
+        def read():
+            while chunk := pipe.buffer.read1(4096):
+                self.data.extend(chunk)
+                del self.data[:-65_536]
+
+        self.worker = threading.Thread(target=read, daemon=True)
+        self.worker.start()
+
+    def join(self) -> None:
+        self.worker.join(timeout=2)
+        if self.worker.is_alive():
+            raise CliError("the diagnostic capture did not retire")
+
+
 class Serving:
     """`fsm serve --http` in the background, with its port already listening."""
 
@@ -176,14 +197,24 @@ class Serving:
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
             env={**os.environ, "NO_COLOR": "1"},
         )
+        self.stdout_capture = BoundedCapture(self.process.stdout)
+        self.stderr_capture = BoundedCapture(self.process.stderr)
 
     def __enter__(self) -> "Serving":
+        try:
+            return self._wait_until_listening()
+        except BaseException:
+            self.__exit__()
+            raise
+
+    def _wait_until_listening(self) -> "Serving":
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
             if self.process.poll() is not None:
+                self.stderr_capture.join()
                 raise CliError(
                     "the server exited before it listened:\n"
-                    + (self.process.stderr.read() if self.process.stderr else "")
+                    + bytes(self.stderr_capture.data).decode("utf-8", errors="replace")
                 )
             try:
                 with socket.create_connection(("127.0.0.1", self.port), timeout=1):
@@ -199,3 +230,7 @@ class Serving:
         except subprocess.TimeoutExpired:
             self.process.kill()
             self.process.wait(timeout=10)
+        self.stdout_capture.join()
+        self.stderr_capture.join()
+        self.process.stdout.close()
+        self.process.stderr.close()

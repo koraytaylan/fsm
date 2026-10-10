@@ -289,16 +289,26 @@ def executor_transport_outcome_matrix_progresses_with_quiet_clients(report) -> N
                 _installed_workflow(report, transport, kind, outcome)
 
 
+def executor_transport_admission_and_manual_effects_preserve_pending_work(report) -> None:
+    """Real unchecked-draft refusal and declared manual work, then valid work."""
+    for transport in ("stdio", "http"):
+        for kind in ("process", "mcp"):
+            report.note(f"Installed admission/manual cell: {transport}/{kind}")
+            _installed_workflow(report, transport, kind, "success", admission=True)
+
+
 @contextmanager
 def _installed_client(store: Path, table: Path, transport: str):
     options = ["--execute", f"--handlers={table}"]
     if transport == "stdio":
         with StdioClient([fsm.FSM, "serve", f"--data-dir={store}", *options,
                           "--poll-interval-ms=25"]) as client:
+            client.process.acceptance_stderr = client._stderr
             yield client, client.process
     else:
         port = fsm.free_port()
         host = fsm.Serving(str(store), port, *options)
+        host.process.acceptance_stderr = host.stderr_capture.data
         try:
             with host, HttpClient("127.0.0.1", port) as client:
                 yield client, host.process
@@ -324,7 +334,41 @@ def _retire_http_owner(report, host, store: Path, namespace: str) -> None:
     host.wait(timeout=15)
 
 
-def _installed_workflow(report, transport: str, kind: str, outcome: str) -> None:
+def _installed_admission(report, client, native, store: Path, specification: dict) -> dict:
+    """Check an invalid draft, deliberately bypass advisory checks, then manual work."""
+    invalid = json.loads(json.dumps(specification))
+    invalid["name"] = "incompatible_workflow"
+    invalid["states"][1]["entry"]["emit"][0]["args"] = {}
+    before = read_journal_prefix(store)
+    rejected = client.structured("executor_check", {"spec": invalid})
+    report.equal(rejected["status"], "invalid", "the actual loaded contract rejects the incompatible draft")
+    report.true(any(finding.get("code") == "exec/contract_argument_missing"
+                    and finding.get("path") == "/states/1/entry/emit/0/args/resource"
+                    for finding in rejected["findings"]), "the invalid draft carries the exact missing-argument diagnostic")
+    report.equal(read_journal_prefix(store), before, "draft validation does not mutate the journal")
+    report.equal(_fixture_rows(native.resource / "trace.jsonl"), [], "no handler runs while the draft is invalid")
+    created = client.structured("machine_create", {"spec": invalid})
+    invalid_instance = client.structured("instance_create", {"machine": created["machine_id"],
+                                         "request_id": "unchecked-installed-create"})["instance_id"]
+    invalid_pending = client.structured("instance_send", {"instance_id": invalid_instance,
+        "event": {"name": "start"}, "request_id": "unchecked-installed-start"})
+    report.equal(invalid_pending["leaf"], "validating", "an unchecked machine retains its authored pending state")
+    report.equal(len(invalid_pending["effects_pending"]), 1, "the incompatible effect remains pending")
+    manual_report = client.structured("executor_check", {"spec": specification})
+    report.equal([site["effect"] for site in manual_report["effects"] if site["disposition"] == "manual"],
+                 ["operator_confirmation"], "the loaded contract explicitly declares its manual effect")
+    manual_instance = client.structured("instance_create", {"machine": "acceptance_workflow",
+                                         "request_id": "manual-installed-create"})["instance_id"]
+    manual_pending = client.structured("instance_send", {"instance_id": manual_instance,
+        "event": {"name": "manual"}, "request_id": "manual-installed-start"})
+    report.equal(manual_pending["leaf"], "manual_pause", "the declared manual effect enters its deliberate pause")
+    report.equal(len(manual_pending["effects_pending"]), 1, "manual work remains visible and pending")
+    return dict(invalid_instance=invalid_instance, invalid_pending=invalid_pending["effects_pending"],
+                manual_instance=manual_instance, manual_pending=manual_pending["effects_pending"],
+                invalid_report=rejected, manual_report=manual_report)
+
+
+def _installed_workflow(report, transport: str, kind: str, outcome: str, *, admission: bool = False) -> None:
     fixture = Path(fsm.REPO) / "acceptance/fixtures/executor_handler.py"
     machine = Path(fsm.REPO) / "acceptance/fixtures/executor_workflow.json"
     expected = {
@@ -351,6 +395,8 @@ def _installed_workflow(report, transport: str, kind: str, outcome: str) -> None
         table_path = native.approve(store, table)
         with _installed_client(store, table_path, transport) as (client, host):
             client.initialize()
+            admission_evidence = (_installed_admission(report, client, native, store,
+                                   json.loads(machine.read_text())) if admission else None)
             draft = client.structured("executor_check", {"spec": json.loads(machine.read_text())})
             report.equal(draft["status"], "compatible", "the installed host checks its actual loaded table")
             discovery = client.request("resources/read", {"uri": "fsm://executor"})
@@ -408,6 +454,20 @@ def _installed_workflow(report, transport: str, kind: str, outcome: str) -> None
             report.equal(final["effects_pending"], [], "no handled effect remains pending")
             report.equal(client.structured("journal_verify")["health"], "Ok", "the installed verifier checks the journal chain")
             report.true(client.structured("journal_replay")["matches"] is True, "the installed replay reproduces every recorded outcome")
+            if admission:
+                _wait_for_files(lambda: b"exec/contract_invalid" in bytes(host.acceptance_stderr), host, 10)
+                for prefix, leaf in (("invalid", "validating"), ("manual", "manual_pause")):
+                    preserved = client.structured("instance_get", {"instance_id": admission_evidence[prefix + "_instance"]})
+                    report.equal(preserved["leaf"], leaf, f"{prefix} work stays paused while valid work completes")
+                    report.equal(preserved["effects_pending"], admission_evidence[prefix + "_pending"],
+                                 f"{prefix} work is not acknowledged or removed by the executor")
+                    owned = [record for record in records if record["body"].get("instance_id") == admission_evidence[prefix + "_instance"]]
+                    report.true(not any(record["kind"] in {"execution_claimed", "execution_stopped", "execution_settled", "effect_acked", "effect_attempted"}
+                                        for record in owned), f"{prefix} work has no fabricated ownership, retry or acknowledgement")
+                report.note("FSM_INSTALLED_ADMISSION_EVIDENCE " + json.dumps(dict(
+                    namespace=native.namespace, transport=transport, handler_kind=kind,
+                    diagnostics=bytes(host.acceptance_stderr).decode("utf-8", errors="replace"),
+                    **admission_evidence), sort_keys=True))
             if transport == "http":
                 report.true(client.delete_session() in (200, 204), "HTTP session deletion succeeds")
                 report.true(host.poll() is None, "deleting an HTTP session leaves the shared execution host alive")
@@ -419,7 +479,8 @@ def _installed_workflow(report, transport: str, kind: str, outcome: str) -> None
 SCENARIOS = (executor_contract_fixtures_are_checked_without_external_work,
              executor_stdio_process_success_progresses_with_a_quiet_client,
              executor_stdio_outcome_matrix_progresses_with_quiet_clients,
-             executor_transport_outcome_matrix_progresses_with_quiet_clients)
+             executor_transport_outcome_matrix_progresses_with_quiet_clients,
+             executor_transport_admission_and_manual_effects_preserve_pending_work)
 
 
 def _name(value) -> bool:

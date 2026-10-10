@@ -21,7 +21,8 @@ from acceptance.suite.fsm import task_cache
 
 SCENARIOS = ("executor_stdio_process_success_progresses_with_a_quiet_client",
              "executor_stdio_outcome_matrix_progresses_with_quiet_clients",
-             "executor_transport_outcome_matrix_progresses_with_quiet_clients")
+             "executor_transport_outcome_matrix_progresses_with_quiet_clients",
+             "executor_transport_admission_and_manual_effects_preserve_pending_work")
 
 
 def main() -> int:
@@ -30,7 +31,7 @@ def main() -> int:
     parser.add_argument("--scenario", choices=SCENARIOS, default=SCENARIOS[0])
     arguments = parser.parse_args()
     scenario = arguments.scenario
-    cells = (1, 8, 16)[SCENARIOS.index(scenario)]
+    cells = (1, 8, 16, 4)[SCENARIOS.index(scenario)]
     require_disposable_runner()
     if not re.fullmatch(r"[a-f0-9]{40}", arguments.candidate):
         parser.error("an immutable candidate commit is required")
