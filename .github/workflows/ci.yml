@@ -191,6 +191,25 @@ jobs:
           python3 tools/gen_decimal_vectors.py "$work/dec-b.jsonl"
           cmp "$work/dec-a.jsonl" "$work/dec-b.jsonl"
           cmp "$work/dec-a.jsonl" crates/fsm-core/tests/fixtures/decimal/generated_vectors.jsonl
+      - name: Native installed baseline and unsupported capability refusal
+        shell: bash
+        env:
+          CARGO_BUILD_JOBS: "1"
+          RUSTUP_TOOLCHAIN: ${{ matrix.rust == '1.89' && '1.89.0' || matrix.rust }}
+          PYTHONDONTWRITEBYTECODE: "1"
+          FSM_ACCEPTANCE_DISPOSABLE_NATIVE: "1"
+        run: |
+          rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+          export CARGO_TARGET_DIR="$TMPDIR/native-target"
+          python -B acceptance/run-native.py --candidate "$(git rev-parse HEAD)" \
+            --axis baseline --toolchain "$RUSTUP_TOOLCHAIN"
+      - name: Retain native baseline evidence including failures
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-baseline-${{ matrix.os }}-${{ matrix.rust }}
+          path: ${{ env.TMPDIR }}/native-check/evidence
+          if-no-files-found: error
 
   # The initial contained executor requires a provisioned Linux/systemd
   # runtime. These are real administrative fault probes, separate from the

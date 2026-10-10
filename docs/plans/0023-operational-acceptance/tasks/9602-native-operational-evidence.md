@@ -10,9 +10,11 @@ touches:
   - .github/workflows/ci.yml
   - .github/workflows/operational-acceptance.yml
   - acceptance/run-native.py
+  - acceptance/suite/evidence.py
+  - acceptance/tests/test_native.py
   - acceptance/profiles/operational.json
   - docs/OPERATIONS.md
-status: planned
+status: in_progress
 merged_as: ""
 ---
 # Native Operational Evidence

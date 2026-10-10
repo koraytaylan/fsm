@@ -1,0 +1,194 @@
+name: operational-acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate:
+        description: Immutable develop candidate SHA
+        required: true
+        type: string
+      scope:
+        description: Native smoke matrix or separately provisioned sustained operation
+        required: true
+        type: choice
+        options: [smoke, sustained]
+      mode:
+        description: Sustained host calibration or frozen-budget validation
+        required: true
+        type: choice
+        options: [validate, calibrate]
+        default: validate
+      host:
+        description: Predeclared sustained host identity matching committed calibration
+        required: false
+        type: string
+      seed:
+        description: Deterministic operational seed
+        required: true
+        type: string
+        default: "123"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: operational-acceptance
+  cancel-in-progress: false
+
+jobs:
+  native-smoke:
+    if: ${{ inputs.scope == 'smoke' }}
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        os: [ubuntu-24.04, macos-latest, windows-latest]
+        rust: [stable, "1.89.0"]
+        axis: [baseline]
+        include:
+          - os: ubuntu-24.04
+            rust: stable
+            axis: executor
+          - os: ubuntu-24.04
+            rust: "1.89.0"
+            axis: executor
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    env:
+      CARGO_BUILD_JOBS: "1"
+      RUSTUP_TOOLCHAIN: ${{ matrix.rust }}
+      PYTHONDONTWRITEBYTECODE: "1"
+      FSM_ACCEPTANCE_DISPOSABLE_NATIVE: "1"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.candidate }}
+      - name: Prepare explicit task cache
+        run: |
+          native_cache="$HOME/.cache/fsm-native-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -p "$native_cache"
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            native_cache="$(cygpath -w "$native_cache")"
+          fi
+          printf 'TMPDIR=%s\nTMP=%s\nTEMP=%s\nCARGO_TARGET_DIR=%s\n' "$native_cache" "$native_cache" "$native_cache" "$native_cache/target" >> "$GITHUB_ENV"
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            free -h
+            swapon --show
+          fi
+      - run: rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+      - name: Focused native evidence refusal controls
+        run: python -B -m unittest discover -s acceptance/tests -p test_native.py
+      - name: Install external hardware observer
+        if: ${{ matrix.axis == 'executor' }}
+        run: |
+          sudo -n env "TMPDIR=$TMPDIR" apt-get update
+          sudo -n env "TMPDIR=$TMPDIR" apt-get install -y --no-install-recommends gdb binutils
+      - name: Execute the complete original native axis
+        env:
+          FSM_NATIVE_CANDIDATE: ${{ inputs.candidate }}
+          FSM_NATIVE_AXIS: ${{ matrix.axis }}
+        run: python -B acceptance/run-native.py --candidate "$FSM_NATIVE_CANDIDATE" --axis "$FSM_NATIVE_AXIS" --toolchain "$RUSTUP_TOOLCHAIN"
+      - name: Retain original axis including failures
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.axis }}-${{ matrix.os }}-${{ matrix.rust }}
+          path: ${{ env.TMPDIR }}/native-check/evidence
+          if-no-files-found: error
+
+  verify-smoke:
+    if: ${{ always() && inputs.scope == 'smoke' }}
+    needs: native-smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.candidate }}
+      - name: Prepare artifact cache
+        run: |
+          verify_cache="$HOME/.cache/fsm-native-verify-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -p "$verify_cache"
+          printf 'TMPDIR=%s\n' "$verify_cache" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: native-*
+          path: ${{ env.TMPDIR }}/original-axes
+      - name: Require all eight original passing axes
+        env:
+          FSM_NATIVE_CANDIDATE: ${{ inputs.candidate }}
+          FSM_NATIVE_CONCLUSION: ${{ needs.native-smoke.result }}
+        run: |
+          timeout 480s python -B acceptance/run-native.py --candidate "$FSM_NATIVE_CANDIDATE" \
+            --smoke-matrix "$TMPDIR/original-axes" --job-conclusion "$FSM_NATIVE_CONCLUSION"
+
+  sustained-prerequisites:
+    if: ${{ inputs.scope == 'sustained' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require explicit runner provisioning before queuing an expensive job
+        env:
+          FSM_RUNNER_READY: ${{ vars.FSM_OPERATIONAL_RUNNER_READY }}
+          FSM_NATIVE_HOST: ${{ inputs.host }}
+        run: |
+          test "$FSM_RUNNER_READY" = true
+          test -n "$FSM_NATIVE_HOST"
+
+  sustained:
+    if: ${{ inputs.scope == 'sustained' }}
+    needs: sustained-prerequisites
+    runs-on: [self-hosted, Linux, X64, fsm-operational-disposable]
+    timeout-minutes: 660
+    env:
+      CARGO_BUILD_JOBS: "1"
+      RUSTUP_TOOLCHAIN: stable
+      PYTHONDONTWRITEBYTECODE: "1"
+      FSM_ACCEPTANCE_DISPOSABLE_NATIVE: "1"
+      FSM_OPERATIONAL_EPHEMERAL_RUNNER: "1"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.candidate }}
+      - name: Prepare owned caches and inspect capacity
+        run: |
+          sustained_cache="$HOME/.cache/fsm-sustained-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -p "$sustained_cache/lifecycle" "$sustained_cache/duration"
+          printf 'TMPDIR=%s\nCARGO_TARGET_DIR=%s\nFSM_NATIVE_EVIDENCE=%s\n' "$sustained_cache" "$sustained_cache/target" "$sustained_cache" >> "$GITHUB_ENV"
+          free -h
+          swapon --show
+      - run: rustup toolchain install stable --profile minimal --component clippy
+      - name: Require the external hardware observer
+        run: |
+          command -v gdb
+          command -v nm
+      - name: Actual native signal and hard-kill inventory for the same candidate
+        env:
+          FSM_NATIVE_CANDIDATE: ${{ inputs.candidate }}
+        run: |
+          TMPDIR="$FSM_NATIVE_EVIDENCE/lifecycle" python -B acceptance/run-native.py \
+            --candidate "$FSM_NATIVE_CANDIDATE" --axis executor --toolchain stable
+      - name: Real bounded sustained work or original host calibration
+        env:
+          FSM_NATIVE_CANDIDATE: ${{ inputs.candidate }}
+          FSM_NATIVE_HOST: ${{ inputs.host }}
+          FSM_NATIVE_MODE: ${{ inputs.mode }}
+          FSM_NATIVE_SEED: ${{ inputs.seed }}
+        run: |
+          TMPDIR="$FSM_NATIVE_EVIDENCE/duration" python -B acceptance/run-native.py \
+            --candidate "$FSM_NATIVE_CANDIDATE" --axis sustained --toolchain stable \
+            --host "$FSM_NATIVE_HOST" --mode "$FSM_NATIVE_MODE" --seed "$FSM_NATIVE_SEED"
+      - name: Retain lifecycle and duration evidence including failures
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-sustained-original-evidence
+          path: |
+            ${{ env.FSM_NATIVE_EVIDENCE }}/lifecycle/native-check/evidence
+            ${{ env.FSM_NATIVE_EVIDENCE }}/duration/native-check/evidence
+          if-no-files-found: error

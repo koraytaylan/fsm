@@ -115,3 +115,74 @@ the final helper removal checks its original device, inode and digest.
 Uncertain cleanup retains its authority and diagnostics on the disposable VM.
 The sustained profile needs a runner whose uninterrupted job allowance exceeds
 eight hours; the hosted smoke workflow does not supply sustained evidence.
+
+## Native candidate axes
+
+Dispatch `operational-acceptance` with `scope=smoke` and an exact committed
+candidate SHA to run six native installed baselines (Linux, macOS and Windows,
+each on stable and Rust 1.89.0) plus the complete Linux executor inventory at
+both toolchains; the workflow serializes these eight jobs and verifies their
+original artifacts together. Each baseline preserves all fifteen original
+scenarios; macOS and Windows prove unsupported containment before handler entry.
+The two executor jobs execute all 37 scenarios, including actual native signals,
+hard kills, hardware cuts, descendant closure and original-claim recovery.
+The existing six-leg Rust gate retains every required step and adds installed
+baseline proof after those steps; this opt-in smoke workflow does not run or
+replace that expensive gate. Podman's consumer installation remains a separately
+invoked `installed-consumer-check` run for the same candidate.
+
+`acceptance/run-native.py` checks a clean immutable checkout, explicitly selected
+toolchain, native OS and the original consumer build receipt; Linux installation
+and workloads execute under observed 1 GiB memory and zero-swap cgroup limits
+with one Cargo worker. Original evidence is copied to
+`$TMPDIR/native-check/evidence`, including failure diagnostics and native fixture
+retirement. The `native.json` receipt binds the original file inventory and
+digests; it is controlled-run evidence, not an independent attestation.
+Verification requires a genuinely successful CI job as well as the matching
+candidate, executable, source receipt, complete inventory and cleanup:
+
+```sh
+python3 acceptance/run-native.py --candidate "$candidate" \
+  --bundle "$original_axis" --job-conclusion "$actual_ci_conclusion"
+```
+
+Cancelled, unfinished or failed jobs, calibration-only observations, missing
+artifacts, unknown axes, duplicate/missing matrix legs and changed source or
+binary identities cannot establish a native pass; an eight-axis smoke verdict
+explicitly leaves sustained operation and candidate completion outstanding.
+
+## Provisioning the sustained runner
+
+[GitHub's documented hosted-job limit](https://docs.github.com/en/actions/reference/limits)
+is six hours, below the required eight-hour duration; self-hosted jobs permit
+longer execution. Provision a fresh, dedicated Ubuntu 24.04 x86-64 VM with
+systemd/cgroup v2, Python 3, Git, Rustup, GDB, binutils, a non-root runner account
+and passwordless administrative access for the task's containment provisioning.
+Use at least 4 GiB RAM and 30 GiB free disk, no competing build, one ephemeral
+repository runner registered with `--ephemeral` and the
+`fsm-operational-disposable` label, and an external VM termination deadline
+of twelve hours; dispose of the VM after its one job even on cancellation or
+uncertain native cleanup. Do not label an ordinary development machine as this
+disposable runner. Provisioning must complete before setting repository variable
+`FSM_OPERATIONAL_RUNNER_READY=true`; without that explicit prerequisite, the
+sustained workflow fails before queuing its expensive job.
+
+Dispatch `scope=sustained`, a named `host`, exact candidate SHA and seed first
+with `mode=calibrate`; retain the original observations, commit numeric budgets
+for that host and sustained workload, then dispatch a separate `mode=validate`
+run. A missing or stale sustained calibration refuses before compilation or
+workload dispatch. Each sustained job first reruns the complete installed native
+signal/hard-kill inventory for that same candidate, then performs actual mixed
+work until both eight hours and 10,000 completed cycles hold; count alone,
+elapsed time alone and idle padding cannot pass. The duration producer is bounded
+to 10 hours 15 minutes including installation, and the complete job to 11 hours.
+The maximum duration/count and progress watchdog still classify insufficient
+throughput as incomplete; runner capacity does not waive either floor.
+
+There is no schedule, cloud provisioning or credential installation in this
+workflow; the operator chooses the VM provider and authorizes its quoted cost
+before provisioning, budgeting up to twelve VM-hours per dispatched calibration
+or validation plus disk and artifact storage. Artifacts upload on failures and
+successes; a cancelled job or unsuccessful upload remains incomplete even if
+its producer had written a passing report. Final candidate acceptance also
+requires all other plan evidence, including human sessions and independent review.

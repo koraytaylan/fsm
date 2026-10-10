@@ -7,7 +7,7 @@ Task frontmatter is authoritative; the coordinator owns registration and complet
 | [acceptance-evidence-reports](tasks/9501-acceptance-evidence-reports.md) | done | 83de6523169394fa5bc329034a9b857d489c73ad |
 | [installed-executor-acceptance](tasks/9502-installed-executor-acceptance.md) | done | 0308a1a9e4a777a690e3aa170aae3baf522ff047 |
 | [operational-soak-harness](tasks/9601-operational-soak-harness.md) | done | d56579fd3d8cfb35622d1e38e812acd46a0a980c |
-| [native-operational-evidence](tasks/9602-native-operational-evidence.md) | planned | — |
+| [native-operational-evidence](tasks/9602-native-operational-evidence.md) | in_progress | — |
 | [live-model-acceptance-protocol](tasks/9701-live-model-acceptance-protocol.md) | planned | — |
 | [candidate-evidence-gate](tasks/9702-candidate-evidence-gate.md) | planned | — |
 | [operational-review-closure](tasks/9703-operational-review-closure.md) | planned | — |
