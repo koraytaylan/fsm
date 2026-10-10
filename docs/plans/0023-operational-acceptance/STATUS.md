@@ -315,7 +315,27 @@ syntax/size checks pass; original failed attempts remain failed in the task cach
 and filtered proof remains release-ineligible, with frozen author review digest:
 `0df648c68a58a3b8d97c56485ddaa077a6dc702391b3c43b29c5b32cfedab606`.
 
-Task 9502 remains in progress: remaining installed crash cuts are outstanding.
+Frozen helper-boundary acceptance for `af398e4e..91c6b50e` establishes all 24
+process/MCP standalone/stdio/HTTP cells at the unchanged Root helper's exact
+pre-spawn, pre-authorization, collected-candidate and closed-before-publication
+hardware entries:
+[disposable installed evidence](https://github.com/koraytaylan/fsm/actions/runs/38069633044)
+retains 1,152 passing assertions, 120 native closures, 552 journal records,
+312 raw trace records and 24 explicit fresh-owner drains.
+Replay revalidates 1,306 source blobs and retained CLI/helper bytes; original
+claim-bound closure precedes fresh validation, receipt-only recovery fabricates
+no original result, and sequential work restores the resource before owned
+fixture/helper removal.
+Persistent Root-owned entry records preserve original PID/birth identities
+through DynamicUser retirement; the original failed marker-loss attempt stays
+failed in the task cache, with its artifacts retained.
+41 focused and 166 disposable observer checks, three named guard controls and
+syntax/size checks pass; filtered proof remains release-ineligible.
+Frozen implementing-author review digest:
+`1d04cde74e4a1632a5cf2f7b7d9667eb0d79255e7774a0077aa9fbf5810ab3c0`.
+
+Task 9502 remains in progress: remaining installed crash cuts and complete-suite
+acceptance are outstanding.
 Sustained native operation, nine human-reviewed uncoached
 live-model sessions, Desktop compatibility and independent final review remain
 mandatory and incomplete; no passing skip or synthetic control replaces them.
