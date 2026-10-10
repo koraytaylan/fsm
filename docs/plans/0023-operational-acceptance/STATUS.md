@@ -135,8 +135,29 @@ single-owner guard makes its named fault test fail and restoration re-passes.
 Filtered proof remains release-ineligible, with frozen author review digest
 `2b0c68fa8efa6e2201c05399c6619071b1006b39e887c4bad2c48aa79056db6a`.
 
-Task 9502 remains in progress: slow/retired stdio observers,
-remaining crash cuts and the pre-existing
+Frozen stdio observer acceptance at `6a6e1625377829d08210d8a16d06cc1bf2e0a3b5`
+establishes four process/MCP paused-output and retired-output cells with
+98 passing installed assertions:
+[disposable installed evidence](https://github.com/koraytaylan/fsm/actions/runs/38049991343)
+proves actual kernel stdout writer blockage and an unread pipe through quiet
+completion and restoration, with original domain closures before reader resumption;
+closing the read end instead interrupts the original owner before autonomous
+fresh-owner recovery, retaining the actual BrokenPipe diagnostic and failed drainage.
+Replay revalidates 1,284 source blobs and retained binary/helper bytes,
+18 original domain closures, 86 journal records and 50 unmodified trace records.
+Installed failure exposed a dropped initiating output error: the private queue
+now retains the actual write/flush error, and the composing owner consumes it
+when no earlier failure exists; healthy blocked output remains error-free.
+102 observer tests, nineteen focused Rust tests, CLI all-target clippy and
+formatting/size checks pass, with local builds limited to one worker,
+1 GiB memory and zero swap; all local build scopes have retired.
+The named reply-pause, kernel-blockage and original-error tests fail when their
+guards are neutralized and pass after restoration; both preceding installed
+failures remain failed in the task-cache ledger.
+Filtered proof remains release-ineligible, with frozen author review digest
+`a225ceb8ca8bf1fa6feb29a66a97d84aece5953c2e8c7c93faced507c72bb880`.
+
+Task 9502 remains in progress: remaining crash cuts and the pre-existing
 portable acceptance inventory are outstanding.
 Sustained native operation, nine human-reviewed uncoached
 live-model sessions, Desktop compatibility and independent final review remain
