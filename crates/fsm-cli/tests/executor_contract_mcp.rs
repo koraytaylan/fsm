@@ -62,26 +62,74 @@ use std::{
     collections::BTreeMap,
     io::{BufRead, BufReader, Write},
     process::{Child, ChildStdin, Command, Stdio},
-    sync::mpsc,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        mpsc,
+    },
     time::Duration,
 };
 
 struct Directory(std::path::PathBuf);
+static DIRECTORY_COUNTER: AtomicU64 = AtomicU64::new(0);
+
 impl Directory {
     fn new() -> Self {
-        let unique = std::time::SystemTime::now()
+        let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let root =
-            std::env::temp_dir().join(format!("fsm-contract-mcp-{}-{unique}", std::process::id()));
-        std::fs::create_dir_all(&root).unwrap();
-        Self(root)
+        Self::with_timestamp(timestamp)
+    }
+
+    fn with_timestamp(timestamp: u128) -> Self {
+        // Concurrent tests can observe the same clock tick on native hosts;
+        // only an exclusive directory creation grants ownership for Drop.
+        for _ in 0..64 {
+            let ordinal = DIRECTORY_COUNTER.fetch_add(1, Ordering::Relaxed);
+            let root = std::env::temp_dir().join(format!(
+                "fsm-contract-mcp-{}-{timestamp}-{ordinal}",
+                std::process::id()
+            ));
+            match std::fs::create_dir(&root) {
+                Ok(()) => return Self(root),
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(error) => panic!("create test directory {}: {error}", root.display()),
+            }
+        }
+        panic!("could not claim a unique test directory within 64 attempts")
     }
 }
 impl Drop for Directory {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+#[test]
+fn identical_clock_ticks_keep_parallel_directories_and_cleanup_independent() {
+    let mut directories = std::thread::scope(|scope| {
+        let workers: Vec<_> = (0..4)
+            .map(|_| scope.spawn(|| Directory::with_timestamp(1)))
+            .collect();
+        workers
+            .into_iter()
+            .map(|worker| worker.join().unwrap())
+            .collect::<Vec<_>>()
+    });
+    let mut paths = BTreeMap::new();
+    for directory in &directories {
+        assert!(paths.insert(directory.0.clone(), ()).is_none());
+        std::fs::write(directory.0.join("owner"), b"retained").unwrap();
+    }
+    let retired = directories.remove(0);
+    let retired_path = retired.0.clone();
+    drop(retired);
+    assert!(!retired_path.exists());
+    for directory in &directories {
+        assert_eq!(
+            std::fs::read(directory.0.join("owner")).unwrap(),
+            b"retained"
+        );
     }
 }
 
