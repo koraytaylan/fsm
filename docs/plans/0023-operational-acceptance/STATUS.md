@@ -352,9 +352,28 @@ failed in the task cache, and filtered proof remains release-ineligible.
 Frozen implementing-author review digest:
 `37964ef8a35976941763e566130bdae4c5d30ed8ca43da65b9ea7dae84188988`.
 
-Task 9502 remains in progress: installed timeout, descendant/retained-pipe and
-noisy-output lifecycle acceptance, plus the complete current native and consumer
-suites, are outstanding.
+Frozen descendant acceptance for `bd95992e..fefee4f2` establishes all six
+process/MCP standalone/stdio/HTTP handler-exit and retained-pipe cells:
+[disposable installed evidence](https://github.com/koraytaylan/fsm/actions/runs/38072152308)
+retains 330 passing assertions, thirty native closures, 138 journal records,
+84 raw trace records and six explicit fresh-owner drains.
+Each original handler really exits while its descendant remains alive in the
+same native cgroup with both inherited stream identities, at the unchanged
+helper's exact pre-fence candidate entry after a bounded output flood.
+Replay revalidates 1,310 source blobs and retained CLI/helper bytes; original
+claim-bound closure and descendant death precede fresh validation release,
+all twelve observed descendants die, and sequential recovery restores state
+before verification/replay, confirmed drain and owned fixture/helper removal.
+Actual process capture retains 4 KiB of a 128 KiB stderr stream and its full
+digest; raw identity/output logs remain separate from closure authority.
+94 focused and 176 disposable observer checks, two named guard controls and
+syntax/size checks pass; filtered proof remains release-ineligible.
+Frozen implementing-author review digest:
+`6b26d1d8bb49becc28e72383031033abfda8294aed406ecba0289a22c696a95d`.
+
+Task 9502 remains in progress: installed timeout/stop-boundary acceptance and
+remaining supported lifecycle inventory, plus the complete current native and
+consumer suites, are outstanding.
 Sustained native operation, nine human-reviewed uncoached
 live-model sessions, Desktop compatibility and independent final review remain
 mandatory and incomplete; no passing skip or synthetic control replaces them.
