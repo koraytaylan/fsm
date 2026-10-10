@@ -81,25 +81,34 @@ Frozen author review and independent artifact replay digest:
 `ce77ca78c96dc4aeb18b16d4ee00bead818362d5c9277f11db90a29be8c27447`.
 The original failed attempts remain failed in the task-cache evidence.
 
-Frozen stdio restart acceptance at `bdc1f53da9a89bcbafe3f0dc1824cb5a073ccc83`
-establishes ten process/MCP cells with 252 passing assertions across actual
-EOF, out-of-band abort, SIGINT, SIGTERM and SIGKILL:
-[disposable installed evidence](https://github.com/koraytaylan/fsm/actions/runs/38044723369)
-proves original fixture death before replacement, original protected closure
+Frozen owner restart acceptance at `364fb6b3257050287018ac8545410aaf5ad7b054`
+establishes eighteen process/MCP cells with 520 passing assertions across actual
+stdio EOF and stdio/HTTP out-of-band abort, SIGINT, SIGTERM and SIGKILL:
+[ten stdio cells](https://github.com/koraytaylan/fsm/actions/runs/38045653179)
+and [eight HTTP cells](https://github.com/koraytaylan/fsm/actions/runs/38045650739)
+prove original fixture death before replacement, original protected closure
 before retry, preserved retry count, exactly one acknowledgement and advance
-per recovered effect, autonomous completion and actual resource restoration.
-Replay revalidates 1,278 source blobs, binary/helper bytes, all fifty original
-domain closures, 230 journal records and 130 unmodified fixture trace records.
+per recovered effect, autonomous completion, actual resource restoration and
+eight original successor-owner drains distinct from HTTP session closure.
+Both receipts revalidate 1,278 source blobs and identical binary/helper bytes;
+replay checks ninety original domain closures, 414 journal records and 234
+unmodified fixture trace records.
 The observer preserves an interrupted result only with its matching complete
 protected response attestation; the original interrupted start stays in the
 raw trace, and the two preceding observer failures remain failed.
-Seventy-nine focused observer tests pass; neutralizing the response-hash guard
-makes its named test fail, and all nine lifecycle tests pass after restoration.
+Installed HTTP recovery also exposed stale endpoint ambiguity: discovery now
+preserves original files and excludes only actual refused connections, retaining
+one connected owner while every other error or multiple connected owners refuse.
+Its failed installed attempt remains failed; 35 focused Rust tests, CLI all-target
+clippy, formatting/size and 79 observer tests pass, with local builds limited to
+one worker, 1 GiB memory and zero swap.
+The named response-hash and refused-socket guard tests fail when neutralized
+and pass after restoration; no refusal establishes native cleanup.
 Filtered proof remains release-ineligible, with frozen author review digest
-`0701b77f376e18e5c8cc1d0cdbb5d5821fbd0c85f70a987cfa78cfa090f680e2`.
+`4b937650daabc000e16ddefea3c38d03d9474d1b5df2a6771b280202ecafffe6`.
 
-Task 9502 remains in progress: slow/retired stdio observers, complete
-shutdown/crash/restart and the pre-existing
+Task 9502 remains in progress: slow/retired stdio observers, active drain,
+standalone lifecycle paths, remaining crash cuts and the pre-existing
 portable acceptance inventory are outstanding.
 Sustained native operation, nine human-reviewed uncoached
 live-model sessions, Desktop compatibility and independent final review remain
