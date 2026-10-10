@@ -7,6 +7,7 @@ depends_on:
   - acceptance-evidence-reports
 gated: false
 touches:
+  - crates/fsm-execute/src/containment/process_exit.rs
   - crates/fsm-cli/src/mcp/notify/output.rs
   - crates/fsm-cli/src/mcp/serve/hosted.rs
   - crates/fsm-cli/src/mcp/host/tests/stdio.rs

@@ -37,6 +37,10 @@ pub(super) fn deadline_expired(error: &str, deadline: Instant, observed: Instant
     error == manager::DEADLINE_ERROR && handler_deadline_expired(deadline, observed)
 }
 
+// Preserve the private deadline-selection boundary in optimized installed
+// helpers so the independent hardware observer can prove actual expiry before
+// fencing without changing instructions or approximating it with wall time.
+#[inline(never)]
 pub(super) fn handler_deadline_expired(deadline: Instant, observed: Instant) -> bool {
     observed >= deadline
 }

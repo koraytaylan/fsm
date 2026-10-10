@@ -979,6 +979,10 @@ unchanged functions, excluding error/Drop cleanup as timeout evidence.
 An original still-live parent and inherited-pipe descendant must both die under
 claim-bound native closure before fresh validation is released; the raw
 interrupted start remains in the fixture trace without an invented end/result.
+The private deadline predicate retains its function boundary in optimized
+helpers as well, so installed consumer acceptance can observe the same original
+expiry/fence sequence; deadline comparison, public APIs and persisted formats
+are unchanged.
 
 `acceptance/` builds an image with `cargo install --path crates/fsm-cli
 --locked`, the same command a consumer runs, and drives that binary from a
