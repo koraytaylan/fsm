@@ -307,6 +307,21 @@ def _installed_client(store: Path, table: Path, transport: str):
                 pipe.close()
 
 
+def _retire_http_owner(report, host, store: Path, namespace: str) -> None:
+    """Request original-owner drain; ordinary signals are crash mechanisms."""
+    shutdown = fsm.run_json("execute", "stop", "--mode=drain", "--timeout-ms=10000",
+                            data_dir=str(store), timeout=15)
+    report.note("FSM_INSTALLED_SHUTDOWN_EVIDENCE " + json.dumps(dict(
+        namespace=namespace, report=shutdown), sort_keys=True))
+    report.equal(shutdown.get("phase"), "stopped", "the original HTTP execution owner confirms drain")
+    for field in ("admission_closed", "inventory_complete", "helpers_retired", "writer_released"):
+        report.true(shutdown.get(field) is True, f"original HTTP shutdown confirms {field}")
+    report.equal(shutdown.get("unresolved_run_ids"), [], "original HTTP shutdown leaves no unresolved local run")
+    report.equal(shutdown.get("unclaimed_reservations"), 0, "original HTTP shutdown leaves no preparation reservation")
+    report.true(shutdown.get("timed_out") is False, "original HTTP shutdown completes inside its first deadline")
+    host.wait(timeout=15)
+
+
 def _installed_workflow(report, transport: str, kind: str, outcome: str) -> None:
     fixture = Path(fsm.REPO) / "acceptance/fixtures/executor_handler.py"
     machine = Path(fsm.REPO) / "acceptance/fixtures/executor_workflow.json"
@@ -394,7 +409,8 @@ def _installed_workflow(report, transport: str, kind: str, outcome: str) -> None
             if transport == "http":
                 report.true(client.delete_session() in (200, 204), "HTTP session deletion succeeds")
                 report.true(host.poll() is None, "deleting an HTTP session leaves the shared execution host alive")
-        report.equal(host.returncode, 0, "the transport's real EOF or SIGTERM completes supervised host retirement")
+                _retire_http_owner(report, host, store, native.namespace)
+        report.equal(host.returncode, 0, "stdio EOF or explicit HTTP owner drain completes supervised host retirement")
     report.true(native.cleaned, "original domain closures permit owned fixture cleanup")
 
 

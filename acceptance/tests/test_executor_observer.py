@@ -20,7 +20,8 @@ from pathlib import Path
 from acceptance.suite.evidence import source_files
 from acceptance.suite.executor_scenarios import (observe_trace, workflow_table,
                                                read_journal_prefix, observe_success_journal,
-                                               observe_workflow_journal, _installed_client)
+                                               observe_workflow_journal, _installed_client,
+                                               _retire_http_owner)
 from acceptance.suite.fsm import task_cache, Scratch
 from acceptance.suite.mcp import (StdioClient, HttpClient, FrameReader, McpError,
                                  MAX_FRAME, MAX_QUEUED_FRAMES)
@@ -460,6 +461,27 @@ class WorkflowProvisioningTests(FixtureFiles):
 
 
 class ClientStreamOwnershipTests(unittest.TestCase):
+    def test_http_retirement_requires_original_stop_facts_before_wait(self):
+        from acceptance.suite.run import Report
+        from unittest.mock import Mock
+        stopped = dict(phase="stopped", admission_closed=True, inventory_complete=True,
+                       helpers_retired=True, writer_released=True, unresolved_run_ids=[],
+                       unclaimed_reservations=0, timed_out=False)
+        host = Mock()
+        with patch("acceptance.suite.executor_scenarios.fsm.run_json", return_value=stopped) as command:
+            _retire_http_owner(Report("labelled-control-stub"), host, Path("fixture-store"), "namespace")
+            self.assertEqual(command.call_args.args,
+                             ("execute", "stop", "--mode=drain", "--timeout-ms=10000"))
+            host.wait.assert_called_once_with(timeout=15)
+        for field in ("admission_closed", "inventory_complete", "helpers_retired", "writer_released"):
+            for unconfirmed in (False, None, 1):
+                host.reset_mock()
+                with patch("acceptance.suite.executor_scenarios.fsm.run_json",
+                           return_value={**stopped, field: unconfirmed}):
+                    with self.assertRaises(AssertionError):
+                        _retire_http_owner(Report("labelled-uncertain-stub"), host, Path("fixture-store"), "namespace")
+                    host.wait.assert_not_called()
+
     def test_transport_launch_respects_stdio_only_poll_option(self):
         store, table = Path("fixture-store"), Path("fixture-table")
         with patch("acceptance.suite.executor_scenarios.StdioClient") as stdio:
