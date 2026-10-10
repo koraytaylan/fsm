@@ -1,4 +1,4 @@
-"""Run one consumer-installed autonomous path on an opted-in disposable CI VM.
+"""Run selected installed workflows on an opted-in disposable CI VM.
 
 This focused milestone does not replace the complete installed/platform/soak
 inventory or release gate; its actual scenario report remains filtered.

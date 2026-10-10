@@ -3,7 +3,9 @@
 This module does not import an engine, poll a workflow, or repair its state.
 Expected mutation order comes from the handwritten scenario, not candidate
 output. Offline contract checks exercise the installed CLI without launch;
-autonomous transport scenarios and native shutdown acceptance remain pending.
+installed workflows cover both transports, handler kinds and outcome rows,
+with separate original-owner retirement evidence and a bounded quiet interval.
+The complete shutdown/restart and refusal inventory remains separate.
 """
 from __future__ import annotations
 

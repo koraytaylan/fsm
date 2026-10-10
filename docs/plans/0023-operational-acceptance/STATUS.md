@@ -30,25 +30,29 @@ The consumer's effective limits are 1 GiB memory and zero swap; filtered reports
 are valid but ineligible for full release proof. Frozen author review:
 `a9fec0b99f35caf8ee1f49a897db9f7fcc8e3ea2c29078300bdc49409513685b`.
 
-Frozen installed acceptance at `855f6f6ae5efe7cdde83b5676d80e77e684d8cda`
-establishes all eight stdio outcome cells across process and MCP handlers:
-consumer `cargo install`, 192 passing assertions, barrier-confirmed control
+Frozen installed acceptance at `a6d3d73e5e731d6a6527fa4a0d7b6a7d2e48da1a`
+establishes all sixteen stdio/HTTP outcome cells across process and MCP handlers:
+consumer `cargo install`, 464 passing assertions, barrier-confirmed control
 responsiveness, quiet-client completion, honest compensation/restoration state,
 external mutation order without overlap, exact native settlement and advance,
-journal verification/replay, EOF retirement and 26 original domain closures
-followed by owned fixture/helper removal.
-[Disposable native evidence](https://github.com/koraytaylan/fsm/actions/runs/38037663912)
+journal verification/replay, EOF retirement, eight explicit HTTP owner drains
+and 52 original domain closures followed by owned fixture/helper removal;
+HTTP session deletion leaves the shared host alive before its actual owner drain.
+[Disposable native evidence](https://github.com/koraytaylan/fsm/actions/runs/38038741845)
 independently revalidates all 1,275 source blobs and retained executable bytes;
 each protected native binding matches its original journal claim hash and domain.
 The filtered report remains ineligible for full release proof.
 Frozen author replay digest:
-`786c6d851e3d4e144f52051250533a8c7872ec69b1603ffda05c05505260ff19`.
+`a1767394088ed6666b69ea4b0574ecef92a50e1c47f1a2dbbba19cb803a82181`.
 The preceding catalogue-provisioning failure remains failed; compact canonical
 table serialization fixes its cause, and shared observation slots preserve
 ownership across DynamicUser retirement rather than losing fixture evidence.
+HTTP harness corrections use the documented launch options and original stop
+control; their preceding failed runs remain failed, and SIGTERM is not drain.
 
-Task 9502 remains in progress: its HTTP outcome cells and
-complete lifecycle inventory are outstanding.
+Task 9502 remains in progress: slow/disconnected observers, runtime admission
+and manual/refusal cases, complete shutdown/restart and the pre-existing
+portable acceptance inventory are outstanding.
 Sustained native operation, nine human-reviewed uncoached
 live-model sessions, Desktop compatibility and independent final review remain
 mandatory and incomplete; no passing skip or synthetic control replaces them.
