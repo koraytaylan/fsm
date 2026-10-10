@@ -17,12 +17,16 @@ from .native_fixture import privileged
 def closed_prefix(records, instance, binding, closed, receipt):
     claim = claim_prefix(records, instance)
     domain = claim['body'].get('domain')
+    fields = {'attempt', 'domain', 'effect_id', 'handler_fingerprint', 'instance_id', 'retry', 'run_id'}
+    if not fields <= set(claim['body']):
+        raise ValueError('the original native claim is incomplete')
+    bound_claim = {key: claim['body'][key] for key in fields}
     if (type(claim['body'].get('run_id')) is not int or claim['body']['run_id'] != 1
         or not isinstance(domain, dict) or type(domain.get('allocation')) is not int or domain['allocation'] != 1
-        or binding != dict(format='fsm.native-claim-binding/1', claim=claim['body'], journal_claim=claim['hash'])
+        or binding != dict(format='fsm.native-claim-binding/1', claim=bound_claim, journal_claim='sha256:' + claim['hash'])
         or closed != dict(format='fsm.native-domain-closed/1', domain=domain)
         or receipt != dict(format='fsm.native-closure/1', domain=domain,
-            journal_claim=claim['hash'], run_id=claim['body']['run_id'])):
+            journal_claim='sha256:' + claim['hash'], run_id=claim['body']['run_id'])):
         raise ValueError('the original closed domain and receipt do not bind the exact durable claim')
     return claim
 

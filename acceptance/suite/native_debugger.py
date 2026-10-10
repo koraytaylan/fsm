@@ -131,8 +131,15 @@ class DebuggedAuthority(DisposableAuthority):
 
     def retain_debugger(self):
         retained = self.cache / 'debugger'
-        retained.mkdir()
+        retained.mkdir(exist_ok=True)
         for name in ('ready.json', 'retired.json', 'debugger.log'):
-            shutil.copy2(self.debugger_directory / name, retained / name)
+            path = self.debugger_directory / name
+            if path.exists():
+                shutil.copy2(path, retained / name)
         if digest(AUTHORITY) != self.debugger_hash:
             raise ValueError('the original installed helper bytes changed')
+
+    def _capture_records(self):
+        super()._capture_records()
+        if hasattr(self, 'debugger_directory') and self.debugger_directory.exists():
+            self.retain_debugger()

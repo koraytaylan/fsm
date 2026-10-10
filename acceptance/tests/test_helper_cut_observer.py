@@ -27,11 +27,14 @@ class HelperCutTests(unittest.TestCase):
 
     def prefix(self):
         domain = dict(namespace=self.namespace, allocation=1)
-        claim = dict(kind='execution_claimed', seq=2, hash='sha256:'+'d'*64,
-            body=dict(instance_id='original', attempt=1, run_id=1, domain=domain))
-        binding = dict(format='fsm.native-claim-binding/1', claim=claim['body'], journal_claim=claim['hash'])
+        claim = dict(kind='execution_claimed', seq=2, hash='d'*64,
+            body=dict(instance_id='original', attempt=1, run_id=1, domain=domain,
+                effect_id='original-effect', handler_fingerprint='sha256:'+'f'*64, retry={'attempts':1}))
+        binding = dict(format='fsm.native-claim-binding/1', claim=claim['body'], journal_claim='sha256:' + claim['hash'])
+        claim = copy.deepcopy(claim)
+        claim['body'].update(request_id='claim-request', request_fp='sha256:'+'e'*64)
         closed = dict(format='fsm.native-domain-closed/1', domain=domain)
-        receipt = dict(format='fsm.native-closure/1', domain=domain, run_id=1, journal_claim=claim['hash'])
+        receipt = dict(format='fsm.native-closure/1', domain=domain, run_id=1, journal_claim='sha256:' + claim['hash'])
         return [claim], binding, closed, receipt
 
     def records(self):
