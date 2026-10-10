@@ -1,0 +1,66 @@
+name: operational-smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate:
+        description: Immutable develop candidate SHA
+        required: true
+        type: string
+      mode:
+        description: Observe calibration or validate committed budgets
+        required: true
+        type: choice
+        options: [calibrate, validate]
+      seed:
+        description: Deterministic operational seed
+        required: true
+        type: string
+        default: "123"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: operational-smoke
+  cancel-in-progress: false
+
+jobs:
+  operational:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CARGO_BUILD_JOBS: "1"
+      RUSTUP_TOOLCHAIN: stable
+      PYTHONDONTWRITEBYTECODE: "1"
+      FSM_ACCEPTANCE_DISPOSABLE_NATIVE: "1"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.candidate }}
+      - name: Prepare explicit task cache
+        run: |
+          operational_cache="$HOME/.cache/fsm-operational-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -p "$operational_cache"
+          printf 'TMPDIR=%s\nCARGO_TARGET_DIR=%s\n' "$operational_cache" "$operational_cache/target" >> "$GITHUB_ENV"
+          free -h
+          swapon --show
+      - run: rustup toolchain install stable --profile minimal
+      - name: Focused operational controls
+        run: timeout 90s python3 -m unittest discover -s acceptance/tests -p 'test_soak*.py'
+      - name: Installed operational smoke
+        env:
+          FSM_OPERATIONAL_CANDIDATE: ${{ inputs.candidate }}
+          FSM_OPERATIONAL_MODE: ${{ inputs.mode }}
+          FSM_OPERATIONAL_SEED: ${{ inputs.seed }}
+        run: |
+          timeout 2520s python3 acceptance/run-operational.py \
+            --candidate "$FSM_OPERATIONAL_CANDIDATE" --mode "$FSM_OPERATIONAL_MODE" \
+            --profile smoke --seed "$FSM_OPERATIONAL_SEED" --host github-ubuntu-24.04-x86_64-stable
+      - name: Retain original evidence including failures
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: operational-evidence
+          path: ${{ env.TMPDIR }}/operational-check/evidence
+          if-no-files-found: error

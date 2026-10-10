@@ -117,11 +117,14 @@ class DisposableAuthority:
     original authority and diagnostic files on the disposable runner.
     """
 
-    def __init__(self, handler: Path, *, resources=("supplier",)):
+    def __init__(self, handler: Path, *, resources=("supplier",), record_limit=128):
         if (not isinstance(resources, tuple) or not 1 <= len(resources) <= 32
             or any(not isinstance(name, str) or not 1 <= len(name) <= 256 for name in resources)
             or len(set(resources)) != len(resources)):
             raise ValueError('fixture resources must be a bounded unique immutable inventory')
+        if type(record_limit) is not int or not 128 <= record_limit <= 1024:
+            raise ValueError('fixture record inventory must be bounded between 128 and 1024')
+        self.record_limit = record_limit
         self.resources = resources
         self.handler_source = handler.resolve()
         self.namespace = uuid.uuid4().hex
@@ -297,19 +300,20 @@ for name in rows: shutil.rmtree(name)
         if str(BASE / self.namespace) not in self.identities:
             return
         code = """import hashlib,json,pathlib,re,sys
-namespace=sys.argv[1]
+namespace=sys.argv[1];maximum=int(sys.argv[2])
 if not re.fullmatch('[a-f0-9]{32}',namespace): raise ValueError('invalid fixture namespace')
+if not 128<=maximum<=1024: raise ValueError('invalid fixture record inventory bound')
 base=pathlib.Path('/var/lib/fsm-containment')/namespace
 rows=[]; size=0
 for path in base.rglob('*.json'):
- if len(rows)>=128 or path.is_symlink() or not path.is_file(): raise ValueError('fixture evidence inventory differs')
+ if len(rows)>=maximum or path.is_symlink() or not path.is_file(): raise ValueError('fixture evidence inventory differs')
  with path.open('rb') as stream: data=stream.read(65537)
  size+=len(data)
  if len(data)>65536 or size>524288: raise ValueError('fixture evidence exceeds bound')
  rows.append(dict(path=str(path.relative_to(base)),sha256=hashlib.sha256(data).hexdigest(),value=json.loads(data)))
 print(json.dumps(dict(namespace=namespace,records=rows),sort_keys=True))
 """
-        encoded = privileged(sys_executable(), "-c", code, self.namespace)
+        encoded = privileged(sys_executable(), "-c", code, self.namespace, str(self.record_limit))
         (self.cache / "authority-records.json").write_text(encoded, encoding="utf-8")
 
     def _retire(self, successful: bool) -> None:

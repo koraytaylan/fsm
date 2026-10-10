@@ -271,7 +271,7 @@ class FixtureCatalogTests(unittest.TestCase):
                 on=['nonzero_exit' if kind=='process' else 'mcp_error']))
             self.assertIn('--fail-first', retry['argv'])
             deadline = next(row for row in inputs['table']['handlers'] if row['effect']=='soak_deadline_validate_resource')
-            self.assertEqual(deadline['timeout_ms'],500); self.assertIn('--descendant',deadline['argv'])
+            self.assertEqual(deadline['timeout_ms'],2000); self.assertIn('--descendant',deadline['argv'])
             right = inputs['machines']['contention-right']
             left = inputs['machines']['contention']
             self.assertEqual(right['effects'],left['effects'])
@@ -288,6 +288,9 @@ class FixtureCatalogTests(unittest.TestCase):
         self.assertEqual(completed_ledger('contention','soak-contention-right')['resource'],'soak-contention-right')
 
     def test_resource_provisioning_requires_a_frozen_bounded_unique_inventory(self):
+        for maximum in (127,1025,True,None):
+            with self.assertRaises(ValueError):DisposableAuthority(FIXTURE,record_limit=maximum)
+        self.assertEqual(DisposableAuthority(FIXTURE,record_limit=1024).record_limit,1024)
         for names in ([], (), ['supplier'], ('supplier','supplier'), ('',), tuple(str(i) for i in range(33))):
             with self.assertRaises(ValueError): DisposableAuthority(FIXTURE,resources=names)
         self.assertEqual(DisposableAuthority(FIXTURE).resources, ('supplier',))

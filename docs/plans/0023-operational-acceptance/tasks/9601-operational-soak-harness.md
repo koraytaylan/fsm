@@ -13,6 +13,14 @@ touches:
   - acceptance/suite/soak_resources.py
   - acceptance/suite/soak_fixtures.py
   - acceptance/suite/soak_socket_queues.py
+  - acceptance/suite/soak_installed.py
+  - acceptance/suite/soak_journal.py
+  - acceptance/suite/soak_native_metrics.py
+  - acceptance/suite/soak_run.py
+  - acceptance/run-operational.py
+  - .github/workflows/operational-smoke.yml
+  - acceptance/tests/test_soak_journal.py
+  - acceptance/tests/test_soak_run.py
   - acceptance/suite/native_fixture.py
   - acceptance/suite/evidence.py
   - acceptance/tests/test_soak.py

@@ -64,15 +64,14 @@ def _case_inputs(original, case, kind, resource_root, handler):
         command[command.index('--run') + 1] = entry['effect']
         command.extend(['--observe-timing'])
         if entry['effect'].endswith('validate_resource'):
+            command.extend(['--release', str((resource_root / ('release-' + case)).resolve()),
+                            '--wait-seconds', '60'])
             if case == 'retry':
                 command.append('--fail-first')
                 entry['retry'] = dict(attempts=2, backoff_ms=25,
                                      on=['nonzero_exit' if kind == 'process' else 'mcp_error'])
-            if case in ('cancel', 'deadline', 'churn'):
-                command.extend(['--release', str((resource_root / ('release-' + case)).resolve()),
-                                '--wait-seconds', '60'])
             if case == 'deadline':
-                entry['timeout_ms'] = 500
+                entry['timeout_ms'] = 2000
                 command.append('--descendant')
             if case == 'noise':
                 command.extend(['--noise-bytes', '131072'])
