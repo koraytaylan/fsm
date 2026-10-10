@@ -36,6 +36,7 @@ touches:
   - acceptance/tests/test_soak_run.py
   - acceptance/suite/native_fixture.py
   - acceptance/suite/evidence.py
+  - acceptance/tests/test_evidence.py
   - acceptance/tests/test_soak.py
   - acceptance/tests/test_soak_workload.py
   - acceptance/tests/test_soak_socket_queues.py

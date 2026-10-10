@@ -14,7 +14,9 @@ import uuid
 from datetime import datetime, timezone
 
 
-SOURCE_ROOTS = ("Cargo.toml", "Cargo.lock", "crates", "docs", "examples", "tools",
+SOURCE_ROOTS = ("Cargo.toml", "Cargo.lock", "README.md", "CONTRIBUTING.md", "rust-toolchain.toml",
+                ".github/workflows/ci.yml", ".github/workflows/release.yml",
+                "crates", "docs", "examples", "tools",
                 "acceptance/suite", "acceptance/tests", "acceptance/fixtures", "acceptance/Containerfile",
                 "acceptance/acceptance.sh", "acceptance/run-installed-executor.py", "acceptance/run-operational.py", "acceptance/profiles")
 IGNORED_DIRECTORIES = {"target", "__pycache__", ".git"}

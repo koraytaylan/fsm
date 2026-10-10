@@ -164,6 +164,14 @@ class EvidenceTests(unittest.TestCase):
 
         git("init", "-q")
         (repository / "Cargo.toml").write_text("committed source", encoding="utf-8")
+        included = ("README.md", "CONTRIBUTING.md", "rust-toolchain.toml",
+                    ".github/workflows/ci.yml", ".github/workflows/release.yml")
+        for name in included:
+            path = repository / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("committed compile-time document " + name, encoding="utf-8")
+        (repository / ".aws").mkdir()
+        (repository / ".aws/credentials").write_text("private fixture", encoding="utf-8")
         (repository / ".gitignore").write_text("crates/ignored.rs\n", encoding="utf-8")
         git("add", ".")
         git("-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid",
@@ -171,6 +179,11 @@ class EvidenceTests(unittest.TestCase):
         clean = snapshot(repository, self.directory / "clean")
         self.assertFalse(clean["dirty"])
         self.assertFalse((self.directory / "clean" / ".git").exists())
+        self.assertFalse((self.directory / "clean" / ".aws").exists())
+        for name in included:
+            copied = self.directory / "clean" / name
+            self.assertEqual(copied.read_bytes(), (repository / name).read_bytes())
+            self.assertEqual(clean["files"][name], hashlib.sha256(copied.read_bytes()).hexdigest())
         (repository / "crates").mkdir()
         (repository / "crates" / "ignored.rs").write_text("ignored input", encoding="utf-8")
         self.assertTrue(snapshot(repository, self.directory / "ignored")["dirty"])

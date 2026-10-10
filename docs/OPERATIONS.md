@@ -87,6 +87,9 @@ calibration fails before workload dispatch in validation mode.
 Evidence lives under `$TMPDIR/operational-check/evidence`, including the
 identified installed binary/helper, build receipt and actual limits,
 consumer log, cycle records, original closure records and retirement receipts.
+The source receipt includes the root README, contributing guide, pinned
+toolchain and CI/release workflows referenced by compile-time documentation
+tests; credentials and Git metadata remain outside the staged inputs.
 Quiet settlement has a bounded 60-second wait below the 90-second profile
 watchdog, allowing the contending pair's eight serialized native operations;
 this wait is separate from committed numeric latency budgets. Failures retain
