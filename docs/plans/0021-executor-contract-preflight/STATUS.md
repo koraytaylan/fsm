@@ -13,165 +13,50 @@ Task frontmatter is authoritative; the coordinator owns registration and complet
 
 Progress: 2/6 tasks completed.
 
-Admission milestone `b373a453..f07056df` has 61 passing focused cases:
-twelve admission/service, fifteen pipeline recovery, nine historical-effect
-and 25 mocked native producer/verifier cases; feature-enabled executor
-all-target clippy and format/size/diff checks pass. Both writer entries retain
-manual work, refuse changed receiver contracts after migration and preserve
-acknowledged recovery keys until repair. Prior guard sensitivity and scoped
-reviews retain their original ranges, indexed by frozen verdict
-`636348f8b670a0efa300617801dc592875fd261b9d4086e6d0f51f0a2d5e1163`.
-Forty provisioned process/MCP axes have physical evidence at the checkpoint below;
-twenty protected Rust cases remain ignored locally; unprovisioned routing proves no native side-effect
-acceptance. Complete task 9103 inventory and plan-end gates remain outstanding;
-full-prefix reconstruction cost stays documented.
+Manual Phase R binds the six-task bundle to validation base
+`15172d8298f271abfd0bd1d5b47617d1108ceefc` after plans 0022 and 0020 complete;
+closed frontmatter, repository-relative footprints and the acyclic DAG pass,
+with validation digest
+`4298d27510c4726206598590ca50efd51e0aeca49c5605aae9f004697820f1f7`.
+Effects and outcomes complete their written focused inventories at the landing
+OIDs above; subsequent tasks remain subject to their full plan-end gate.
 
-Cache/bound-entry proof range `909cb8e0..5918b02e` has six passing cache cases
-and four bound-entry cases, with executor all-target clippy/format/size/diff
-checks. Catalogue identity and bound contract guard neutralization each fail
-their named case; restored suites pass. Cancellation/acknowledgement preserve
-the retained bound owner and unconsumed entry permission. Frozen review
-`a4a864a0e44c963e09801401785884712c4211490d0bc8e8335de5b6ed4cae97`
-indexes prior scoped proofs; metadata fixtures do not close physical acceptance.
-
-Focused regression checkpoint `8b659d64` passes 49 tick, retry, scheduler,
-composition and chaos cases; verdict
-`eedbf3f61b365721543985fc1eadab72632c3e2511c5b8f0232ae554659bf0e9`.
-The provisioned inventory crosses both writer entry paths and process/MCP
-handlers for timeout cleanup under contention, manual repair, ack-only work,
-acknowledged recovery and bound-entry table/private MCP argument replacement followed by receiver
-migration and repair with historical pending identity and arguments preserved
-despite changed live context. A newly added, resolved invoked closure with an
-incompatible late child outcome must also refuse the original bound claim;
-repair preserves its invoke slot and replaces the child reference compatibly.
-The executable Store fixture independently verifies this refusal and repair.
-Bound cancellation now requires authenticated original helper binding, closure
-while a competing writer remains held, absent entry permission and markers,
-then exactly one original settlement with no ack, outcome, retry or derived keys;
-later observations must leave the cancelled generation retired.
-The timeout-under-contention axes now require first-attempt settlement, repeated
-refusal of a changed late outcome before and after executor restart, unchanged
-historical work and failed-attempt timestamp, then repaired second-attempt entry
-and completion; Root requires two original claim/stop/settlement proofs.
-Original ownership,
-unchanged refusal journals, marker absence and exact settlement/allocation
-counts are required before repair or writer release, as applicable. Thirteen
-focused admission and 27 mocked producer/verifier cases pass, with executor
-feature-enabled all-target clippy and format/size/diff checks passing.
-Content-addressed review
-`90ab973b4c9700178f0c340e58b5426d0ade914cfa61e072499f4ba3320033d5`
-indexes prior scoped native reviews; the latest physical execution verdict is
-recorded below, with plan-end CI outstanding.
-Five focused bound-entry tests pass, including private MCP replacement and
-nested missing arguments; feature-enabled executor all-target clippy and
-format/size/diff checks pass. Scoped review
-`01ca03befff1c4e05c0a63c9affe33cb819aaa94e14b6244a73b75e19abb30dc`
-indexes retry/restart, cancellation, the executable migration/closure fixture and preceding private MCP probes;
-the twenty native Rust cases remain ignored locally.
-Native producer launch failure now preserves its original bounded diagnostic
-and unobserved axes, retiring only a verified clear installed identity;
-review `53cfcd74bf056d8683a04a63a9c6a30e99978a3c8804211539c3af90f503aa52`
-also records the remaining physical restart/retry, invocation, cancellation and
-guard-sensitivity inventory.
-
-CLI focused range `62bdbd5d..2cd48842` passes ten real-binary contract cases,
-17 executor documentation cases and five legacy session cases, CLI all-target
-clippy, format/size checks and control-option guard sensitivity; self-review
-digest `eee78cc01606dac313ddc3f177301e7abff6d34d618fd3e2a48c084d4436daa0`.
-Task 9201's written focused inventory passes on stable Linux; it remains in
-progress until the plan-end portability and integration gates succeed.
-
-MCP independent preparation range `746ec763..df3539b1` advertises and dispatches
-read-only `executor_check` through the original session's private host table.
-120 distinct focused stable Linux cases pass: three real stdio/schema cases,
-76 host cases, eight draft-analysis cases and 33 discovery/schema/transcript
-cases; nine provisioned native host cases remain ignored. CLI all-target clippy
-and format/size/range-diff checks pass, including restored exact queue-byte
-boundaries; review digest
-`4538b02dda6d1a1fd01290fd9dd51f57702762f9817c3563b90373e152f60dde`
-indexes the prior preparation reviews with their original scopes. Task 9202
-remains planned behind admission acceptance; the physical draft/repair verdict
-is recorded below, while the complete mode/bypass inventory and plan-end gates
-remain outstanding.
-Real HTTP draft/stored checks now prove shared-session loaded-table authority,
-distinct-host isolation after on-disk table replacement, autonomous discovery,
-private-literal non-disclosure and read-only writer fallback without attributable
-writes; the focused MCP target passes six cases with one native case ignored,
-with CLI all-target clippy and format/size checks passing; focused review digest
-`633aec7aeab2104aa0d2aa2dbe5c2f22af27364af04805831b00affdc2bc8536`.
-
-Native contract workflow checkpoint `cd4bb88a` passes the real stdio MCP
-client's draft/repair workflow and the independently specified staged embedded
-and standalone refusal/recovery workflows, each on stable and MSRV with real
-contained process handlers. Draft repair preserves historical pending work
-through refusal, retirement, restart and migration; a changed loaded table
-invalidates a saved good report. Staged invalid admission leaves the store and
-side effects unchanged; repair completes ordered inspect/work/recover operations.
-Root authenticates four original closures for draft repair and three for each
-staged execution, with exact claim/stop/settlement counts, no unresolved claims,
-verified memory limits and matched cleanup. Six downloaded reports/logs are
-independently replayed against the frozen source; executable bytes remain
-producer-attested. Frozen review:
-`d183ff71e19e2a1ea5ec39c5ae112d2e0b01df078e8404f7ebbbcef9053f70bc`.
-
-Physical acceptance exposed and fixed raw-versus-canonical retry comparison:
-prepared handlers now compare validated full immutable contract fingerprints,
-including private bindings, rather than retry-vector ordering. Twelve focused
-admission tests pass; restoring only the old comparison fails the named regression
-at exit 101. The draft fixture now preserves literal context values, with the
-independent external-handler assertion unchanged; its named literal regression
-fails before correction. Eight runnable MCP tests, 31 producer/artifact tests,
-focused CLI/executor clippy and format/size/diff checks pass. Earlier preparation
-reviews retain their scoped diagnostic parity and fixture verdicts in the cache;
-tasks 9103/9201 remain in progress and tasks 9202/9203 remain planned pending their
-written inventory and plan-end gates. Generic staged real MCP-handler acceptance
-remains outstanding; these physical cases use process handlers.
-
-The README and operator example now document machine checking, repair,
-manual policy and current-state admission; eight executable example tests pass,
-including the documented offline order check without creating a store.
-The supplier execution path remains unexecuted locally.
-Task 9203 stays planned behind its dependencies; real MCP-handler side-effect
-acceptance, the complete written bypass inventory and plan-end gates remain open.
-
-Manual Phase R binds the six-task bundle to validation base `15172d8298f271abfd0bd1d5b47617d1108ceefc` after plans 0022 and 0020 complete: closed frontmatter, repository-relative footprints and the acyclic local dependency graph pass, with uncreated deliverables explicitly inventoried; task-cache validation digest `4298d27510c4726206598590ca50efd51e0aeca49c5605aae9f004697820f1f7`. Task 9101 completes its focused inventory at `efcb4f9e`, with 67 stable effect/configuration/public-surface cases and focused lint/format/diff checks passing; self-review verdict `dfd37ee9a1867119e4c63a048ad58b1030b7db590fe118b95dcee1edff82f9a1`; task 9102 completes at `ed811ab6` with eleven focused outcome tests and self-review verdict `b9a671329f5a8177a34529118e6925015757c21b9a064f5d5371820bd71ac271`; task 9103 is in progress; prior independent preparation remains subject to current task acceptance, and admission/MCP/final acceptance remain incomplete. Full gates run at plan completion.
-
-Focused native admission checkpoint `84ee51de` passes all forty genuine
-process/MCP standalone/borrowed axes on stable and MSRV, including refusal/repair,
-fairness, timeout/reap under contention, warm/cold retry, manual repair, atomic
-ack-only settlement, acknowledged recovery, stale bound-entry refusal and original
-bound cancellation. Both focused CI jobs and independent frozen evidence
-verification pass. Cancelled pre-entry owners now close independently of writer
-access, retaining capacity until authenticated interruption settles; the fixture
-requires actual settlement backpressure before writer release. Root authenticates
-original closures and exact settlement inventory before every marker.
-Forty-one focused Rust cases, 28 producer/evidence cases and executor all-target
-clippy/format/size/diff pass. Frozen verdict
-`2d7bf695f4e4e5e0d7633ea426af27d030633c446e4a0c3ec47b81d082365989`
-indexes the physical reports and scoped reviews outside the repository.
-Plan-end gates remain open; task 9103 remains
-in progress.
-
-Native guard checkpoint `80366824` passes structural and bound-entry sensitivity
-on stable and MSRV: 48 physical process/MCP standalone/borrowed proofs across
-original, neutralized and byte-restored artifacts; only the neutralized guard
-permits real entry and fails at exit 101 after authentic original cleanup.
-All four installed authorities retire cleanly; independently replayed reports and
-logs match the frozen source, while executable bytes remain producer-attested.
-Thirty-six producer/evidence tests, two Root policy tests and feature-enabled
-executor all-target clippy/format/size/diff pass. Frozen review:
+Native admission checkpoint `84ee51de` passes all forty actual process/MCP
+standalone/borrowed axes on stable and MSRV, including refusal/repair, fairness,
+contention cleanup, warm/cold retry, migration, manual work, ack-only settlement,
+acknowledged recovery and bound cancellation, with authenticated original
+closures and exact settlement inventory; frozen verdict
+`2d7bf695f4e4e5e0d7633ea426af27d030633c446e4a0c3ec47b81d082365989`.
+Guard checkpoint `80366824` passes 48 original/neutralized/byte-restored
+structural and bound-entry proofs on both toolchains; only neutralized guards
+allow entry and fail at exit 101 after original cleanup; frozen verdict
 `975da1d2cc40c89ec89f4ea3c8d9f6b925069240b50c90e1530a756ec1b47a02`.
-Task 9103 remains in progress pending plan-end gates.
 
-Bound entry now reuses its freshly reconstructed effect from the same immutable
-writer, removing its duplicate prefix replay while retaining concrete admission
-and claim fingerprint checks. Twenty-four focused tests and feature-enabled
-executor all-target clippy pass; format/size/diff checks pass. Supplied pending
-evidence still requires independent reconstruction; subsequent native checkpoints
-are recorded above and plan-end gates remain open; scoped review
-`64fc47a86bcaf7563264da163bf2afe04073fe12153ac273f53a5cef7800a738`.
+Contract workflow checkpoint `0666db57` passes five real stdio MCP-client
+workflows on stable and MSRV: draft/repair plus independently specified staged
+refusal/recovery across process and MCP handlers and embedded/standalone drivers.
+Invalid admission preserves historical work, store bytes and absent side effects;
+repair permits ordered operations and compensation, with 32 authenticated
+original closures across the ten physical reports and matched cleanup.
+MCP axes explicitly require MCP handlers and zero server starts during refusal.
+All ten downloaded reports/logs independently match the frozen source;
+executable bytes remain producer-attested. Frozen verdict
+`8a4a4b0c2ba52166da9bdfd0e9f8da06f230a43eaad0112ff47ba6e213dec8fc`
+links the independent golden, marker, protected-binding and producer reviews.
 
-Historical STATUS evidence is retained outside the repository in the task-cache
-plan-status-archives directory, addressed by SHA-256:
-`42955b257c7a71bef27c91619e986eab1f853b54c21298f65c486860bffdfd12`.
-Volatile sessions, PIDs and intermediate logs stay in the task cache and do not establish completion.
+Final focused range `0666db57..bc27be60` passes real degraded writer/embedded
+stdio checks: independent draft findings survive unavailable authority,
+loaded private tables are discarded, output schemas hold and retained bytes
+and lock contents do not change. Ten runnable MCP cases and focused lint pass.
+Historical upgrade source verification uses an exact Git archive instead of a
+worktree; seven adversarial cases and the actual historical archive smoke pass,
+including changed-manifest refusal. Frozen focused verdict
+`a424aef9e79e6e8d9de7525e8340847adde7dcb57e676b07634c39c502a2fd7a`; the final integration matrix remains outstanding.
+Tasks 9103/9201 remain in progress and 9202/9203 remain planned pending their
+written acceptance inventories and plan-end gates; live-model acceptance belongs
+to plan 0023 and is not claimed by these protocol clients.
+
+Earlier scoped milestones and reviews are retained outside the repository in
+the task-cache plan-status-archives directory, addressed by SHA-256:
+`773ddfb971969a6b00d65e43e225575a64c94a367628c393e74aca3d9bc2a90e`.
+Volatile sessions, PIDs and intermediate logs stay in the task cache.
