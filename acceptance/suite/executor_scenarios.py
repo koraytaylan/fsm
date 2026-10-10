@@ -314,10 +314,18 @@ def executor_http_unread_and_disconnected_sessions_do_not_stop_active_work(repor
 
 def executor_stdio_shutdown_and_restart_preserve_original_claims(report) -> None:
     """Original EOF, abort and actual signals, followed by autonomous recovery."""
-    from .executor_lifecycle import installed_stdio_restart
+    from .executor_lifecycle import installed_restart
     for kind in ("process", "mcp"):
         for control in ("eof", "abort", "interrupt", "terminate", "kill"):
-            installed_stdio_restart(report, kind, control)
+            installed_restart(report, kind, control, "stdio")
+
+
+def executor_http_shutdown_and_restart_preserve_original_claims(report) -> None:
+    """Original abort and actual signals, followed by fresh HTTP-owner recovery."""
+    from .executor_lifecycle import installed_restart
+    for kind in ("process", "mcp"):
+        for control in ("abort", "interrupt", "terminate", "kill"):
+            installed_restart(report, kind, control, "http")
 
 
 @contextmanager
@@ -649,7 +657,8 @@ SCENARIOS = (executor_contract_fixtures_are_checked_without_external_work,
              executor_transport_admission_and_manual_effects_preserve_pending_work,
              executor_transport_read_only_and_degraded_hosts_refuse_execution,
              executor_http_unread_and_disconnected_sessions_do_not_stop_active_work,
-             executor_stdio_shutdown_and_restart_preserve_original_claims)
+             executor_stdio_shutdown_and_restart_preserve_original_claims,
+             executor_http_shutdown_and_restart_preserve_original_claims)
 
 
 def _name(value) -> bool:

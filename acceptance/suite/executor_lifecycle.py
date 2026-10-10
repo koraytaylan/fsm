@@ -13,7 +13,7 @@ import time
 
 from . import fsm
 from .executor_scenarios import (_fixture_rows, _installed_client, _wait_for_files,
-    observe_success_journal, observe_trace, read_journal_prefix, workflow_table)
+    _retire_http_owner, observe_success_journal, observe_trace, read_journal_prefix, workflow_table)
 from .native_fixture import DisposableAuthority, privileged
 
 EVENTS = ("start", "validated", "suspended", "processed", "restored")
@@ -137,7 +137,12 @@ def interrupted_trace(trace: list[dict], original_run: str, witness: dict) -> tu
     return observe_trace(trace[1:], {"supplier": MUTATIONS}, complete=True).violations
 
 
-def installed_stdio_restart(report, kind: str, control: str) -> None:
+def installed_restart(report, kind: str, control: str, transport: str) -> None:
+    """Interrupt the actual owner, then recover through a fresh same-transport host."""
+    if (transport not in {"stdio", "http"} or kind not in {"process", "mcp"}
+        or control not in {"eof", "abort", "interrupt", "terminate", "kill"}
+        or (control == "eof" and transport != "stdio")):
+        raise ValueError("unsupported installed owner interruption cell")
     fixture = Path(fsm.REPO) / "acceptance/fixtures/executor_handler.py"
     machine = Path(fsm.REPO) / "acceptance/fixtures/executor_workflow.json"
     with fsm.Scratch("restart-installed") as scratch, DisposableAuthority(fixture) as native:
@@ -145,7 +150,7 @@ def installed_stdio_restart(report, kind: str, control: str) -> None:
         fsm.run("machine", "add", str(machine), data_dir=str(store)).ok()
         table_path = native.approve(store, workflow_table(native.resource, native.handler,
             kind=kind, outcome="success", release=native.release))
-        with _installed_client(store, table_path, "stdio") as (client, host):
+        with _installed_client(store, table_path, transport) as (client, host):
             client.initialize()
             instance = client.structured("instance_create", {"machine": "acceptance_workflow",
                 "request_id": "restart-installed-create"})["instance_id"]
@@ -188,7 +193,7 @@ def installed_stdio_restart(report, kind: str, control: str) -> None:
             witness = dict(before=before, after=after)
             report.true(after["alive"] is False, "the original fixture is observed dead before replacement starts")
             report.equal(_fixture_rows(native.resource / "results.jsonl"), [], "interruption does not invent a handler result")
-        with _installed_client(store, table_path, "stdio") as (replacement, successor):
+        with _installed_client(store, table_path, transport) as (replacement, successor):
             replacement.initialize()
             quiet_id = replacement._next_id
             ready = _wait_for_files(lambda: [path for path in native.resource.glob("*.ready")
@@ -211,7 +216,7 @@ def installed_stdio_restart(report, kind: str, control: str) -> None:
             finally:
                 observed = read_journal_prefix(store)
                 (native.cache / "restart-last-observation.json").write_text(json.dumps(dict(
-                    control=control, handler_kind=kind, instance=instance, original_claim=original_claim,
+                    transport=transport, control=control, handler_kind=kind, instance=instance, original_claim=original_claim,
                     journal=observed, trace=_fixture_rows(native.resource / "trace.jsonl"),
                     original_completion=completed, original_attestation=attestation,
                     violations=interruption_ledger(observed, instance, original_run, candidate)),
@@ -232,10 +237,12 @@ def installed_stdio_restart(report, kind: str, control: str) -> None:
             report.equal(replacement.structured("journal_verify")["health"], "Ok", "the interruption and recovery journal verifies")
             report.true(replacement.structured("journal_replay")["matches"] is True, "replay reproduces the recovered workflow")
             report.note("FSM_INSTALLED_RESTART_EVIDENCE " + json.dumps(dict(namespace=native.namespace,
-                handler_kind=kind, control=control, instance=instance, original=original, witness=witness,
+                transport=transport, handler_kind=kind, control=control, instance=instance, original=original, witness=witness,
                 original_claim=original_claim, closure_before_successor=closure, shutdown=shutdown,
                 original_completion=completed, original_attestation=attestation,
                 original_exit=host.returncode, quiet_request_id=quiet_id, trace=trace, results=results,
                 journal=records, state=state, final=final), sort_keys=True))
-        report.equal(successor.returncode, 0, "the successful successor retires through its own EOF")
+            if transport == "http":
+                _retire_http_owner(report, successor, store, native.namespace)
+        report.equal(successor.returncode, 0, "the successful successor retires through its own EOF or confirmed HTTP owner drain")
     report.true(native.cleaned, "all original native domains close before owned fixture cleanup")
