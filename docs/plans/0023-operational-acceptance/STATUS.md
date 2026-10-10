@@ -334,8 +334,27 @@ syntax/size checks pass; filtered proof remains release-ineligible.
 Frozen implementing-author review digest:
 `1d04cde74e4a1632a5cf2f7b7d9667eb0d79255e7774a0077aa9fbf5810ab3c0`.
 
-Task 9502 remains in progress: remaining installed crash cuts and complete-suite
-acceptance are outstanding.
+Frozen HTTP cut acceptance for `618842c7..be9a036c` establishes all eight
+process/MCP claim, stopped-result, acknowledgement and accepted-event cells:
+[disposable installed evidence](https://github.com/koraytaylan/fsm/actions/runs/38071201760)
+retains 302 passing assertions, 34 native closures, 166 journal records,
+96 raw trace records and eight explicit fresh-owner drains.
+Real session initialization precedes one trigger without waiting for a stopped
+reply; original executable, descriptor and loopback listening-socket identities
+match the retained socket inventory and request endpoints.
+Replay revalidates 1,308 source blobs and unchanged CLI/helper bytes; quiet HTTP
+recovery preserves original claims, genuine successful results and accepted
+events without repeating validation, then restores state and removes owned
+fixtures/helpers after verification/replay and confirmed drain.
+32 focused and 172 disposable observer checks, two named guard controls and
+syntax/size checks pass; the original unsupported launch-option attempt remains
+failed in the task cache, and filtered proof remains release-ineligible.
+Frozen implementing-author review digest:
+`37964ef8a35976941763e566130bdae4c5d30ed8ca43da65b9ea7dae84188988`.
+
+Task 9502 remains in progress: installed timeout, descendant/retained-pipe and
+noisy-output lifecycle acceptance, plus the complete current native and consumer
+suites, are outstanding.
 Sustained native operation, nine human-reviewed uncoached
 live-model sessions, Desktop compatibility and independent final review remain
 mandatory and incomplete; no passing skip or synthetic control replaces them.
