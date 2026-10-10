@@ -30,6 +30,13 @@ def birth(process):
     return dict(pid=process.pid,pid_starttime=fields[19].decode('ascii'))
 
 
+def wait_for_settled_cycles(store,host,instances,case,kind):
+    # The contending pair serializes eight native operations; keep the wait
+    # below the profile watchdog without imposing a pre-calibration ceiling.
+    return _wait_for_files(lambda:all(not observe_cycle_journal(read_journal_prefix(store),item,
+        'contention' if position else case,kind) for position,item in enumerate(instances)),host,60)
+
+
 class InstalledBlock:
     def __init__(self, report, store, native, table, transport, kind, block_number):
         self.report,self.store,self.native,self.table=report,store,native,table
@@ -153,8 +160,7 @@ class InstalledBlock:
             (self.native.resource/('release-'+resource)).write_text('release bounded real work')
             if extra:(self.native.resource/'release-soak-contention-right').write_text('release contending real work')
         instances=[instance]+([extra] if extra else [])
-        _wait_for_files(lambda:all(not observe_cycle_journal(read_journal_prefix(self.store),item,
-            'contention' if item==extra else case,self.kind) for item in instances),self.host,30)
+        wait_for_settled_cycles(self.store,self.host,instances,case,self.kind)
         records=read_journal_prefix(self.store)
         completed=time.monotonic_ns()
         if self.client is not None:self.report.equal(self.client._next_id,quiet_id,'native settlements advance without a progress request')
@@ -278,6 +284,7 @@ def run_block(report,store,entries,consume):
         table=native.approve(store,inputs['table'])
         stage_sampler(native)
         block=InstalledBlock(report,store,native,table,transport,kind,entries[0]['index']//12)
+        entry=None
         try:
             block.start()
             for entry in entries:
@@ -296,7 +303,16 @@ def run_block(report,store,entries,consume):
             (store.parent/f'block-{entries[0]["index"]//12:08}-verification.json').write_text(
                 json.dumps(dict(verification=verification,replay=replay),sort_keys=True))
         except Exception as failure:
-            (native.cache/'workload-failure.json').write_text(json.dumps(dict(error=str(failure)),sort_keys=True))
+            retained=dict(error=str(failure),schedule=entry)
+            if entry is not None:
+                try:
+                    retained['journal']=read_journal_prefix(store)
+                    resources=['soak-'+entry['case']]
+                    if entry['case']=='contention':resources.append('soak-contention-right')
+                    retained['resources']={name:block.resource_observations(name) for name in resources}
+                except Exception as observation_error:
+                    retained['observation_error']=str(observation_error)
+            (native.cache/'workload-failure.json').write_text(json.dumps(retained,sort_keys=True))
             raise
         finally:
             if block.host is not None:

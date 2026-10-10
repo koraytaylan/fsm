@@ -12,7 +12,7 @@ from acceptance.suite.soak_run import observed_sample, disk_size, workload_diges
 from acceptance.suite.soak_native_metrics import queue_bytes, ROOT_SAMPLE, sample_native
 from acceptance.suite.soak_resources import observe_process_resources
 from acceptance.suite.soak import schedule
-from acceptance.suite.soak_installed import run_block,InstalledBlock
+from acceptance.suite.soak_installed import run_block,InstalledBlock,wait_for_settled_cycles
 from acceptance.suite.executor_control import OwnerUnavailable
 
 
@@ -24,6 +24,22 @@ def census():
 
 
 class AccountingTests(unittest.TestCase):
+    def test_settlement_wait_accepts_delayed_original_progress_and_refuses_stalled_work(self):
+        host=MagicMock();host.poll.return_value=None
+        with patch('acceptance.suite.soak_installed.read_journal_prefix',return_value=['original-prefix']), \
+             patch('acceptance.suite.soak_installed.observe_cycle_journal',side_effect=[('pending',)]*4+[()]) as observe, \
+             patch('acceptance.suite.executor_scenarios.time.monotonic',side_effect=[0,10,20,30,40]), \
+             patch('acceptance.suite.executor_scenarios.time.sleep'):
+            self.assertTrue(wait_for_settled_cycles(Path('/owned-store'),host,['original-instance'],'success','process'))
+        self.assertTrue(all(call.args==(['original-prefix'],'original-instance','success','process')
+                            for call in observe.call_args_list))
+        with patch('acceptance.suite.soak_installed.read_journal_prefix',return_value=['original-prefix']), \
+             patch('acceptance.suite.soak_installed.observe_cycle_journal',return_value=('pending',)), \
+             patch('acceptance.suite.executor_scenarios.time.monotonic',side_effect=[0,60]), \
+             patch('acceptance.suite.executor_scenarios.time.sleep'):
+            with self.assertRaisesRegex(AssertionError,'required external evidence'):
+                wait_for_settled_cycles(Path('/owned-store'),host,['original-instance'],'success','process')
+
     def test_standalone_retries_only_typed_retryable_lock_with_the_original_request(self):
         from acceptance.suite.fsm import Result,CliError
         block=InstalledBlock(MagicMock(),Path('/owned-store'),MagicMock(),Path('/owned-table'),'standalone','process',0)
@@ -170,6 +186,34 @@ class AccountingTests(unittest.TestCase):
             self.assertEqual(block.run.call_count,3)
             self.assertTrue(block.stop.called)
             self.assertTrue((Path(scratch.path)/'block-00000000-verification.json').exists())
+
+    def test_failed_case_retains_pre_retirement_prefix_and_both_original_resources(self):
+        with Scratch('ordinary-block-failure-control') as scratch:
+            native=MagicMock();native.cache=Path(scratch.path)
+            authority=MagicMock();authority.__enter__.return_value=native
+            block=MagicMock();block.host=None
+            block.run.side_effect=AssertionError('original settlement timeout')
+            prefix=[dict(seq=1,kind='execution_claimed')]
+            block.resource_observations.side_effect=lambda name:dict(resource=name,entries=['entered'],results=[])
+            def retire():
+                # Cleanup progress must never rewrite the failed observation.
+                prefix.append(dict(seq=2,kind='execution_settled'))
+            block.stop.side_effect=retire
+            entries=list(schedule(123,12))
+            with patch('acceptance.suite.soak_installed.require_disposable_runner'), \
+                 patch('acceptance.suite.soak_installed.DisposableAuthority',return_value=authority), \
+                 patch('acceptance.suite.soak_installed.block_inputs',return_value={'machines':{},'table':{}}), \
+                 patch('acceptance.suite.soak_installed.stage_sampler'), \
+                 patch('acceptance.suite.soak_installed.InstalledBlock',return_value=block), \
+                 patch('acceptance.suite.soak_installed.read_journal_prefix',return_value=prefix):
+                with self.assertRaisesRegex(AssertionError,'original settlement timeout'):
+                    run_block(MagicMock(),Path(scratch.path)/'store',entries,MagicMock())
+            retained=json.loads((native.cache/'workload-failure.json').read_text())
+            self.assertEqual(retained['schedule'],entries[0])
+            self.assertEqual(retained['journal'],[dict(seq=1,kind='execution_claimed')])
+            self.assertEqual(set(retained['resources']),{'soak-contention','soak-contention-right'})
+            self.assertTrue(all(row['entries']==['entered'] and row['results']==[] for row in retained['resources'].values()))
+            self.assertEqual(prefix[-1]['kind'],'execution_settled')
 
     def test_startup_waits_for_original_publication_but_never_accepts_ambiguous_ownership(self):
         block=InstalledBlock(MagicMock(),Path('/owned-store'),MagicMock(),Path('/owned-table'),'standalone','process',0)

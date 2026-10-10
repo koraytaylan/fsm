@@ -87,6 +87,11 @@ calibration fails before workload dispatch in validation mode.
 Evidence lives under `$TMPDIR/operational-check/evidence`, including the
 identified installed binary/helper, build receipt and actual limits,
 consumer log, cycle records, original closure records and retirement receipts.
+Quiet settlement has a bounded 60-second wait below the 90-second profile
+watchdog, allowing the contending pair's eight serialized native operations;
+this wait is separate from committed numeric latency budgets. Failures retain
+the exact scheduled case, original journal prefix and physical resource rows
+before owner retirement, so cleanup progress cannot replace the failed sample.
 Successful fixture retirement removes only matched task-owned native paths;
 the final helper removal checks its original device, inode and digest.
 Uncertain cleanup retains its authority and diagnostics on the disposable VM.
