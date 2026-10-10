@@ -615,6 +615,25 @@ impl Store {
         //    it folding a prefix the base already contains.
         drop_snapshots_through(&self.data_dir, cut);
         self.records.retain(|record| record.seq > cut);
+        // SPEC journal sealing commits the base after dropped keys are removed;
+        // a later snapshot from this handle must carry that same ledger.
+        self.state
+            .dedup
+            .retain(|request, slot| slot.seq > cut || carried.carried.contains_key(request));
+        // Outcomes whose claiming records moved to the archive must follow
+        // the same reconstruction/refusal path as a freshly opened handle.
+        self.last_responses.retain(|request, _| {
+            self.state
+                .dedup
+                .get(request)
+                .is_some_and(|slot| slot.seq > cut)
+        });
+        self.last_errors.retain(|request, _| {
+            self.state
+                .dedup
+                .get(request)
+                .is_some_and(|slot| slot.seq > cut)
+        });
         // This handle is now a sealed store's, and every surface that reports
         // a horizon has to know without asking the disk again.
         self.sealed_open = true;

@@ -1,5 +1,11 @@
 # API and version policy
 
+Successful sealing now reconciles the existing writer's request ledger and
+response caches with the carried base and live suffix before later snapshots;
+archived requests use the existing reconstruction/refusal path, matching reopen.
+This repairs cache consistency without changing signatures, error codes,
+journal/base formats, hash domains or version numbers.
+
 Local executor control discovery now excludes only original private sockets
 whose actual connect returns ConnectionRefused, so a signal-killed owner's
 retained endpoint cannot make its unique connected replacement ambiguous.

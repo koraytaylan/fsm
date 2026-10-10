@@ -1291,6 +1291,12 @@ a pre-`10` store had no seal record and no base state file.
 
 An operator MAY seal a prefix of the journal into a detached archive. Sealing NEVER rewrites, reorders, or removes a record from the live chain: it appends a `journal_sealed` record, relocates the sealed segments unchanged, and leaves a `fsm.base/1` state file behind.
 
+After a successful seal, the existing writer's request ledger MUST retain only
+the carried base keys and keys claimed above the cut, matching a reopened
+store. Cached responses and errors claimed at or below the cut MUST no longer
+bypass the existing archived-request reconstruction or refusal; subsequent
+snapshot caches MUST agree with that sealed base plus the live suffix.
+
 * The cut MUST be the last record of a segment. A segment the cut fell inside could only be archived by splitting it, which would rewrite published bytes.
 * The base state file is **required**, never a cache. A missing or stale snapshot degrades to a fold; a missing base refuses the open with `store/base_missing`, and one that disagrees with the seal that commits it refuses with `store/base_mismatch`. Neither is repairable from the data directory alone.
 * A verification that did not read the sealed bytes MUST NOT report what a complete walk reports. A sealed store whose archive was not presented reports its own verdict, distinct from both success and failure.

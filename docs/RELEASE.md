@@ -1,5 +1,10 @@
 # Releasing
 
+Sealing now removes dropped request keys from the existing writer and retires
+cached outcomes whose records moved to the archive, matching a reopened handle;
+subsequent shutdown snapshots agree with the sealed base and live suffix.
+No persisted format or version changes.
+
 Local executor stop and observation can reach the unique connected replacement
 after a signal-killed owner leaves a refused original socket; stale files are
 preserved, multiple connected owners still refuse, and socket refusal grants

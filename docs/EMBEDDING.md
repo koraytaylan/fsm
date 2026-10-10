@@ -1,5 +1,10 @@
 # Embedding fsm as a library
 
+After `Store::seal_and_archive` succeeds, its existing handle uses the same
+carried request ledger as reopen, and requests whose records moved to the
+archive follow the existing reconstruction/refusal path; a later
+`shutdown_snapshot` therefore agrees with the sealed base and live suffix.
+
 An unanswered HTTP elicitation holds its session's conversation state, while
 ordinary hosted tool calls in that same session still reach bounded host
 admission and can read or advance the workflow. Those calls share cancellation

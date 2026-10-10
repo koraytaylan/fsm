@@ -766,6 +766,38 @@ fn a_snapshot_cache_at_or_below_the_seal_is_dropped() {
     }
 }
 
+#[test]
+fn snapshot_after_seal_matches_reopened_request_ledger() {
+    let directory = TestDirectory::create("post-seal-snapshot");
+    let store_path = directory.store();
+    let mut store = populated(&store_path, 1, 1);
+    assert!(store.state.dedup.contains_key("create-settled-0"));
+    assert!(store.last_responses.contains_key("create-live-0"));
+    let report = store
+        .seal_and_archive(&directory.archive("one"), None)
+        .expect("the seal runs");
+    assert!(report.keys_dropped > 0);
+    assert!(!store.state.dedup.contains_key("create-settled-0"));
+    assert!(store.state.dedup.contains_key("create-live-0"));
+    assert!(!store.last_responses.contains_key("create-live-0"));
+    let error = store
+        .create_instance("case_review", "live-0", "create-live-0", None)
+        .expect_err("a carried creation whose original record was archived must refuse replay");
+    assert_eq!(error.code, "store/sealed_replay_unavailable");
+    store
+        .shutdown_snapshot()
+        .expect("the post-seal snapshot is writable");
+    let reopened = Store::open_read_only(&store_path).expect("the sealed store opens read-only");
+    assert!(store_states_eq(&store.state, &reopened.state));
+    let cached = fsm_store::snapshot::reconstruct_snapshot_plus_tail(
+        &store_path,
+        &store.records,
+        store.state.last_seq,
+    )
+    .expect("the diagnostic snapshot view reconstructs");
+    assert!(store_states_eq(&cached, &reopened.state));
+}
+
 // ---------------------------------------------------------------------------
 // Interruption: every prefix of the ordering leaves a store that opens
 // ---------------------------------------------------------------------------
