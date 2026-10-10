@@ -199,8 +199,11 @@ fn shared_tick_admission() {
         )
         .writer_unavailable
     });
-    assert_eq!(scheduler.inflight_effect(&effect), Some(&pending));
-    absent(authority, &["binding", "launch", "entry", "handoff"]);
+    assert!(scheduler.inflight_effect(&effect).is_none());
+    absent(
+        authority,
+        &["allocation", "binding", "launch", "entry", "handoff"],
+    );
     let mut readonly = Store::open_read_only(path).unwrap();
     assert_eq!(readonly.records, records);
     assert!(
@@ -312,19 +315,38 @@ fn shared_tick_admission() {
     holder.release();
 
     let mut writer = Store::open(path).unwrap();
-    let lines = tick_with(
-        &mut watcher,
-        &mut scheduler,
-        &mut runner,
-        &mut pipeline,
-        &mut writer,
-        &mut clock,
-        1000,
-    );
-    assert!(
-        lines.iter().any(|line| line.starts_with("native-claimed ")),
-        "{lines:?}"
-    );
+    // Writer refusal released the unclaimed slot, so the healthy tick must
+    // reserve again and observe bounded asynchronous preparation before claim.
+    wait_until(|| {
+        let lines = tick_with(
+            &mut watcher,
+            &mut scheduler,
+            &mut runner,
+            &mut pipeline,
+            &mut writer,
+            &mut clock,
+            1000,
+        );
+        if writer
+            .state
+            .execution
+            .claim_for("instance", &effect)
+            .is_some()
+        {
+            assert!(
+                lines.iter().any(|line| line.starts_with("native-claimed ")),
+                "{lines:?}"
+            );
+            return true;
+        }
+        assert_eq!(writer.records, records);
+        assert_eq!(
+            fsm_execute::effect::resolve(&writer, &effect).unwrap(),
+            pending
+        );
+        assert!(fsm_store::snapshot::store_states_eq(&writer.state, &state));
+        false
+    });
     let claim = writer
         .state
         .execution
