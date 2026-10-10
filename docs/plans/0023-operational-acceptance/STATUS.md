@@ -60,8 +60,29 @@ revalidates all 1,275 source blobs and retained binary/helper bytes;
 filtered proof remains release-ineligible, with frozen author replay digest
 `0c4e019c1862d5eb0eb27e20703a235ff767cd8fda15ef3f35db0b6f795c6c7b`.
 
-Task 9502 remains in progress: slow/disconnected observers, read-only/degraded
-refusals, complete shutdown/restart and the pre-existing
+Frozen refusal/session acceptance at `35bfb1bc3da6e17ec142e72ceae9664896d61147`
+establishes twelve installed cells with 336 passing assertions:
+[eight read-only/degraded cells](https://github.com/koraytaylan/fsm/actions/runs/38041903984)
+preserve pending work and journal bytes, retain exact diagnostics and prove zero
+native allocations from the original protected counters;
+[four active HTTP observer cells](https://github.com/koraytaylan/fsm/actions/runs/38041913801)
+complete with an unread subscription or deleted session before reconnect,
+with sixteen original domain closures and four original-owner drains.
+Both receipts independently revalidate 1,276 source blobs and the same retained
+binary/helper bytes; filtered reports remain release-ineligible.
+Installed refusal exposed and repaired last-line JSON routing: degraded
+initialization now returns its matching response and retains the diagnostic
+in the original session's bounded SSE history, including actual stream delivery.
+The named endpoint test fails at exit 101 with its ID guard neutralized and
+re-passes after restoration; fourteen focused Rust tests, seventy observer
+tests, CLI all-target clippy, formatting and size checks pass with local builds
+limited to one worker, 1 GiB memory and zero swap.
+Frozen author review and independent artifact replay digest:
+`ce77ca78c96dc4aeb18b16d4ee00bead818362d5c9277f11db90a29be8c27447`.
+The original failed attempts remain failed in the task-cache evidence.
+
+Task 9502 remains in progress: slow/retired stdio observers, complete
+shutdown/crash/restart and the pre-existing
 portable acceptance inventory are outstanding.
 Sustained native operation, nine human-reviewed uncoached
 live-model sessions, Desktop compatibility and independent final review remain
