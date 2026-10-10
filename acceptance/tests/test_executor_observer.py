@@ -624,6 +624,12 @@ for _ in range(50):
         class Handler(BaseHTTPRequestHandler):
             protocol_version = "HTTP/1.1"
 
+            def handle(self):
+                try:
+                    super().handle()
+                except ConnectionResetError:
+                    pass  # The caller deliberately closes oversized replies.
+
             def log_message(self, *_args):
                 pass
 
@@ -648,6 +654,8 @@ for _ in range(50):
                 identifier = request["id"] + (request["method"] == "wrong-id")
                 body = (b'x' * (MAX_FRAME + 1) if request["method"] == "large" else
                         json.dumps({"id": identifier, "result": {}}).encode())
+                if request["method"] == "notify-first":
+                    body = b'data: {"method":"notifications/test"}\n\n' + b'data: ' + body + b'\n\n'
                 self.send_response(200)
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
@@ -660,6 +668,8 @@ for _ in range(50):
         try:
             with HttpClient("127.0.0.1", server.server_port) as client:
                 self.assertEqual(client.request("ping"), {})
+                self.assertEqual(client.request("notify-first"), {})
+                self.assertEqual(client.notifications, [{"method": "notifications/test"}])
                 with self.assertRaisesRegex(McpError, "expected a reply"):
                     client.request("wrong-id")
                 with self.assertRaisesRegex(McpError, "frame bound"):
@@ -702,6 +712,12 @@ class UnreadHttpObserverTests(unittest.TestCase):
 
         class Handler(BaseHTTPRequestHandler):
             protocol_version = "HTTP/1.1"
+
+            def handle(self):
+                try:
+                    super().handle()
+                except ConnectionResetError:
+                    pass  # The observer deliberately retires an unread body.
 
             def log_message(self, *_arguments):
                 pass

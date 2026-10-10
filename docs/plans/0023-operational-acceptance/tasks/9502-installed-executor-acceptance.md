@@ -17,6 +17,7 @@ touches:
   - acceptance/suite/run.py
   - acceptance/suite/evidence.py
   - acceptance/tests/test_executor_observer.py
+  - acceptance/tests/test_http_post_observer.py
   - acceptance/fixtures/executor_handler.py
   - acceptance/fixtures/executor_workflow.json
   - acceptance/Containerfile

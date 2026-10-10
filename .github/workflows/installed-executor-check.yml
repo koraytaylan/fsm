@@ -45,7 +45,7 @@ jobs:
           swapon --show
       - run: rustup toolchain install stable --profile minimal
       - name: Focused independent observer checks
-        run: python3 -m unittest discover -s acceptance/tests -p test_executor_observer.py
+        run: python3 -m unittest discover -s acceptance/tests -p 'test*observer.py'
       - name: Consumer install and actual contained workflows
         env:
           FSM_INSTALLED_CANDIDATE: ${{ inputs.candidate }}

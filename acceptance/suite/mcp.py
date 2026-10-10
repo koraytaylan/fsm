@@ -323,11 +323,19 @@ class HttpClient:
         status, _headers, body = self.post(message, timeout=timeout)
         if status >= 400:
             raise McpError(f"{method}: HTTP {status}: {body}")
-        frame = _first_json_frame(body)
+        frames = _json_frames(body)
+        frame = None
+        for received in frames:
+            if "id" not in received and isinstance(received.get("method"), str):
+                if len(self._notifications) >= MAX_QUEUED_FRAMES:
+                    raise McpError("the HTTP notification history exceeded its frame bound")
+                self._notifications.append(received)
+            elif frame is None and received.get("id") == self._next_id:
+                frame = received
+            else:
+                raise McpError(f"expected a reply to {self._next_id}, got {received.get('id')}")
         if frame is None:
             raise McpError(f"{method}: no JSON in the answer: {body!r}")
-        if frame.get("id") != self._next_id:
-            raise McpError(f"expected a reply to {self._next_id}, got {frame.get('id')}")
         if "error" in frame:
             raise McpError(f"{method}: {json.dumps(frame['error'])}")
         return frame.get("result", {})
@@ -480,26 +488,32 @@ class HttpClient:
             self._stream_socket = None
 
 
-def _first_json_frame(body: str) -> dict | None:
-    """The first JSON object in a body, whether it is plain JSON or SSE."""
+def _json_frames(body: str) -> list[dict]:
+    """Bounded POST bodies may carry notifications before their SSE response."""
     body = body.strip()
     if not body:
-        return None
+        return []
     if body.startswith("{"):
         try:
-            return json.loads(body)
+            frame = json.loads(body)
+            return [frame] if isinstance(frame, dict) else []
         except json.JSONDecodeError:
             pass
+    frames = []
     for line in body.splitlines():
         line = line.strip()
         if line.startswith("data:"):
             line = line[5:].strip()
         if line.startswith("{"):
             try:
-                return json.loads(line)
+                frame = json.loads(line)
+                if isinstance(frame, dict):
+                    frames.append(frame)
+                    if len(frames) > MAX_QUEUED_FRAMES:
+                        raise McpError("the HTTP response exceeded its frame-count bound")
             except json.JSONDecodeError:
                 continue
-    return None
+    return frames
 
 
 def url_for(host: str, port: int, path: str) -> str:
