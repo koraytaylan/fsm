@@ -15,7 +15,7 @@ from pathlib import Path
 import sys
 import json
 from itertools import islice
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
 import re
 import time
 import hashlib
@@ -305,6 +305,35 @@ def executor_transport_read_only_and_degraded_hosts_refuse_execution(report) -> 
                 _installed_refusal(report, transport, kind, mode)
 
 
+def executor_http_unread_and_disconnected_sessions_do_not_stop_active_work(report) -> None:
+    """Client transport lifetime cannot confer or withdraw execution ownership."""
+    for kind in ("process", "mcp"):
+        for observer in ("unread", "disconnected"):
+            _installed_workflow(report, "http", kind, "success", observer=observer)
+
+
+@contextmanager
+def _unread_http_subscription(client, uri: str):
+    """A separate actual subscriber retains its body unread until retirement."""
+    with HttpClient(client.host, client.port) as observer:
+        observer.initialize()
+        observer.request("resources/subscribe", {"uri": uri})
+        connection = observer._connection(timeout=30)
+        response = None
+        try:
+            connection.request("GET", observer.path, headers=observer._headers(True))
+            response = connection.getresponse()
+            if response.status != 200 or "text/event-stream" not in response.getheader("Content-Type", ""):
+                raise ValueError("the unread observer did not establish a real subscription stream")
+            yield observer
+        finally:
+            connection.close()
+            if response is not None:
+                response.close()
+            if observer.delete_session() not in (200, 204):
+                raise ValueError("the unread observer session did not retire")
+
+
 def _journal_bytes(store: Path) -> dict[str, bytes]:
     # The independent bounded reader checks the fixture inventory before bytes
     # are retained; it intentionally does not validate canonical encoding.
@@ -359,7 +388,7 @@ def _installed_refusal(report, transport: str, kind: str, mode: str) -> None:
                 report.equal(draft["status"], "unknown", "draft compilation survives without authoritative execution evidence")
                 report.equal(draft["contract_id"], None, "fallback contract identity is unavailable")
                 for field in ("effects_checked", "outcomes_checked"):
-                    report.true(draft[field] is False, f"fallback does not claim {field}")
+                    report.true(draft["scope"][field] is False, f"fallback does not claim {field}")
                 report.true(any(finding.get("code") == "exec/contract_unknown"
                                 and finding.get("cause") == {"mode": mode, "table": "unavailable"}
                                 for finding in draft["findings"]), "draft evidence names its exact unavailable-table cause")
@@ -465,7 +494,8 @@ def _installed_admission(report, client, native, store: Path, specification: dic
                 invalid_report=rejected, manual_report=manual_report)
 
 
-def _installed_workflow(report, transport: str, kind: str, outcome: str, *, admission: bool = False) -> None:
+def _installed_workflow(report, transport: str, kind: str, outcome: str, *,
+                        admission: bool = False, observer: str = "connected") -> None:
     fixture = Path(fsm.REPO) / "acceptance/fixtures/executor_handler.py"
     machine = Path(fsm.REPO) / "acceptance/fixtures/executor_workflow.json"
     expected = {
@@ -490,7 +520,7 @@ def _installed_workflow(report, transport: str, kind: str, outcome: str, *, admi
         table = workflow_table(native.resource, native.handler, kind=kind, outcome=outcome,
                                release=native.release)
         table_path = native.approve(store, table)
-        with _installed_client(store, table_path, transport) as (client, host):
+        with _installed_client(store, table_path, transport) as (client, host), ExitStack() as clients:
             client.initialize()
             admission_evidence = (_installed_admission(report, client, native, store,
                                    json.loads(machine.read_text())) if admission else None)
@@ -508,6 +538,8 @@ def _installed_workflow(report, transport: str, kind: str, outcome: str, *, admi
             if transport == "http":
                 client.open_stream()
             client.request("resources/subscribe", {"uri": uri})
+            unread = clients.enter_context(_unread_http_subscription(client, uri)) if observer == "unread" else None
+            unread_id = unread._next_id if unread is not None else None
             triggered = client.structured("instance_send", {"instance_id": instance,
                                           "event": {"name": "start"}, "request_id": "quiet-installed-start"})
             report.equal(triggered["leaf"], "validating", "one trigger enters the barrier-protected prerequisite")
@@ -521,6 +553,11 @@ def _installed_workflow(report, transport: str, kind: str, outcome: str, *, admi
             client.drain(timeout=0.05)
             previous_notifications = len(client.notifications)
             quiet_id = client._next_id
+            if observer == "disconnected":
+                report.true(client.delete_session() in (200, 204), "the HTTP session is deleted while its native handler is still at the barrier")
+                client.close()
+                report.true(host.poll() is None, "zero attached client sessions leave the original execution host alive")
+                report.equal(_fixture_rows(native.resource / "results.jsonl"), [], "the disconnected client did not wait for native completion")
             native.release.write_text("release", encoding="utf-8")
             _wait_for_files(lambda: len(_fixture_rows(native.resource / "results.jsonl")) == len(exit_codes),
                             host, 30)
@@ -539,12 +576,25 @@ def _installed_workflow(report, transport: str, kind: str, outcome: str, *, admi
             report.equal([row["exit_code"] for row in results], exit_codes, "external outcomes match the handwritten path")
             report.equal(state, expected_state, "the external resource matches the declared restoration outcome")
             report.equal(observe_workflow_journal(records, instance, events, stopped_statuses), (), "each native owner settles and advances exactly once")
-            client.drain(timeout=0.2)
-            report.true(any(frame.get("method") == "notifications/resources/updated"
-                            and frame.get("params", {}).get("uri") == uri
-                            for frame in client.notifications[previous_notifications:]),
-                        "the quiet subscribed client receives an autonomous update")
+            if observer != "disconnected":
+                client.drain(timeout=0.2)
+                report.true(any(frame.get("method") == "notifications/resources/updated"
+                                and frame.get("params", {}).get("uri") == uri
+                                for frame in client.notifications[previous_notifications:]),
+                            "the quiet subscribed client receives an autonomous update")
             report.equal(client._next_id, quiet_id, "external work and native settlements complete without another client request")
+            if unread is not None:
+                report.equal(unread._next_id, unread_id, "the separate unread subscriber sends no progress request")
+            if observer != "connected":
+                report.note("FSM_INSTALLED_OBSERVER_EVIDENCE " + json.dumps(dict(
+                    namespace=native.namespace, handler_kind=kind, observer=observer,
+                    request_id_before=quiet_id, request_id_after=client._next_id,
+                    unread_request_id_before=unread_id,
+                    unread_request_id_after=unread._next_id if unread is not None else None,
+                    results_before_reconnect=results, journal_before_reconnect=records), sort_keys=True))
+            if observer == "disconnected":
+                client = clients.enter_context(HttpClient(client.host, client.port))
+                client.initialize()
             final = client.structured("instance_get", {"instance_id": instance})
             report.equal(final["leaf"], terminal, "one final read observes the expected terminal leaf")
             report.equal(final["status"], "completed", "the installed workflow is complete")
@@ -566,6 +616,8 @@ def _installed_workflow(report, transport: str, kind: str, outcome: str, *, admi
                     diagnostics=bytes(host.acceptance_stderr).decode("utf-8", errors="replace"),
                     **admission_evidence), sort_keys=True))
             if transport == "http":
+                if unread is not None:
+                    clients.close()
                 report.true(client.delete_session() in (200, 204), "HTTP session deletion succeeds")
                 report.true(host.poll() is None, "deleting an HTTP session leaves the shared execution host alive")
                 _retire_http_owner(report, host, store, native.namespace)
@@ -578,7 +630,8 @@ SCENARIOS = (executor_contract_fixtures_are_checked_without_external_work,
              executor_stdio_outcome_matrix_progresses_with_quiet_clients,
              executor_transport_outcome_matrix_progresses_with_quiet_clients,
              executor_transport_admission_and_manual_effects_preserve_pending_work,
-             executor_transport_read_only_and_degraded_hosts_refuse_execution)
+             executor_transport_read_only_and_degraded_hosts_refuse_execution,
+             executor_http_unread_and_disconnected_sessions_do_not_stop_active_work)
 
 
 def _name(value) -> bool:

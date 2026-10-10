@@ -21,7 +21,7 @@ from acceptance.suite.evidence import source_files
 from acceptance.suite.executor_scenarios import (observe_trace, workflow_table,
                                                read_journal_prefix, observe_success_journal,
                                                observe_workflow_journal, _installed_client,
-                                               _retire_http_owner)
+                                               _retire_http_owner, _unread_http_subscription)
 from acceptance.suite.fsm import task_cache, Scratch, BoundedCapture, Serving, CliError
 from acceptance.suite.mcp import (StdioClient, HttpClient, FrameReader, McpError,
                                  MAX_FRAME, MAX_QUEUED_FRAMES)
@@ -690,6 +690,61 @@ for _ in range(50):
             self.assertFalse(reader.is_alive())
         finally:
             stopped.set()
+            server.shutdown()
+            server.server_close()
+            worker.join(timeout=2)
+        self.assertFalse(worker.is_alive())
+
+
+class UnreadHttpObserverTests(unittest.TestCase):
+    def test_real_subscription_has_no_body_reader_and_retires_its_session(self):
+        subscribed, streaming, deleted = threading.Event(), threading.Event(), threading.Event()
+
+        class Handler(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def log_message(self, *_arguments):
+                pass
+
+            def do_POST(self):
+                request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                if request["method"] == "resources/subscribe":
+                    subscribed.set()
+                body = json.dumps({"id": request.get("id"), "result": {}}).encode()
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Mcp-Session-Id", "unread-stub")
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.end_headers()
+                self.wfile.write(b'data: {"method":"notifications/test"}\n\n')
+                self.wfile.flush()
+                streaming.set()
+
+            def do_DELETE(self):
+                deleted.set()
+                self.send_response(204)
+                self.end_headers()
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        worker = threading.Thread(target=server.serve_forever)
+        worker.start()
+        try:
+            with HttpClient("127.0.0.1", server.server_port) as client:
+                with _unread_http_subscription(client, "fsm://instance/unread") as observer:
+                    self.assertTrue(subscribed.wait(1))
+                    self.assertTrue(streaming.wait(1))
+                    self.assertEqual(observer.session, "unread-stub")
+                    self.assertEqual(observer._next_id, 2)
+                    self.assertIsNone(observer._stream_reader)
+                    self.assertEqual(observer.notifications, [])
+                    self.assertFalse(deleted.is_set())
+                self.assertTrue(deleted.is_set())
+        finally:
             server.shutdown()
             server.server_close()
             worker.join(timeout=2)
