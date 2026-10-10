@@ -24,8 +24,9 @@ SCENARIOS = ("executor_stdio_process_success_progresses_with_a_quiet_client",
              "executor_http_hardware_cuts_recover_original_claims_results_and_events",
              "executor_helper_closed_cut_recovers_without_publishing_an_original_result",
              "executor_helper_hardware_cut_matrix_recovers_original_claims",
+             "executor_original_descendants_and_noisy_pipes_close_before_replacement",
              "baseline", "full")
-CELLS = (1, 8, 16, 4, 8, 4, 10, 8, 8, 6, 4, 6, 2, 4, 2, 8, 8, 4, 24, 2, 137)
+CELLS = (1, 8, 16, 4, 8, 4, 10, 8, 8, 6, 4, 6, 2, 4, 2, 8, 8, 4, 24, 6, 2, 143)
 
 
 def selection(scenario: str) -> tuple[list[str], list[str], int]:

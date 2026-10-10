@@ -21,6 +21,7 @@ from pathlib import Path
 import time
 import uuid
 import sys
+import subprocess
 
 
 def atomic_json(path: Path, value) -> None:
@@ -81,6 +82,71 @@ def append(root: Path, kind: str, run: str, resource: str, operation=None) -> No
     write_shared_json(sequence, seq + 1)
 
 
+def process_identity(pid=None):
+    pid = os.getpid() if pid is None else pid
+    birth = None
+    if sys.platform == 'linux':
+        with Path('/proc', str(pid), 'stat').open('rb') as stream:
+            birth = stream.read(4096).rsplit(b') ', 1)[1].split()[19].decode('ascii')
+    return dict(pid=pid, pid_starttime=birth)
+
+
+def stream_identity(descriptor):
+    value = os.fstat(descriptor)
+    return dict(device=value.st_dev, inode=value.st_ino, mode=value.st_mode)
+
+
+def descendant(args):
+    parent_streams = {}
+    for number in (1, 2):
+        metadata = Path('/proc',str(os.getppid()),'fd',str(number)).stat()
+        parent_streams[str(number)] = dict(device=metadata.st_dev,inode=metadata.st_ino,mode=metadata.st_mode)
+    value = dict(run=args.run, resource=args.resource, **process_identity(), parent_pid=os.getppid(),
+        parent=process_identity(os.getppid()), parent_cgroup=Path('/proc',str(os.getppid()),'cgroup').read_text(),
+        cgroup=Path('/proc/self/cgroup').read_text(),
+        streams={str(number):stream_identity(number) for number in (1, 2)},parent_streams=parent_streams)
+    with locked(args.root):
+        with (args.root / 'descendants.jsonl').open('a', encoding='utf-8') as stream:
+            stream.write(json.dumps(value) + '\n');stream.flush();os.fsync(stream.fileno())
+    token = hashlib.sha256(args.run.encode()).hexdigest()
+    atomic_json(args.root / (token + '.child-ready'), value)
+    deadline = time.monotonic() + args.wait_seconds
+    while time.monotonic() < deadline:
+        time.sleep(0.01)
+    return 0
+
+
+def start_descendant(args, run):
+    child = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), 'descendant',
+        '--root', str(args.root), '--run', run, '--resource', args.resource, '--wait-seconds', '60'],
+        stdin=subprocess.DEVNULL)
+    marker = args.root / (hashlib.sha256(run.encode()).hexdigest() + '.child-ready')
+    deadline = time.monotonic() + 5
+    while not marker.exists():
+        if child.poll() is not None or time.monotonic() >= deadline:
+            if child.poll() is None:
+                child.kill();child.wait(timeout=5)
+            raise RuntimeError('owned descendant failed its entry barrier')
+        time.sleep(0.005)
+    value = json.loads(marker.read_text())
+    if value['parent_pid'] != os.getpid() or value['streams'] != {str(n):stream_identity(n) for n in (1, 2)}:
+        child.kill();child.wait(timeout=5)
+        raise RuntimeError('descendant did not inherit its original parent and pipes')
+
+
+def emit_noise(args, run):
+    if not args.noise_bytes:
+        return
+    data = b'n' * 16_384
+    written = 0
+    while written < args.noise_bytes:
+        written += os.write(2, data[:min(len(data), args.noise_bytes - written)])
+    with locked(args.root):
+        with (args.root / 'noise.jsonl').open('a', encoding='utf-8') as stream:
+            stream.write(json.dumps(dict(run=run, bytes=written, descriptor=2, **process_identity())) + '\n')
+            stream.flush();os.fsync(stream.fileno())
+
+
 def operation(args) -> int:
     root = args.root
     root.mkdir(parents=True, exist_ok=True)
@@ -104,12 +170,8 @@ def operation(args) -> int:
     try:
         # Linux lifecycle observers match birth identity, never PID absence
         # alone; other platforms still run the portable operation fixture.
-        pid_starttime = None
-        if sys.platform == "linux":
-            with Path("/proc/self/stat").open("rb") as process_stat:
-                pid_starttime = process_stat.read(4096).rsplit(b") ", 1)[1].split()[19].decode("ascii")
         identity = {"run": run, "resource": args.resource,
-            "operation": args.operation, "pid": os.getpid(), "pid_starttime": pid_starttime}
+            "operation": args.operation, **process_identity()}
         # The provisioned shared slot keeps its original owner and inode when
         # DynamicUser retirement removes this invocation's own /dev/shm marker.
         # This records fixture identity, never native domain-closure authority.
@@ -119,6 +181,9 @@ def operation(args) -> int:
                 stream.flush()
                 os.fsync(stream.fileno())
         atomic_json(root / (token + ".ready"), identity)
+        if args.descendant:
+            start_descendant(args, run)
+        emit_noise(args, run)
         if args.release is not None:
             deadline = time.monotonic() + args.wait_seconds
             while not args.release.exists():
@@ -283,13 +348,15 @@ def mcp(args) -> int:
                 value = {"exit_code": status, "error": str(error)}
             reply(identifier, result={"isError": status != 0, "structuredContent": value,
                                       "content": [{"type": "text", "text": json.dumps(value)}]})
+            if args.descendant:
+                return 0
         else:
             reply(identifier, code=-32601, message="unknown fixture method")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=("exit-ok", "exit-failed", "operation", "mcp"))
+    parser.add_argument("mode", choices=("exit-ok", "exit-failed", "operation", "mcp", "descendant"))
     parser.add_argument("--root", type=Path)
     parser.add_argument("--run")
     parser.add_argument("--resource")
@@ -298,15 +365,21 @@ def main() -> int:
     parser.add_argument("--items", type=int, default=2)
     parser.add_argument("--release", type=Path)
     parser.add_argument("--wait-seconds", type=float, default=5)
+    parser.add_argument('--descendant', action='store_true')
+    parser.add_argument('--noise-bytes', type=int, default=0)
     args = parser.parse_args()
     if args.mode in ("exit-ok", "exit-failed"):
         return 0 if args.mode == "exit-ok" else 3
     if (args.root is None or (args.mode == "operation" and args.operation is None) or not args.run or not args.resource
         or len(args.run) > 223 or len(args.resource) > 256 or not 1 <= args.items <= 16
         or not 0 < args.wait_seconds <= 60
+        or not 0 <= args.noise_bytes <= 131_072
+        or ((args.descendant or args.mode == 'descendant') and sys.platform != 'linux')
         or (args.failure == "partial" and args.operation != "process")
         or (args.failure == "restore" and args.operation != "restore")):
         parser.error("operation needs bounded root/run/resource/operation inputs")
+    if args.mode == 'descendant':
+        return descendant(args)
     if args.mode == "mcp":
         if args.operation is not None or args.failure != "none" or args.items != 2:
             parser.error("MCP operation/failure/items are supplied through tool arguments")

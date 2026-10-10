@@ -791,6 +791,16 @@ def executor_helper_hardware_cut_matrix_recovers_original_claims(report) -> None
 SCENARIOS += (executor_helper_hardware_cut_matrix_recovers_original_claims,)
 
 
+def executor_original_descendants_and_noisy_pipes_close_before_replacement(report) -> None:
+    from .executor_helper_cut import installed_helper_cut
+    for transport in ('standalone','stdio','http'):
+        for kind in ('process','mcp'):
+            installed_helper_cut(report,kind,transport,'candidate-before-fence','root-exit-retained-pipes')
+
+
+SCENARIOS += (executor_original_descendants_and_noisy_pipes_close_before_replacement,)
+
+
 def _name(value) -> bool:
     return isinstance(value, str) and 0 < len(value) <= MAX_TRACE_TEXT
 

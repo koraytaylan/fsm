@@ -964,6 +964,14 @@ closure receipt and absence of original user-code processes are observed.
 Fixture entry identities append to an existing shared observation slot, so
 DynamicUser cleanup of an invocation-owned readiness marker cannot erase
 the original PID and birth identity; this fixture log grants no closure authority.
+The installed descendant matrix observes process/MCP handler exit while a real
+descendant remains alive with both inherited capture/protocol endpoints and
+the same native cgroup, after a bounded stderr flood; the exact original helper
+candidate entry precedes fencing, and receipt-only restart must close that
+original descendant before releasing fresh validation on all three hosts.
+Original/final descendant and output-write logs retain their bytes separately
+from native closure records, and every observed descendant must be dead before
+the successor owner confirms its final drain.
 
 `acceptance/` builds an image with `cargo install --path crates/fsm-cli
 --locked`, the same command a consumer runs, and drives that binary from a

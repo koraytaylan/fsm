@@ -169,7 +169,7 @@ class DebuggedAuthority(DisposableAuthority):
 
     def _capture_records(self):
         super()._capture_records()
-        for name in ('entries.jsonl', 'trace.jsonl', 'results.jsonl'):
+        for name in ('entries.jsonl', 'trace.jsonl', 'results.jsonl', 'descendants.jsonl', 'noise.jsonl'):
             path = self.resource / name
             if path.exists():
                 retain_original_file(path, self.cache / ('fixture-observation-' + name))

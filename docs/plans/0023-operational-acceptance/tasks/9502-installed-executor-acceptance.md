@@ -31,6 +31,7 @@ touches:
   - acceptance/suite/executor_lifecycle.py
   - acceptance/suite/executor_crash.py
   - acceptance/suite/executor_helper_cut.py
+  - acceptance/suite/executor_tree.py
   - acceptance/suite/native_debugger.py
   - acceptance/suite/executor_debug_stdio.py
   - acceptance/suite/executor_debug_http.py
@@ -48,6 +49,7 @@ touches:
   - acceptance/tests/test_executor_lifecycle_observer.py
   - acceptance/tests/test_claim_cut_observer.py
   - acceptance/tests/test_helper_cut_observer.py
+  - acceptance/tests/test_tree_observer.py
   - acceptance/tests/test_settlement_cut_observer.py
   - acceptance/tests/test_event_cut_observer.py
   - acceptance/tests/test_debug_stdio_observer.py

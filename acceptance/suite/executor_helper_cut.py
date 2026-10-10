@@ -113,9 +113,11 @@ def installed_helper_closed_cut(report, kind, transport):
     installed_helper_cut(report, kind, transport, CUT)
 
 
-def installed_helper_cut(report, kind, transport, cut):
+def installed_helper_cut(report, kind, transport, cut, profile=None):
     if kind not in ('process', 'mcp') or transport not in ('standalone', 'stdio', 'http') or cut not in CUTS:
         raise ValueError('unsupported installed helper hardware cell')
+    if profile not in (None, 'root-exit-retained-pipes') or (profile is not None and cut != 'candidate-before-fence'):
+        raise ValueError('unsupported original helper tree boundary')
     fixture = Path(fsm.REPO) / 'acceptance/fixtures/executor_handler.py'
     machine = Path(fsm.REPO) / 'acceptance/fixtures/executor_workflow.json'
     with fsm.Scratch('helper-cut-installed', preserve_on_failure=True) as scratch, DebuggedAuthority(fixture, cut) as native:
@@ -125,6 +127,8 @@ def installed_helper_cut(report, kind, transport, cut):
         validation = table['handlers'][0]
         validation['argv'][validation['argv'].index('--wait-seconds') + 1] = '60'
         validation['timeout_ms'] = 70_000
+        if profile is not None:
+            validation['argv'].extend(['--descendant','--noise-bytes','131072'])
         expected_argv = [argument.replace('{resource}', 'supplier') for argument in validation['argv']]
         native.release.write_text('original validation may complete\n')
         table_path = native.approve(store, table)
@@ -160,6 +164,10 @@ def installed_helper_cut(report, kind, transport, cut):
             report.equal({row['run'] for row in originals}, original_runs,
                 'the original physical fixture entries match the complete original trace')
             before = [process_observation(row) for row in originals]
+            tree = None
+            if profile is not None:
+                from .executor_tree import original_tree
+                tree = original_tree(report,native,originals)
             report.equal(native_record(native, 'counter.json')['last_allocation'], 1,
                 'only the original native domain exists at the exact helper boundary')
             paths = [native.directory / name for name in ('result-1-1.json', 'completed-1-1.json',
@@ -201,6 +209,9 @@ def installed_helper_cut(report, kind, transport, cut):
             after = [process_observation(row) for row in originals]
             report.true(all(row['alive'] is False for row in after),
                 'every original user-code process is dead before the only successor fixture enters')
+            if tree is not None:
+                from .executor_tree import tree_before_successor
+                tree_before_successor(report,native,fixture_entries(native.resource),tree)
             report.equal(_fixture_rows(native.resource / 'results.jsonl'), original_results,
                 'the waiting successor cannot disguise or replace an original outcome')
             report.true(all(not path.exists() for path in paths), 'original closure authorizes no invented completed result')
@@ -221,6 +232,9 @@ def installed_helper_cut(report, kind, transport, cut):
             report.equal(entry_log_identity(native.resource), entry_identity,
                 'the original shared identity-log owner and inode survive every DynamicUser retirement')
             final_entries = fixture_entries(native.resource)
+            if tree is not None:
+                from .executor_tree import final_tree
+                final_tree(report,native,final_entries,tree)
             report.equal([row['run'] for row in final_entries], [row['run'] for row in results],
                 'every genuine outcome has exactly its original physical entry identity')
             shutil.copyfile(native.resource / 'entries.jsonl', native.cache / 'fixture-entries-final.jsonl')
@@ -244,7 +258,7 @@ def installed_helper_cut(report, kind, transport, cut):
                 phase_material=material, expected_argv=expected_argv, original_fixture_before=before,
                 original_fixture_after=after, closure_before_successor=closure_before, receipt_before_successor=receipt_before,
                 original_fixture_entries=originals, fixture_entries=final_entries, fixture_entry_log=entry_identity,
-                original_results=original_results, original_trace=original_trace,
+                original_results=original_results, original_trace=original_trace, tree=tree, profile=profile,
                 journal=records, trace=trace, results=results, state=state, final=final), sort_keys=True))
             _retire_execution_owner(report, successor, store, native.namespace, transport)
         report.equal(successor.returncode, 0, 'the actual successor confirms its explicit owner drain')
