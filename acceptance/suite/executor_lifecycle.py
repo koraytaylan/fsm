@@ -14,11 +14,31 @@ from contextlib import contextmanager
 
 from . import fsm
 from .executor_scenarios import (_fixture_rows, _installed_client, _wait_for_files,
-    _retire_execution_owner, observe_success_journal, observe_trace, read_journal_prefix, workflow_table)
+    _retire_execution_owner, _unique_object, _invalid_constant,
+    observe_success_journal, observe_trace, read_journal_prefix, workflow_table)
 from .native_fixture import DisposableAuthority, privileged
 
 EVENTS = ("start", "validated", "suspended", "processed", "restored")
 MUTATIONS = ["suspend", "process:0", "process:1", "restore"]
+
+
+def broken_output_diagnostic(text: str) -> dict:
+    """Require the original JSON error and its distinct output retirement fact."""
+    if not isinstance(text, str) or len(text.encode()) > 65_536:
+        raise ValueError("broken stdout needs bounded original diagnostics")
+    failures = []
+    for line in text.splitlines():
+        if not line.startswith("{"):
+            continue
+        value = json.loads(line, object_pairs_hook=_unique_object, parse_constant=_invalid_constant)
+        if isinstance(value, dict) and value.get("code") == "exec/inflight_deferred":
+            failures.append(value)
+    if len(failures) != 1:
+        raise ValueError("broken stdout needs exactly one original JSON session failure")
+    details = failures[0].get("details", {})
+    if not isinstance(details, dict) or details.get("initiating_io_kind") != "BrokenPipe" or details.get("output_drained") is not False:
+        raise ValueError("broken stdout must retain its initiating I/O cause and failed drainage")
+    return failures[0]
 
 
 def process_observation(identity: dict) -> dict:
@@ -139,9 +159,9 @@ def interrupted_trace(trace: list[dict], original_run: str, witness: dict) -> tu
 
 
 @contextmanager
-def _restart_host(store: Path, table: Path, transport: str):
+def _restart_host(store: Path, table: Path, transport: str, diagnostic_format: str = "text"):
     if transport != "standalone":
-        with _installed_client(store, table, transport) as owner:
+        with _installed_client(store, table, transport, diagnostic_format) as owner:
             yield owner
         return
     owner = fsm.Executing(str(store), str(table))
@@ -178,7 +198,8 @@ def installed_restart(report, kind: str, control: str, transport: str) -> None:
             instance = created["instance_id"]
             pending = fsm.run_json("instance", "send", instance, "start",
                 "--request-id=restart-installed-start", data_dir=str(store))
-        with _restart_host(store, table_path, transport) as (client, host):
+        with _restart_host(store, table_path, transport,
+            "json" if control == "retired-output" else "text") as (client, host):
             if client is not None:
                 client.initialize()
                 instance = client.structured("instance_create", {"machine": "acceptance_workflow",
@@ -228,9 +249,14 @@ def installed_restart(report, kind: str, control: str, transport: str) -> None:
                 client._error_worker.join(timeout=2)
                 report.true(not client._error_worker.is_alive(), "original broken-output diagnostics reach actual EOF")
                 diagnostic = bytes(host.acceptance_stderr).decode("utf-8", errors="replace")
-                report.true("exec/inflight_deferred" in diagnostic and "BrokenPipe" in diagnostic,
-                    "broken stdout retains its original native-session failure and initiating I/O cause")
+                report.note("FSM_INSTALLED_STDIO_OUTPUT_FAILURE_EVIDENCE " + json.dumps(dict(
+                    namespace=native.namespace, diagnostic=diagnostic, **output_evidence), sort_keys=True))
                 output_evidence["diagnostic"] = diagnostic
+                output_evidence["failure"] = broken_output_diagnostic(diagnostic)
+                report.equal(output_evidence["failure"]["details"]["initiating_io_kind"], "BrokenPipe",
+                    "broken stdout retains its original initiating I/O cause")
+                report.true(output_evidence["failure"]["details"]["output_drained"] is False,
+                    "broken stdout never claims successful output drainage")
             deadline = time.monotonic() + 10
             while (after := process_observation(original))["alive"]:
                 if time.monotonic() >= deadline:

@@ -474,8 +474,12 @@ def _installed_refusal(report, transport: str, kind: str, mode: str) -> None:
 
 
 @contextmanager
-def _installed_client(store: Path, table: Path, transport: str):
+def _installed_client(store: Path, table: Path, transport: str, diagnostic_format: str = "text"):
+    if diagnostic_format not in {"text", "json"}:
+        raise ValueError("unsupported installed diagnostic format")
     options = ["--execute", f"--handlers={table}"]
+    if diagnostic_format == "json":
+        options.append("--json")
     if transport == "stdio":
         with StdioClient([fsm.FSM, "serve", f"--data-dir={store}", *options,
                           "--poll-interval-ms=25"]) as client:

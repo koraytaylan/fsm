@@ -8,6 +8,8 @@ import unittest
 from unittest.mock import patch
 
 from acceptance.suite.executor_stdio import pipe_is_full, pipe_observation
+from acceptance.suite.executor_lifecycle import broken_output_diagnostic
+from acceptance.suite.executor_scenarios import _installed_client
 from acceptance.suite.mcp import FrameReader, McpError, StdioClient
 
 STUB = '''
@@ -83,6 +85,37 @@ class ReplyPauseTests(unittest.TestCase):
             reader.join()
         with self.assertRaises(McpError):
             reader.pause_after_reply(2)
+
+
+class BrokenOutputDiagnosticTests(unittest.TestCase):
+    def test_original_json_failure_keeps_initiating_cause_and_failed_drainage(self):
+        value = dict(code="exec/inflight_deferred", message="writer failed",
+            details=dict(initiating_io_kind="BrokenPipe", output_drained=False))
+        self.assertEqual(broken_output_diagnostic(json.dumps(value)), value)
+        for details in ({}, dict(initiating_io_kind="Other", output_drained=False),
+            dict(initiating_io_kind="BrokenPipe", output_drained=True),
+            dict(initiating_io_kind="BrokenPipe", output_drained=0)):
+            with self.subTest(details=details), self.assertRaises(ValueError):
+                broken_output_diagnostic(json.dumps({**value, "details": details}))
+
+    def test_text_missing_duplicate_and_oversized_errors_refuse(self):
+        for text in ("exec/inflight_deferred: Broken pipe", "{}", '{"code":"exec/inflight_deferred"}',
+            '{"code":"exec/inflight_deferred","code":"exec/inflight_deferred"}', "x" * 65_537):
+            with self.subTest(size=len(text)), self.assertRaises(ValueError):
+                broken_output_diagnostic(text)
+        error=json.dumps(dict(code="exec/inflight_deferred", details=dict(initiating_io_kind="BrokenPipe", output_drained=False)))
+        with self.assertRaises(ValueError):
+            broken_output_diagnostic(error + "\n" + error)
+
+    def test_only_selected_installed_host_uses_json_diagnostics(self):
+        from pathlib import Path
+        with patch("acceptance.suite.executor_scenarios.StdioClient") as stub:
+            with _installed_client(Path("store"), Path("handlers"), "stdio", "json"):
+                pass
+            self.assertIn("--json", stub.call_args.args[0])
+            with _installed_client(Path("store"), Path("handlers"), "stdio"):
+                pass
+            self.assertNotIn("--json", stub.call_args.args[0])
 
 
 class StdioOutputTests(unittest.TestCase):
