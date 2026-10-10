@@ -24,7 +24,7 @@ class ExactClaimCutTests(unittest.TestCase):
         original=self.cut()
         self.assertEqual(validate_cut(original,'a'*64),original)
         for change in (dict(breakpoint_type='software'),dict(symbol='another_function'),
-            dict(breakpoint_hits=0),dict(breakpoint_hits=2),dict(pc=4101),
+            dict(breakpoint_hits=0),dict(breakpoint_hits=2),dict(breakpoint_hits=True),dict(pc=4101),
             dict(all_threads_stopped=False),dict(binary_sha256='c'*64),dict(mapped_code=[])):
             value={**original,**change}
             with self.subTest(change=change),self.assertRaises(ValueError):
@@ -51,7 +51,7 @@ class ExactClaimCutTests(unittest.TestCase):
     def test_missing_duplicate_foreign_or_already_consumed_claims_refuse(self):
         records=self.prefix();self.assertEqual(claim_prefix(records,'fixture'),records[-1])
         values=[records[:-1],records+[records[-1]],records+[dict(kind='execution_stopped',seq=3,body={})]]
-        for change in (dict(instance_id='foreign'),dict(attempt=2)):
+        for change in (dict(instance_id='foreign'),dict(attempt=2),dict(attempt=True)):
             value=copy.deepcopy(records);value[-1]['body'].update(change);values.append(value)
         for value in values:
             with self.subTest(value=value),self.assertRaises(ValueError):

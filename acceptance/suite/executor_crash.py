@@ -31,7 +31,8 @@ def validate_cut(value: dict, binary_hash: str) -> dict:
         or not re.fullmatch(r'_(?:R|ZN)[A-Za-z0-9_]+', value['raw_symbol'])
         or value.get('demangled_symbol') not in (SYMBOL, '<fsm_execute::run::pipeline::Pipeline>::start_native')
         or type(value.get('symbol_offset')) is not int or value['symbol_offset'] <= 0
-        or value.get('breakpoint_type') != 'hardware' or value.get('breakpoint_hits') != 1
+        or value.get('breakpoint_type') != 'hardware'
+        or type(value.get('breakpoint_hits')) is not int or value['breakpoint_hits'] != 1
         or type(value.get('pc')) is not int or value['pc'] <= 0
         or value.get('breakpoint_address') != value['pc']
         or value.get('all_threads_stopped') is not True
@@ -60,7 +61,7 @@ def claim_prefix(records: list[dict], instance: str) -> dict:
     claims = [row for row in records if row['kind'] == 'execution_claimed']
     if (len(claims) != 1 or records[-1] != claims[0]
         or claims[0]['body'].get('instance_id') != instance
-        or claims[0]['body'].get('attempt') != 1
+        or type(claims[0]['body'].get('attempt')) is not int or claims[0]['body']['attempt'] != 1
         or any(row['kind'] in ('execution_stopped', 'execution_settled', 'effect_acked', 'effect_attempted')
                for row in records)):
         raise ValueError('original journal is not at the durable first-claim boundary')
