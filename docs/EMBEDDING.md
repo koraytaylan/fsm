@@ -1051,7 +1051,10 @@ degraded, and it is reported rather than selected: there is no flag for it.
 same list — a shrinking list would have a client cache a surface that
 reappears once the store is repaired. Three tools answer, from a
 classification rather than an open: `store_doctor`, `journal_verify`, and
-`journal_replay`. A `machine_create` with `dry_run: true` also works, because
+`journal_replay`. `executor_check` also answers with its normal `spec` or
+`machine` selector: draft findings remain available, while unavailable stored
+definitions and execution evidence are reported as unknown. A `machine_create`
+with `dry_run: true` also works, because
 checking a definition needs no store and refusing it would block authoring
 at the moment it is most useful.
 
