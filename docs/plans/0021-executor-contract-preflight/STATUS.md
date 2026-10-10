@@ -34,10 +34,13 @@ standalone/process/collected-timeout crash case in CI 38014300746: the original
 group was absent but the immutable closure receipt was missing and its claim
 remained unresolved. The disconnected runner's cleanup error was not retained,
 so the disposed original run cannot establish the cause. Fixture-only refusal
-diagnostics now retain that error; a bounded repeat at `59b7e2da` passes all
-120 crash cases on both compilers without reproducing or repairing the original
-failure, frozen verdict
-`1f02e3e7e5597d9677c90c446db35f9a27d793e8f8a1c15145cff79ba61b0cd3`.
+diagnostics now retain that error. After full crash reruns passed, source
+`cfe64c6d` targets twenty fresh instances of the exact failed case per compiler;
+all forty pass the unchanged kill, original-closure and recovery assertions in
+CI 38020913274. Diagnostic reports cannot release full acceptance; frozen verdict
+`251cf393c1c43ab7203c70036208de4d6ea23a68f2abedf2f4faf7d19c4cbab7`.
+The failure remains unreproduced and its cause or repair unproven; the missing
+original cleanup refusal is an explicit integration blocker, not a passed skip.
 Admission and dependent MCP/acceptance tasks remain incomplete; plan 0023
 cannot register before this integration review closes.
 
