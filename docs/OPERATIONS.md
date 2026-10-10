@@ -32,6 +32,9 @@ handlers on standalone, stdio and HTTP hosts.
 One host and store serve each twelve-case block, with explicit retirement,
 archive/reopen and replacement within the block; subsequent blocks reuse the
 same store and retain prior archives.
+Eight shared handler definitions, including the four explicit fault variants,
+fit the unchanged 8 KiB protected catalog envelope; per-resource barriers keep
+the twelve cases independently observable.
 Client reads and control requests never repair expected autonomous progress.
 Manual acknowledgements are explicit operator actions and count as manual work.
 No-progress, maximum duration/count, correctness failure, unavailable required

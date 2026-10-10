@@ -264,18 +264,29 @@ class FixtureCatalogTests(unittest.TestCase):
             self.assertEqual(len(inputs['machines']), 13)
             self.assertEqual(inputs['resources'], resource_names())
             self.assertEqual(len(set(inputs['resources'])), 13)
-            self.assertEqual(len(inputs['table']['handlers']), 48)
+            self.assertEqual(len(inputs['table']['handlers']), 8)
+            self.assertEqual(inputs['table']['manual_effects'],['operator_confirmation'])
+            self.assertLessEqual(len(json.dumps(dict(format='fsm.native-catalogue/1',table=inputs['table']),
+                sort_keys=True,separators=(',',':')).encode()),8192)
             self.assertEqual(inputs['table']['max_inflight'], 1)
-            retry = next(row for row in inputs['table']['handlers'] if row['effect']=='soak_retry_validate_resource')
+            retry = next(row for row in inputs['table']['handlers'] if row['effect']=='retry_validate_resource')
             self.assertEqual(retry['retry'],dict(attempts=2,backoff_ms=25,
                 on=['nonzero_exit' if kind=='process' else 'mcp_error']))
             self.assertIn('--fail-first', retry['argv'])
-            deadline = next(row for row in inputs['table']['handlers'] if row['effect']=='soak_deadline_validate_resource')
+            deadline = next(row for row in inputs['table']['handlers'] if row['effect']=='deadline_validate_resource')
             self.assertEqual(deadline['timeout_ms'],2000); self.assertIn('--descendant',deadline['argv'])
             right = inputs['machines']['contention-right']
             left = inputs['machines']['contention']
             self.assertEqual(right['effects'],left['effects'])
             self.assertEqual(right['states'][1]['entry']['emit'][0]['args']['resource'], '"soak-contention-right"')
+            common=next(row for row in inputs['table']['handlers'] if row['effect']=='validate_resource')
+            self.assertIn('/release-{resource}',common['argv'][common['argv'].index('--release')+1])
+
+    def test_catalogue_bound_includes_actual_long_disposable_paths_and_envelope(self):
+        root=Path('/home/runner/.cache')/('x'*300)
+        for kind in ('process','mcp'):
+            with self.assertRaisesRegex(ValueError,'byte bound'):
+                block_inputs(kind,root,root/'handler.py',FIXTURE.with_name('executor_workflow.json'))
 
     def test_completed_ledgers_are_literal_and_manual_or_interrupted_cases_cannot_use_them(self):
         self.assertEqual(completed_ledger('compensate'),dict(resource='soak-compensate',

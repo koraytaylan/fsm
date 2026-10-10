@@ -22,12 +22,31 @@ def block_inputs(kind, resource_root, handler, workflow):
         raise ValueError('operational fixtures require an explicit handler kind')
     resource_root, handler = Path(resource_root), Path(handler)
     original = json.loads(Path(workflow).read_text())
-    machines, handlers, manuals = {}, [], []
+    machines = {}
+    table = workflow_table(resource_root, handler, kind=kind,outcome='success')
+    for entry in table['handlers']:
+        entry['argv'].append('--observe-timing')
+        if entry['effect']=='validate_resource':
+            entry['argv'].extend(['--release',str(resource_root.resolve()/'release-{resource}'),
+                                  '--wait-seconds','60'])
+    validation=table['handlers'][0]
+    for case in ('retry','deadline','noise'):
+        entry=json.loads(json.dumps(validation))
+        entry['effect']=case+'_validate_resource'
+        entry['argv'][entry['argv'].index('--run')+1]=entry['effect']
+        if case=='retry':
+            entry['argv'].append('--fail-first')
+            entry['retry']=dict(attempts=2,backoff_ms=25,on=['nonzero_exit' if kind=='process' else 'mcp_error'])
+        elif case=='deadline':
+            entry['timeout_ms']=2000;entry['argv'].append('--descendant')
+        else:entry['argv'].extend(['--noise-bytes','131072'])
+        table['handlers'].append(entry)
+    partial=workflow_table(resource_root,handler,kind=kind,outcome='partial-work')['handlers'][2]
+    partial['effect']='compensate_process_items'
+    partial['argv'][partial['argv'].index('--run')+1]=partial['effect']
+    partial['argv'].append('--observe-timing');table['handlers'].append(partial)
     for case in CASES:
-        machine, table = _case_inputs(original, case, kind, resource_root, handler)
-        machines[case] = machine
-        handlers.extend(table['handlers'])
-        manuals.extend(table['manual_effects'])
+        machines[case] = _case_inputs(original,case)
     # Both contention instances use the same real handler pool with one slot;
     # distinct external resources permit any legal interleaving of operations.
     right = json.loads(json.dumps(machines['contention']))
@@ -37,45 +56,26 @@ def block_inputs(kind, resource_root, handler, workflow):
             if 'resource' in emission['args']:
                 emission['args']['resource'] = json.dumps('soak-contention-right')
     machines['contention-right'] = right
-    table = dict(format='fsm.handlers/1', max_inflight=1, max_inflight_per_instance=1,
-                 handlers=handlers, manual_effects=manuals)
-    if len(json.dumps(table, sort_keys=True, separators=(',', ':')).encode()) > 65_536:
+    envelope=dict(format='fsm.native-catalogue/1',table=table)
+    if len(json.dumps(envelope,sort_keys=True,separators=(',', ':')).encode()) > 8192:
         raise ValueError('operational block exceeds the protected catalog byte bound')
     return dict(machines=machines, table=table, resources=resource_names())
 
 
-def _case_inputs(original, case, kind, resource_root, handler):
+def _case_inputs(original, case):
     specification = json.loads(json.dumps(original))
-    prefix = 'soak_' + case + '_'
     specification['name'] = 'soak_' + case
+    names={}
+    if case in ('retry','deadline','noise'):names['validate_resource']=case+'_validate_resource'
+    if case=='compensate':names['process_items']='compensate_process_items'
     for effect in specification['effects']:
-        effect['name'] = prefix + effect['name']
+        effect['name'] = names.get(effect['name'],effect['name'])
     for state in specification['states']:
         for emission in state.get('entry', {}).get('emit', []):
-            emission['effect'] = prefix + emission['effect']
+            emission['effect'] = names.get(emission['effect'],emission['effect'])
             if 'resource' in emission['args']:
                 emission['args']['resource'] = json.dumps('soak-' + case)
-    table = workflow_table(resource_root, handler, kind=kind,
-                           outcome='partial-work' if case == 'compensate' else 'success')
-    table['manual_effects'] = [prefix + name for name in table['manual_effects']]
-    for entry in table['handlers']:
-        entry['effect'] = prefix + entry['effect']
-        command = entry['argv']
-        command[command.index('--run') + 1] = entry['effect']
-        command.extend(['--observe-timing'])
-        if entry['effect'].endswith('validate_resource'):
-            command.extend(['--release', str((resource_root / ('release-' + case)).resolve()),
-                            '--wait-seconds', '60'])
-            if case == 'retry':
-                command.append('--fail-first')
-                entry['retry'] = dict(attempts=2, backoff_ms=25,
-                                     on=['nonzero_exit' if kind == 'process' else 'mcp_error'])
-            if case == 'deadline':
-                entry['timeout_ms'] = 2000
-                command.append('--descendant')
-            if case == 'noise':
-                command.extend(['--noise-bytes', '131072'])
-    return specification, table
+    return specification
 
 
 def completed_ledger(case, resource=None):

@@ -195,8 +195,10 @@ class DisposableAuthority:
         # The authority accepts canonical records, including the input table;
         # fixture tables contain only strings, integers, lists and objects.
         encoded = json.dumps(table, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-        if len(encoded.encode()) > 64 * 1024:
-            raise ValueError("fixture catalogue exceeds its provisioning bound")
+        envelope=json.dumps(dict(format='fsm.native-catalogue/1',table=table),
+                            sort_keys=True,separators=(',',':'),ensure_ascii=False)
+        if len(envelope.encode()) > 8192:
+            raise ValueError("fixture catalogue envelope exceeds its native provisioning bound")
         table_path.write_text(encoded, encoding="utf-8")
         privileged(str(AUTHORITY), "register", self.namespace, "1", str(self.store))
         protected = BASE / self.namespace / "handlers.json"

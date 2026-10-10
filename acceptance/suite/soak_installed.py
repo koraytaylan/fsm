@@ -144,7 +144,8 @@ class InstalledBlock:
             self.report.true(self.host.poll() is None,'client churn leaves the original execution owner alive')
         quiet_id=self.client._next_id if self.client is not None else None
         if case not in ('manual','cancel','deadline'):
-            (self.native.resource/('release-'+case)).write_text('release bounded real work')
+            (self.native.resource/('release-'+resource)).write_text('release bounded real work')
+            if extra:(self.native.resource/'release-soak-contention-right').write_text('release contending real work')
         instances=[instance]+([extra] if extra else [])
         _wait_for_files(lambda:all(not observe_cycle_journal(read_journal_prefix(self.store),item,
             'contention' if item==extra else case,self.kind) for item in instances),self.host,30)
