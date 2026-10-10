@@ -820,6 +820,8 @@ pub(super) fn rejected_handoff(directory: &Path, binding: &Value, competitor: &N
 }
 
 fn handoff_control(directory: &Path, binding: &Value, competitor: &NativeDomain, case: Handoff) {
+    let catalogue = read_value(&directory.join("catalogue.json"), true).unwrap();
+    let table = canon_bytes(catalogue.get("table").unwrap());
     let test = if case == Handoff::Rejected {
         "::fresh_handoff::shared_tick_rejected_handoff"
     } else if case == Handoff::Conflicting {
@@ -832,6 +834,10 @@ fn handoff_control(directory: &Path, binding: &Value, competitor: &NativeDomain,
     let script = SUPERVISOR.replace("::owned_request", test);
     let output = Command::new("/usr/bin/python3")
         .env("TMPDIR", directory.parent().unwrap().join("operator-store"))
+        .env(
+            "FSM_NATIVE_TEST_TABLE",
+            std::str::from_utf8(&table).unwrap(),
+        )
         .env(
             "FSM_NATIVE_TEST_COMPETING_DOMAIN",
             std::str::from_utf8(&canon_bytes(&competitor.to_value())).unwrap(),

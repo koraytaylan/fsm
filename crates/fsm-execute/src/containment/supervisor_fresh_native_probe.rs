@@ -4,7 +4,7 @@ use super::{WriterHolder, emit};
 use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_core::record::execution::Claim;
 use fsm_execute::{
-    config::{HandlerKind, HandlerSpec, HandlerTable, Retry},
+    config::HandlerTable,
     run::{Pipeline, Runner},
     sched::{Directive, Scheduler},
     service::{tick_reporting, tick_with},
@@ -56,23 +56,19 @@ fn shared_tick_handoff(case: Handoff) {
     let records = writer.records.clone();
     let state = writer.state.clone();
     let hash = writer.current_execution_claim_hash(&claim).unwrap();
-    let mut table = HandlerTable {
-        max_inflight: 1,
-        ..HandlerTable::default()
-    };
-    // Reserve locally without executing this deliberately different handler.
-    table.handlers.insert(
-        pending.effect_name.clone(),
-        HandlerSpec {
-            effect: pending.effect_name.clone(),
-            kind: HandlerKind::Process,
-            argv: vec!["/bin/false".into()],
-            timeout_ms: 30000,
-            on_ok: None,
-            on_failed: None,
-            retry: Retry::default(),
-        },
+    // Bound entry requires the current operator table to match the original
+    // claim; post-entry recovery below still discards its current table.
+    let table = HandlerTable::parse(&std::env::var("FSM_NATIVE_TEST_TABLE").unwrap()).unwrap();
+    assert_eq!(
+        table.handlers[&pending.effect_name].fingerprint(),
+        claim
+            .to_value()
+            .get("handler_fingerprint")
+            .unwrap()
+            .as_str()
+            .unwrap()
     );
+    let mut watcher = Watcher::with_handlers(path.into(), &table);
     let mut scheduler = Scheduler::new(table);
     assert!(matches!(
         scheduler
@@ -86,7 +82,6 @@ fn shared_tick_handoff(case: Handoff) {
             .as_slice(),
         [Directive::Start { .. }]
     ));
-    let mut watcher = Watcher::with_handlers(path.into(), &HandlerTable::default());
     let mut runner = Runner::new().unwrap();
     let mut pipeline = Pipeline;
     let mut clock = FixedClock::new(1000, 1);
