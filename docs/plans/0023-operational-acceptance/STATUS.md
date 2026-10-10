@@ -201,8 +201,27 @@ Baseline reports remain explicitly filtered and release-ineligible, with frozen
 author review digest
 `76348833466e77aec88eba86d2ac2aec4d7e6e2f919dfd40f76103b3d11f90a3`.
 
-Task 9502 remains in progress: remaining crash cuts and the complete integrated
-installed/consumer suite are outstanding.
+Frozen unfiltered installed acceptance for `8d2bd88f..3b7cd95c` passes the complete
+existing 28-scenario inventory on one consumer-installed Linux candidate:
+2,757 assertions, 85 native fixtures, 319 original domain closures, 1,601 journal
+records, 862 raw trace records and 40 explicit owner drains, followed by owned
+fixture/helper removal; replay revalidates all 1,290 controlled source blobs,
+retained executable bytes and each protected binding against its original claim.
+[Complete installed evidence](https://github.com/koraytaylan/fsm/actions/runs/38056228996)
+has no filter, skip or missing scenario; this closes the existing installed suite
+inventory, while platform, consumer-container, sustained and live acceptance
+remain separate obligations.
+The preceding failed runs remain failed: their actual artifacts exposed a
+procfs exit race, a notification observation shorter than the host poll interval,
+and an interruption fixture barrier expiring during shutdown; focused fixes retain
+the original failure/store evidence and preserve all cancellation, closure and
+non-overlap assertions.
+132 observer tests and six named guard-neutralization controls pass; frozen
+implementing-author review digest:
+`9feb6323271c90e7d5cd214d3a4b733a3112eb65f3793e7b6a16354e2c1ec41f`.
+
+Task 9502 remains in progress: remaining installed crash cuts and separate Podman
+consumer execution are outstanding.
 Sustained native operation, nine human-reviewed uncoached
 live-model sessions, Desktop compatibility and independent final review remain
 mandatory and incomplete; no passing skip or synthetic control replaces them.
