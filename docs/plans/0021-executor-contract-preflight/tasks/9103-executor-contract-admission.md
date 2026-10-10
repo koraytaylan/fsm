@@ -35,6 +35,9 @@ touches:
   - crates/fsm-execute/src/containment/crash_matrix_native_tests.rs
   - crates/fsm-execute/src/containment/crash_matrix_contracts.rs
   - crates/fsm-execute/tests/lifecycle_platform/crash_probe.py
+  - crates/fsm-execute/tests/lifecycle_platform/owner_sensitivity.py
+  - crates/fsm-execute/tests/lifecycle_platform/contract_sensitivity.py
+  - crates/fsm-execute/tests/lifecycle_platform/test_contract_sensitivity.py
   - crates/fsm-execute/tests/lifecycle_platform/test_crash_producer.py
   - crates/fsm-execute/tests/lifecycle_platform/verify_contract_admission_evidence.py
   - crates/fsm-execute/tests/lifecycle_platform/test_contract_admission_evidence.py

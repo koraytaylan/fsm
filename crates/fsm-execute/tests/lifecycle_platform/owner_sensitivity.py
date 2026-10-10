@@ -25,9 +25,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--toolchain', choices=('stable', '1.89.0'), required=True)
     parser.add_argument('--report', type=Path, required=True)
-    parser.add_argument('--guard', choices=('preparation-owner', 'association-deadline', 'claim-before-binding', 'claim-before-authorization', 'claim-before-exec-status', 'claim-before-launch', 'claim-before-runner', 'claim-before-enrolled-authorization', 'binding-cgroup-identity', 'exec-status-cgroup-identity', 'authorization-cgroup-identity', 'launch-cgroup-identity', 'runner-cgroup-identity', 'enrolled-authorization-cgroup-identity', 'completion-closure-claim', 'execution-closure-claim', 'publication-closure-claim', 'shutdown-closure-claim', 'application-closure-claim', 'settlement-closure-claim', 'handoff-closure-claim'),
+    parser.add_argument('--guard', choices=('preparation-owner', 'association-deadline', 'claim-before-binding', 'claim-before-authorization', 'claim-before-exec-status', 'claim-before-launch', 'claim-before-runner', 'claim-before-enrolled-authorization', 'binding-cgroup-identity', 'exec-status-cgroup-identity', 'authorization-cgroup-identity', 'launch-cgroup-identity', 'runner-cgroup-identity', 'enrolled-authorization-cgroup-identity', 'completion-closure-claim', 'execution-closure-claim', 'publication-closure-claim', 'shutdown-closure-claim', 'application-closure-claim', 'settlement-closure-claim', 'handoff-closure-claim', 'contract-structure', 'contract-bound'),
                         default='preparation-owner')
     args = parser.parse_args()
+    if args.guard in ('contract-structure', 'contract-bound'):
+        import contract_sensitivity
+        return contract_sensitivity.run(args)
     if not __debug__:
         parser.error('enabled assertions are required for sensitivity evidence')
     repo = Path(__file__).resolve().parents[4]

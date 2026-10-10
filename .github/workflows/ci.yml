@@ -34,7 +34,7 @@ on:
         type: boolean
         default: false
       owner_sensitivity_only:
-        description: Verify the public preparation-owner refusal guard in isolation
+        description: Verify the selected native refusal guard in isolation
         type: boolean
         default: false
       sensitivity_guard:
@@ -62,6 +62,8 @@ on:
           - application-closure-claim
           - settlement-closure-claim
           - handoff-closure-claim
+          - contract-structure
+          - contract-bound
         default: preparation-owner
       contract_admission_only:
         description: Run only native contract admission refusal and repair acceptance
@@ -339,6 +341,12 @@ jobs:
           native_cache="$HOME/.cache/fsm-native-owner-${{ matrix.rust }}"
           mkdir -p "$native_cache"
           printf 'FSM_NATIVE_CACHE=%s\nTMPDIR=%s\nCARGO_TARGET_DIR=%s\n' "$native_cache" "$native_cache" "$native_cache/target" >> "$GITHUB_ENV"
+      - name: Contract sensitivity producer fault checks
+        if: ${{ startsWith(inputs.sensitivity_guard, 'contract-') }}
+        working-directory: crates/fsm-execute/tests/lifecycle_platform
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python3 -m unittest test_contract_sensitivity
       - name: Original, neutralized and restored native guard refusal
         run: >-
           python3 crates/fsm-execute/tests/lifecycle_platform/owner_sensitivity.py
@@ -357,7 +365,7 @@ jobs:
   # properties of the resolved graph, so keep explicit cheap checks that do
   # not depend on the test matrix merely happening to compile the crates.
   zero-deps:
-    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.completion_owner_only && !inputs.scheduling_owner_only && !inputs.contract_admission_only) }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.owner_sensitivity_only && !inputs.completion_owner_only && !inputs.scheduling_owner_only && !inputs.contract_admission_only) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
