@@ -202,6 +202,19 @@ class FixtureFiles(unittest.TestCase):
 
 
 class RealFixtureTraceTests(FixtureFiles):
+    def test_shared_observation_slots_preserve_inode_and_ownership(self):
+        sequence = self.root / "sequence.json"
+        state = self.root / (hashlib.sha256(b"supplier").hexdigest() + ".json")
+        sequence.write_text("0")
+        state.write_text('{"suspended":false,"items":[]}')
+        identities = {path: (path.stat().st_ino, path.stat().st_uid) for path in (sequence, state)}
+        for operation in ("validate", "suspend", "process", "restore"):
+            self.invoke(operation)
+            for path, identity in identities.items():
+                self.assertEqual((path.stat().st_ino, path.stat().st_uid), identity)
+        self.assertEqual(self.state(), {"suspended": False, "items": [0, 1]})
+        self.assertEqual(json.loads(sequence.read_text()), len(self.trace()))
+
     def test_real_operations_match_handwritten_ledger_and_external_state(self):
         for operation in ["validate", "suspend", "process", "restore"]:
             self.invoke(operation)
@@ -705,6 +718,24 @@ class QuietJournalObserverTests(unittest.TestCase):
 
 class DisposableProvisioningTests(unittest.TestCase):
     """Operator guards and an unprivileged broker stub, never native execution."""
+
+    def test_approved_catalogue_uses_exact_compact_sorted_fixture_bytes(self):
+        with Scratch("catalogue-bytes") as scratch:
+            fixture = DisposableAuthority(FIXTURE)
+            fixture.cache = Path(scratch.path)
+            fixture.directory = fixture.cache / "authority"
+            route = fixture.directory / "broker/route.json"
+            route.parent.mkdir(parents=True)
+            route.write_text("{}")
+            table = {"max_inflight": 1, "handlers": [], "format": "fsm.handlers/1"}
+            with patch("acceptance.suite.native_fixture.privileged") as command, patch(
+                "acceptance.suite.native_fixture.subprocess.Popen"):
+                try:
+                    path = fixture.approve(fixture.cache / "store", table)
+                    self.assertEqual(path.read_bytes(), b'{"format":"fsm.handlers/1","handlers":[],"max_inflight":1}')
+                    self.assertEqual(command.call_args_list[2].args[1], "catalogue")
+                finally:
+                    fixture.log.close()
 
     def test_native_provisioning_refuses_before_any_privileged_command(self):
         for environment in ({}, {"GITHUB_ACTIONS": "true"},

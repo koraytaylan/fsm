@@ -118,6 +118,12 @@ class DisposableAuthority:
             # Different DynamicUser identities share only these fixture logs.
             for name in ("trace.jsonl", "results.jsonl"):
                 privileged("install", "-m", "0666", "/dev/null", str(self.resource / name))
+            for name, value in (("sequence.json", 0),
+                                (hashlib.sha256(b"supplier").hexdigest() + ".json",
+                                 {"suspended": False, "items": []})):
+                source = self.cache / name
+                source.write_text(json.dumps(value), encoding="utf-8")
+                privileged("install", "-m", "0666", str(source), str(self.resource / name))
             privileged("mkdir", "-m", "0777", str(self.resource / "runs"))
             privileged("mkdir", "-m", "0755", str(BASE / self.namespace))
             self._remember(BASE / self.namespace)
@@ -130,7 +136,9 @@ class DisposableAuthority:
         """Root approves the operator table before the installed host loads it."""
         self.store = store.resolve()
         table_path = self.cache / "handlers.json"
-        encoded = json.dumps(table, sort_keys=True)
+        # The authority accepts canonical records, including the input table;
+        # fixture tables contain only strings, integers, lists and objects.
+        encoded = json.dumps(table, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
         if len(encoded.encode()) > 64 * 1024:
             raise ValueError("fixture catalogue exceeds its provisioning bound")
         table_path.write_text(encoded, encoding="utf-8")

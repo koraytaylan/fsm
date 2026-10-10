@@ -32,6 +32,22 @@ def atomic_json(path: Path, value) -> None:
     os.replace(temporary, path)
 
 
+def write_shared_json(path: Path, value) -> None:
+    """Keep provisioned observation-slot ownership across distinct handlers.
+
+    Callers hold the fixture lock; terminal observers read after settlement.
+    Replacing a Root-owned /dev/shm slot would transfer ownership to a
+    DynamicUser whose RemoveIPC cleanup can erase the independent evidence.
+    These mutable external fixture slots are not the engine's journal.
+    """
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(path, flags, 0o666)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+        json.dump(value, stream, sort_keys=True)
+        stream.flush()
+        os.fsync(stream.fileno())
+
+
 @contextmanager
 def locked(root: Path):
     lock = root / "fixture.lock"
@@ -62,7 +78,7 @@ def append(root: Path, kind: str, run: str, resource: str, operation=None) -> No
         stream.write(json.dumps(event, sort_keys=True) + "\n")
         stream.flush()
         os.fsync(stream.fileno())
-    atomic_json(sequence, seq + 1)
+    write_shared_json(sequence, seq + 1)
 
 
 def operation(args) -> int:
@@ -110,7 +126,7 @@ def operation(args) -> int:
                     return finish(3)
                 state["suspended"] = True
                 state["items"] = []  # A new bounded batch; history remains in the trace.
-                atomic_json(state_path, state)
+                write_shared_json(state_path, state)
                 append(root, "mutation", run, args.resource, "suspend")
             elif args.operation == "process":
                 if not state["suspended"]:
@@ -119,7 +135,7 @@ def operation(args) -> int:
                     if index in state["items"]:
                         continue
                     state["items"].append(index)
-                    atomic_json(state_path, state)
+                    write_shared_json(state_path, state)
                     append(root, "mutation", run, args.resource, f"process:{index}")
                     if args.failure == "partial":
                         return finish(3)
@@ -127,7 +143,7 @@ def operation(args) -> int:
                 if args.failure == "restore":
                     return finish(3)
                 state["suspended"] = False
-                atomic_json(state_path, state)
+                write_shared_json(state_path, state)
                 append(root, "mutation", run, args.resource, "restore")
         return finish(0)
     finally:
