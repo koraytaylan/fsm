@@ -33,6 +33,10 @@ on:
         description: Verify a native acceptance checkpoint without repeating portable gates
         type: boolean
         default: false
+      native_crash_only:
+        description: Repeat only the lifecycle crash matrix and its independent evidence verifier
+        type: boolean
+        default: false
       completion_owner_only:
         description: Verify the private host held-handler slice without repeating full gates
         type: boolean
@@ -88,8 +92,10 @@ on:
 # Preserve the running develop checkpoint and queue its latest successor.
 # Other branches and pull requests cancel superseded runs; tag gates remain
 # independent and are never interrupted by a later run.
+# Focused crash reruns retain a separate queue so they cannot evict a pending
+# integration checkpoint and never claim the omitted acceptance inventories.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}${{ inputs.native_crash_only && '-native-crash' || '' }}
   cancel-in-progress: ${{ github.ref_type != 'tag' && github.ref != 'refs/heads/develop' }}
 
 env:
@@ -99,7 +105,7 @@ env:
 
 jobs:
   gate:
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.portable_only || (!inputs.native_only && !inputs.owner_sensitivity_only && !inputs.completion_owner_only && !inputs.scheduling_owner_only && !inputs.contract_admission_only && !inputs.contract_workflow_only) }}
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.portable_only || (!inputs.native_only && !inputs.owner_sensitivity_only && !inputs.completion_owner_only && !inputs.scheduling_owner_only && !inputs.contract_admission_only && !inputs.contract_workflow_only && !inputs.native_crash_only) }}
     strategy:
       fail-fast: false
       matrix:
@@ -117,7 +123,7 @@ jobs:
     steps:
       - name: Reject conflicting portable acceptance modes
         if: ${{ inputs.portable_only }}
-        run: test '${{ inputs.native_only || inputs.owner_sensitivity_only || inputs.completion_owner_only || inputs.scheduling_owner_only || inputs.contract_admission_only || inputs.contract_workflow_only }}' != 'true'
+        run: test '${{ inputs.native_only || inputs.owner_sensitivity_only || inputs.completion_owner_only || inputs.scheduling_owner_only || inputs.contract_admission_only || inputs.contract_workflow_only || inputs.native_crash_only }}' != 'true'
       - uses: actions/checkout@v7
       - name: Prepare task cache
         shell: bash
@@ -186,14 +192,14 @@ jobs:
   # runtime. These are real administrative fault probes, separate from the
   # portable six-leg Rust gate; missing facilities fail rather than skip.
   native-containment:
-    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.portable_only && !inputs.owner_sensitivity_only && !inputs.contract_workflow_only) }}
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.native_crash_only || (!inputs.portable_only && !inputs.owner_sensitivity_only && !inputs.contract_workflow_only) }}
     strategy:
       fail-fast: false
       matrix:
         rust: [stable, "1.89.0"]
     runs-on: ubuntu-latest
     # 48 bounded crash/resource cases plus containment/workflow/upgrade evidence.
-    timeout-minutes: 75
+    timeout-minutes: ${{ inputs.native_crash_only && 20 || 75 }}
     env:
       CARGO_BUILD_JOBS: "1"
       # Numeric PID allocation is manipulated only on this disposable runner.
@@ -208,6 +214,7 @@ jobs:
       - run: rustup toolchain install ${{ matrix.rust }} --profile minimal
       - name: Reject conflicting scoped acceptance modes
         run: |
+          test '${{ inputs.native_crash_only && (inputs.portable_only || inputs.native_only || inputs.completion_owner_only || inputs.scheduling_owner_only || inputs.owner_sensitivity_only || inputs.contract_admission_only || inputs.contract_workflow_only) }}' != 'true'
           test '${{ inputs.completion_owner_only && inputs.scheduling_owner_only }}' != 'true'
           test '${{ inputs.contract_admission_only && (inputs.completion_owner_only || inputs.scheduling_owner_only || inputs.owner_sensitivity_only) }}' != 'true'
       - name: Native evidence producer checks
@@ -220,48 +227,48 @@ jobs:
           python3 -m unittest discover -s crates/fsm-execute/tests/lifecycle_platform -p 'test_scheduling_*.py'
           python3 -m unittest discover -s crates/fsm-execute/tests/lifecycle_platform -p 'test_contract_admission_evidence.py'
       - name: Provisioned private host held-handler acceptance
-        if: ${{ !inputs.scheduling_owner_only && !inputs.contract_admission_only }}
+        if: ${{ !inputs.scheduling_owner_only && !inputs.contract_admission_only && !inputs.native_crash_only }}
         id: completion_owner
         run: >-
           python3 crates/fsm-execute/tests/lifecycle_platform/crash_probe.py
           --private-owner --toolchain '${{ matrix.rust }}'
           --report '${{ env.FSM_NATIVE_CACHE }}/completion-evidence/completion.json'
       - name: Verify frozen private host completion evidence
-        if: ${{ !inputs.scheduling_owner_only && !inputs.contract_admission_only }}
+        if: ${{ !inputs.scheduling_owner_only && !inputs.contract_admission_only && !inputs.native_crash_only }}
         run: |
           python3 crates/fsm-execute/tests/lifecycle_platform/verify_completion_evidence.py \
             --source-commit "$GITHUB_SHA" \
             --rustc "$(rustc +${{ matrix.rust }} --version)" \
             --report-dir "$FSM_NATIVE_CACHE/completion-evidence"
       - name: Provisioned private owner scheduling acceptance
-        if: ${{ !inputs.completion_owner_only && !inputs.contract_admission_only }}
+        if: ${{ !inputs.completion_owner_only && !inputs.contract_admission_only && !inputs.native_crash_only }}
         id: scheduling_owner
         run: >-
           python3 crates/fsm-execute/tests/lifecycle_platform/crash_probe.py
           --private-scheduling --toolchain '${{ matrix.rust }}'
           --report '${{ env.FSM_NATIVE_CACHE }}/scheduling-evidence/scheduling.json'
       - name: Verify frozen private owner scheduling evidence
-        if: ${{ !inputs.completion_owner_only && !inputs.contract_admission_only }}
+        if: ${{ !inputs.completion_owner_only && !inputs.contract_admission_only && !inputs.native_crash_only }}
         run: |
           python3 crates/fsm-execute/tests/lifecycle_platform/verify_scheduling_evidence.py \
             --source-commit "$GITHUB_SHA" \
             --rustc "$(rustc +${{ matrix.rust }} --version)" \
             --report-dir "$FSM_NATIVE_CACHE/scheduling-evidence"
       - name: Provisioned native contract refusal and repair
-        if: ${{ !inputs.completion_owner_only && !inputs.scheduling_owner_only }}
+        if: ${{ !inputs.completion_owner_only && !inputs.scheduling_owner_only && !inputs.native_crash_only }}
         run: >-
           python3 crates/fsm-execute/tests/lifecycle_platform/crash_probe.py
           --contract-admission --toolchain '${{ matrix.rust }}'
           --report '${{ env.FSM_NATIVE_CACHE }}/contract-admission-evidence/contract-admission.json'
       - name: Verify native contract refusal and repair evidence
-        if: ${{ !inputs.completion_owner_only && !inputs.scheduling_owner_only }}
+        if: ${{ !inputs.completion_owner_only && !inputs.scheduling_owner_only && !inputs.native_crash_only }}
         run: |
           python3 crates/fsm-execute/tests/lifecycle_platform/verify_contract_admission_evidence.py \
             --source-commit "$GITHUB_SHA" \
             --rustc "$(rustc +${{ matrix.rust }} --version)" \
             --report-dir "$FSM_NATIVE_CACHE/contract-admission-evidence"
       - name: Retain native contract admission evidence
-        if: ${{ always() && !inputs.completion_owner_only && !inputs.scheduling_owner_only }}
+        if: ${{ always() && !inputs.completion_owner_only && !inputs.scheduling_owner_only && !inputs.native_crash_only }}
         uses: actions/upload-artifact@v4
         with:
           name: native-contract-admission-${{ matrix.rust }}
@@ -282,27 +289,27 @@ jobs:
             --rustc "$(rustc +${{ matrix.rust }} --version)" \
             --report-dir "$FSM_NATIVE_CACHE/crash-evidence"
       - name: Provisioned native containment matrix
-        if: ${{ !inputs.completion_owner_only && !inputs.scheduling_owner_only && !inputs.contract_admission_only }}
+        if: ${{ !inputs.completion_owner_only && !inputs.scheduling_owner_only && !inputs.contract_admission_only && !inputs.native_crash_only }}
         id: native_matrix
         run: >-
           python3 crates/fsm-execute/tests/lifecycle_platform/native_matrix.py
           --toolchain '${{ matrix.rust }}'
           --report-dir '${{ env.FSM_NATIVE_CACHE }}/native-evidence'
       - name: Verify frozen native containment evidence
-        if: ${{ !inputs.completion_owner_only && !inputs.scheduling_owner_only && !inputs.contract_admission_only }}
+        if: ${{ !inputs.completion_owner_only && !inputs.scheduling_owner_only && !inputs.contract_admission_only && !inputs.native_crash_only }}
         run: |
           python3 crates/fsm-execute/tests/lifecycle_platform/verify_native_evidence.py \
             --source-commit "$GITHUB_SHA" \
             --rustc "$(rustc +${{ matrix.rust }} --version)" \
             --report-dir "$FSM_NATIVE_CACHE/native-evidence"
       - name: Provisioned original CLI workflow scenarios
-        if: ${{ !inputs.completion_owner_only && !inputs.scheduling_owner_only && !inputs.contract_admission_only }}
+        if: ${{ !inputs.completion_owner_only && !inputs.scheduling_owner_only && !inputs.contract_admission_only && !inputs.native_crash_only }}
         run: >-
           python3 crates/fsm-execute/tests/lifecycle_platform/workflow_probe.py
           --toolchain '${{ matrix.rust }}'
           --report '${{ env.FSM_NATIVE_CACHE }}/native-evidence/workflow.json'
       - name: Original executor upgrade inspection and drain
-        if: ${{ !inputs.completion_owner_only && !inputs.scheduling_owner_only && !inputs.contract_admission_only }}
+        if: ${{ !inputs.completion_owner_only && !inputs.scheduling_owner_only && !inputs.contract_admission_only && !inputs.native_crash_only }}
         run: |
           git fetch --depth=1 origin 5730f17202cdeabd8c34f9b1c48fcf02f26b0e06
           mkdir "$FSM_NATIVE_CACHE/upgrade-source"
@@ -338,7 +345,7 @@ jobs:
           if-no-files-found: error
 
   owner-sensitivity:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.owner_sensitivity_only && !inputs.contract_workflow_only && !inputs.portable_only }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.owner_sensitivity_only && !inputs.contract_workflow_only && !inputs.portable_only && !inputs.native_crash_only }}
     strategy:
       fail-fast: false
       matrix:
@@ -376,7 +383,7 @@ jobs:
           if-no-files-found: error
 
   contract-workflow:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.contract_workflow_only && !inputs.portable_only }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.contract_workflow_only && !inputs.portable_only && !inputs.native_crash_only }}
     strategy:
       fail-fast: false
       matrix:
@@ -389,7 +396,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Reject conflicting scoped acceptance modes
-        run: test '${{ inputs.native_only || inputs.owner_sensitivity_only || inputs.completion_owner_only || inputs.scheduling_owner_only || inputs.contract_admission_only }}' != 'true'
+        run: test '${{ inputs.native_only || inputs.owner_sensitivity_only || inputs.completion_owner_only || inputs.scheduling_owner_only || inputs.contract_admission_only || inputs.native_crash_only }}' != 'true'
       - run: rustup toolchain install ${{ matrix.rust }} --profile minimal
       - name: Prepare native contract workflow cache
         run: |
@@ -418,7 +425,7 @@ jobs:
   # properties of the resolved graph, so keep explicit cheap checks that do
   # not depend on the test matrix merely happening to compile the crates.
   zero-deps:
-    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.owner_sensitivity_only && !inputs.completion_owner_only && !inputs.scheduling_owner_only && !inputs.contract_admission_only && !inputs.contract_workflow_only) }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.owner_sensitivity_only && !inputs.completion_owner_only && !inputs.scheduling_owner_only && !inputs.contract_admission_only && !inputs.contract_workflow_only && !inputs.native_crash_only) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
