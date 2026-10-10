@@ -1,0 +1,80 @@
+{
+  "schema": "fsm.live-model-acceptance/1",
+  "verdict": "incomplete",
+  "executed": false,
+  "candidate_complete": false,
+  "campaign_id": null,
+  "candidate": {
+    "code_sha": null,
+    "binary_sha256": null,
+    "build_receipt": {"reference": null, "sha256": null},
+    "evidence_documentation_sha": null,
+    "source_fixture_revision": null
+  },
+  "protocol": {
+    "committed_revision": null,
+    "briefs_sha256": null,
+    "rubric_sha256": null,
+    "maximum_model_calls": 40,
+    "maximum_elapsed_seconds": 900,
+    "required_session_ids": [
+      "case-review-1", "case-review-2", "case-review-3",
+      "compensation-1", "compensation-2", "compensation-3",
+      "contract-repair-1", "contract-repair-2", "contract-repair-3"
+    ],
+    "required_common_criteria": [
+      "identity", "uncoached", "budgets", "discovery",
+      "behavior", "safety", "audit", "explanation"
+    ]
+  },
+  "host": {"name": null, "version": null, "os": null, "transport": null},
+  "model": {"name": null, "exact_version": null},
+  "operator": {"identity": null, "setup_reference": null, "setup_sha256": null},
+  "attempts": [],
+  "attempt_record_fields": [
+    "attempt_id", "campaign_id", "required_session_id", "brief",
+    "candidate_code_sha", "binary_sha256", "model", "host",
+    "brief_sha256", "rubric_sha256", "fixture_revision", "table_sha256",
+    "table_reference", "starting_store_reference", "starting_store_sha256",
+    "starting_resource_reference", "starting_resource_sha256", "started_at",
+    "ended_at", "elapsed_seconds", "model_call_count", "coached",
+    "aborted", "safety_failure", "verdict", "failure_reason",
+    "original_transcript_reference", "original_transcript_sha256",
+    "public_redacted_transcript_reference", "public_redacted_transcript_sha256",
+    "final_answer_reference", "final_answer_sha256", "original_journal_reference",
+    "original_journal_sha256", "external_observations_reference", "external_observations_sha256",
+    "native_closure_reference", "native_closure_sha256", "cleanup_reference", "cleanup_sha256", "cleanup_verified",
+    "human_reviewer_identity", "human_reviewed_at", "criterion_results"
+  ],
+  "previous_campaigns": [],
+  "previous_campaign_record_fields": [
+    "campaign_id", "verdict", "original_report_reference", "original_report_sha256",
+    "correction_reference", "correction_sha256", "corrected_configuration_reference",
+    "corrected_configuration_sha256"
+  ],
+  "desktop": {
+    "verdict": "unexecuted",
+    "version": null,
+    "candidate_code_sha": null,
+    "binary_sha256": null,
+    "configuration_reference": null,
+    "configuration_sha256": null,
+    "connect_initialize_list_reference": null,
+    "connect_initialize_list_sha256": null,
+    "capture_reference": null,
+    "capture_sha256": null,
+    "human_reviewer_identity": null,
+    "human_reviewed_at": null
+  },
+  "human_review": {
+    "verdict": "unexecuted",
+    "reviewer_identity": null,
+    "reviewed_at": null,
+    "conclusion_reference": null,
+    "conclusion_sha256": null,
+    "unresolved_findings": []
+  },
+  "incomplete_reasons": [
+    "Template only: no live sessions, human scores or Desktop check executed."
+  ]
+}

@@ -1067,6 +1067,20 @@ Two items are not in the suite, and neither is a scheduling problem:
   parsing and UI. Worth one connect-and-list before a release, and worth being
   clear that is all it proves.
 
+Plan 0023 retains both manual obligations and extends live authoring to the
+frozen [three-brief protocol](../acceptance/manual/briefs.md): three fresh
+sessions each for parent/child case review, automated compensation and
+incompatible-handler recovery, with forty calls and fifteen minutes per session.
+The [human scoring rubric](../acceptance/manual/rubric.md) requires original
+transcripts, candidate/model/host identity, independent external observations,
+every attempted session and a separately retained Desktop configuration/connect/
+list result; the [report template](../acceptance/manual/report-template.json)
+starts incomplete and supplies no executed evidence.
+All nine uncoached sessions must pass the frozen rubric under genuine human
+review; coached, unsafe, aborted, over-budget or unrecorded attempts cannot be
+selected away, and relevant corrections require a complete fresh campaign.
+Native or protocol CI success does not replace either manual requirement.
+
 Everything else on the old list is above, and running it is one command.
 
 ### Latency
