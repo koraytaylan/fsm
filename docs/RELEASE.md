@@ -916,7 +916,9 @@ manager and private cgroup namespace, with finite memory and zero swap.
 The wrapper retains original reports, binaries, native observations and container
 retirement before removing its owned container; filtered evidence stays
 ineligible for the complete acceptance inventory, and native proof requires an
-actual passing run. Offline filters such as `seal` retain the ordinary Podman path.
+actual passing run. Offline filters such as `seal` retain the ordinary Podman path;
+the focused `seal` dispatch checks its evidence-volume writes with the original
+root user inside the rootless container, without opting into native containment.
 
 `acceptance/` builds an image with `cargo install --path crates/fsm-cli
 --locked`, the same command a consumer runs, and drives that binary from a

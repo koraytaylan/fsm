@@ -104,6 +104,7 @@ fi
 # container's own namespace either way.
 timeout 720s "${podman_command[@]}" run --rm \
     --memory "$memory" --memory-swap "$memory" \
+    --user 0 \
     --name "fsm-acceptance-$$" \
     --volume "$evidence:/evidence:Z" \
     --env FSM_EVIDENCE_DIR=/evidence \

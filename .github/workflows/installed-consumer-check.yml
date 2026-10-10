@@ -12,7 +12,7 @@ on:
         required: true
         type: choice
         default: executor
-        options: [executor, full]
+        options: [executor, seal, full]
 
 permissions:
   contents: read
@@ -49,6 +49,8 @@ jobs:
         run: |
           if [[ "$FSM_CONSUMER_SCENARIO" == full ]]; then
             timeout 1800s acceptance/acceptance.sh
+          elif [[ "$FSM_CONSUMER_SCENARIO" == seal ]]; then
+            FSM_ACCEPTANCE_DISPOSABLE_NATIVE=0 timeout 1800s acceptance/acceptance.sh seal
           else
             timeout 1800s acceptance/acceptance.sh executor
           fi
