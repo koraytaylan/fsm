@@ -164,16 +164,19 @@ Forty-one focused Rust cases, 28 producer/evidence cases and executor all-target
 clippy/format/size/diff pass. Frozen verdict
 `2d7bf695f4e4e5e0d7633ea426af27d030633c446e4a0c3ec47b81d082365989`
 indexes the physical reports and scoped reviews outside the repository.
-Native guard sensitivity and plan-end gates remain open; task 9103 remains
+Plan-end gates remain open; task 9103 remains
 in progress.
 
-Native guard preparation `8c00a9de..b4752939` adds structural and bound-entry
-probes for both writer entries and Root cleanup before an expected failing
-verdict. Thirteen admission tests and two Root policy tests pass, with
-feature-enabled executor all-target clippy/format/size/diff checks passing;
-24 native observer tests are ignored locally. Guard mutation orchestration
-and physical execution remain unexecuted; task 9103 stays in progress.
-Frozen review: `817fee3a15c50cc7859a21e273432ecf37609916f8153531ec5c16b65329bdee`.
+Native guard checkpoint `80366824` passes structural and bound-entry sensitivity
+on stable and MSRV: 48 physical process/MCP standalone/borrowed proofs across
+original, neutralized and byte-restored artifacts; only the neutralized guard
+permits real entry and fails at exit 101 after authentic original cleanup.
+All four installed authorities retire cleanly; independently replayed reports and
+logs match the frozen source, while executable bytes remain producer-attested.
+Thirty-six producer/evidence tests, two Root policy tests and feature-enabled
+executor all-target clippy/format/size/diff pass. Frozen review:
+`975da1d2cc40c89ec89f4ea3c8d9f6b925069240b50c90e1530a756ec1b47a02`.
+Task 9103 remains in progress pending plan-end gates.
 
 Bound entry now reuses its freshly reconstructed effect from the same immutable
 writer, removing its duplicate prefix replay while retaining concrete admission
