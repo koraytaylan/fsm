@@ -33,6 +33,7 @@ touches:
   - acceptance/suite/executor_helper_cut.py
   - acceptance/suite/native_debugger.py
   - acceptance/suite/executor_debug_stdio.py
+  - acceptance/suite/executor_debug_http.py
   - acceptance/suite/executor_settlement.py
   - acceptance/suite/executor_control.py
   - acceptance/suite/executor_drain.py
@@ -50,6 +51,7 @@ touches:
   - acceptance/tests/test_settlement_cut_observer.py
   - acceptance/tests/test_event_cut_observer.py
   - acceptance/tests/test_debug_stdio_observer.py
+  - acceptance/tests/test_debug_http_observer.py
   - acceptance/tests/test_executor_control_observer.py
   - acceptance/tests/test_executor_drain_observer.py
   - acceptance/tests/test_stdio_output_observer.py

@@ -757,6 +757,18 @@ def executor_stdio_hardware_cuts_recover_original_claims_results_and_events(repo
 SCENARIOS += (executor_stdio_hardware_cuts_recover_original_claims_results_and_events,)
 
 
+def executor_http_hardware_cuts_recover_original_claims_results_and_events(report) -> None:
+    from .executor_crash import installed_claim_cut
+    from .executor_settlement import installed_completed_cut, SUPPORTED_CUTS
+    for kind in ('process', 'mcp'):
+        installed_claim_cut(report, kind, 'http')
+        for cut in SUPPORTED_CUTS:
+            installed_completed_cut(report, kind, cut, 'http')
+
+
+SCENARIOS += (executor_http_hardware_cuts_recover_original_claims_results_and_events,)
+
+
 def executor_helper_closed_cut_recovers_without_publishing_an_original_result(report) -> None:
     from .executor_helper_cut import installed_helper_closed_cut
     for transport in ('standalone', 'stdio'):

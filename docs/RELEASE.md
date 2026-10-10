@@ -940,6 +940,12 @@ then uses separate private FIFO stdin/stdout/stderr under the external debugger.
 Original descriptor identities must match those endpoints; debugger diagnostics
 cannot stand in for protocol responses, and fresh stdio recovery must preserve
 the exact original claim, successful result or accepted event at each cut.
+The HTTP cut inventory completes real session initialization and sends its
+one trigger without waiting for a potentially hardware-stopped reply; the
+original process must own the exact loopback listening socket, with retained
+descriptor, socket-table, executable and request-endpoint identities.
+Fresh HTTP recovery preserves the same four durable phases and explicitly
+drains its execution owner after journal verification and resource restoration.
 The helper-closure cut hardware-stops the unchanged installed Root helper after
 its original domain and claim-bound closure receipt are durable, before result
 attestation or completed-response publication; the original host and helper

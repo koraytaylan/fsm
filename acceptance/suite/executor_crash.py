@@ -100,9 +100,11 @@ def claim_prefix(records: list[dict], instance: str) -> dict:
 
 @contextmanager
 def debugger(store: Path, table: Path, directory: Path, namespace: str,
-             cut: str = 'claimed-before-binding', transport: str = 'standalone'):
+             cut: str = 'claimed-before-binding', transport: str = 'standalone', port: int | None = None):
     require_disposable_runner()
-    if cut not in CUT_SYMBOLS or transport not in ('standalone', 'stdio'):
+    if (cut not in CUT_SYMBOLS or transport not in ('standalone', 'stdio', 'http')
+        or (transport == 'http' and (type(port) is not int or not 0 < port < 65_536))
+        or (transport != 'http' and port is not None)):
         raise ValueError('unknown exact installed hardware cut')
     directory.mkdir(exist_ok=True)
     script = Path(fsm.REPO) / 'acceptance/fixtures/installed_debugger.py'
@@ -125,6 +127,7 @@ def debugger(store: Path, table: Path, directory: Path, namespace: str,
         '-iex', 'set startup-with-shell off', '-iex', 'set disable-randomization off',
         '-iex', 'set debuginfod enabled off', '-x', str(commands), '--args', fsm.FSM,
         *(['execute'] if transport == 'standalone' else ['serve', '--execute']),
+        *(['--http=' + str(port)] if transport == 'http' else []),
         '--handlers=' + str(table), '--data-dir=' + str(store), '--poll-interval-ms=50']
     with (directory / 'debugger.log').open('wb') as log:
         process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
@@ -158,6 +161,16 @@ def original_host(store, table, directory, namespace, cut, transport):
         with debugger(store, table, directory, namespace, cut) as (owner, unit):
             yield owner, unit, None
         return
+    if transport == 'http':
+        from .executor_debug_http import attach_http, close_http
+        port = fsm.free_port()
+        with debugger(store, table, directory, namespace, cut, transport, port) as (owner, unit):
+            client = attach_http(directory, owner, port)
+            try:
+                yield owner, unit, client
+            finally:
+                close_http(client)
+        return
     from .executor_debug_stdio import StdioPipes
     directory.mkdir()
     with StdioPipes(directory) as pipes:
@@ -168,6 +181,25 @@ def original_host(store, table, directory, namespace, cut, transport):
             finally:
                 pipes.release_guards()
                 client.close()
+
+
+def trigger_client(report, client, instance, request_id, transport):
+    if client is None:
+        return
+    if transport == 'http':
+        from .executor_debug_http import trigger_http
+        trigger_http(report, client, instance, request_id)
+    else:
+        from .executor_debug_stdio import trigger_stdio
+        trigger_stdio(report, client, instance, request_id)
+
+
+def capture_client(client, ready, binary, transport):
+    if transport == 'http':
+        from .executor_debug_http import capture_http
+        return None, capture_http(client, ready, binary)
+    from .executor_debug_stdio import capture_stdio
+    return capture_stdio(client, ready, binary), None
 
 
 def retire_debugged_owner(report, owner, directory, ready, store, prefix):
@@ -188,13 +220,13 @@ def retain_debugger(directory: Path, cache: Path) -> None:
     retained = cache / 'debugger'; retained.mkdir()
     for name in ('ready.json', 'retired.json', 'debugger.log', 'observer.gdb'):
         shutil.copy2(directory / name, retained / name)
-    for name in ('stdio.json', 'stdio-launch.json'):
+    for name in ('stdio.json', 'stdio-launch.json', 'http.json'):
         if (directory / name).exists():
             shutil.copy2(directory / name, retained / name)
 
 
 def installed_claim_cut(report, kind: str, transport: str = 'standalone') -> None:
-    if kind not in ('process', 'mcp') or transport not in ('standalone', 'stdio'):
+    if kind not in ('process', 'mcp') or transport not in ('standalone', 'stdio', 'http'):
         raise ValueError('unknown installed claim-cut handler kind')
     fixture = Path(fsm.REPO) / 'acceptance/fixtures/executor_handler.py'
     machine = Path(fsm.REPO) / 'acceptance/fixtures/executor_workflow.json'
@@ -213,11 +245,9 @@ def installed_claim_cut(report, kind: str, transport: str = 'standalone') -> Non
         directory = Path(scratch.path) / 'debugger'
         binary_hash = digest(Path(fsm.FSM))
         with original_host(store, table_path, directory, native.namespace, 'claimed-before-binding', transport) as (owner, unit, client):
-            from .executor_debug_stdio import capture_stdio, trigger_stdio
-            if client is not None:
-                trigger_stdio(report, client, instance, 'claim-cut-start')
+            trigger_client(report, client, instance, 'claim-cut-start', transport)
             ready, limits = observe_debugged_owner(report, owner, unit, directory, binary_hash, 'claimed-before-binding')
-            stdio = capture_stdio(client, ready, Path(fsm.FSM))
+            stdio, http = capture_client(client, ready, Path(fsm.FSM), transport)
             prefix = read_journal_prefix(store)
             original = claim_prefix(prefix, instance)
             report.equal(_fixture_rows(native.resource / 'trace.jsonl'), [], 'durable claiming has not entered user code')
@@ -254,7 +284,7 @@ def installed_claim_cut(report, kind: str, transport: str = 'standalone') -> Non
             report.equal(digest(Path(fsm.FSM)), binary_hash, 'every original installed candidate byte remains unchanged')
             retain_debugger(directory, native.cache)
             report.note('FSM_INSTALLED_CLAIM_CUT_EVIDENCE ' + json.dumps(dict(namespace=native.namespace,
-                transport=transport, handler_kind=kind, instance=instance, hardware=ready, stdio=stdio,
+                transport=transport, handler_kind=kind, instance=instance, hardware=ready, stdio=stdio, http=http,
                 retirement=retired, enforced_limits=limits, original_claim=original, original_prefix=prefix,
                 closure_before_successor=closure, journal=records, trace=trace, results=results, state=state, final=final), sort_keys=True))
             _retire_execution_owner(report, successor, store, native.namespace, transport)

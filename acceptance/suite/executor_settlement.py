@@ -10,7 +10,7 @@ from pathlib import Path
 from . import fsm
 from .evidence import digest
 from .executor_crash import (original_host, observe_debugged_owner,
-    retire_debugged_owner, retain_debugger)
+    retire_debugged_owner, retain_debugger, trigger_client, capture_client)
 from .executor_lifecycle import _restart_host, EVENTS, MUTATIONS
 from .executor_scenarios import (_fixture_rows, _wait_for_files, read_journal_prefix,
     workflow_table, observe_trace, observe_success_journal, _retire_execution_owner)
@@ -82,7 +82,7 @@ def completed_prefix(records: list[dict], instance: str, cut: str) -> dict:
 
 
 def installed_completed_cut(report, kind: str, cut: str, transport: str = 'standalone') -> None:
-    if kind not in ('process', 'mcp') or cut not in SUPPORTED_CUTS or transport not in ('standalone', 'stdio'):
+    if kind not in ('process', 'mcp') or cut not in SUPPORTED_CUTS or transport not in ('standalone', 'stdio', 'http'):
         raise ValueError('unknown installed completion-cut cell')
     fixture = Path(fsm.REPO) / 'acceptance/fixtures/executor_handler.py'
     machine = Path(fsm.REPO) / 'acceptance/fixtures/executor_workflow.json'
@@ -97,11 +97,9 @@ def installed_completed_cut(report, kind: str, cut: str, transport: str = 'stand
             fsm.run_json('instance', 'send', instance, 'start', '--request-id=settlement-cut-start', data_dir=str(store))
         directory = Path(scratch.path) / 'debugger'; binary_hash = digest(Path(fsm.FSM))
         with original_host(store, table_path, directory, native.namespace, cut, transport) as (owner, unit, client):
-            from .executor_debug_stdio import capture_stdio, trigger_stdio
-            if client is not None:
-                trigger_stdio(report, client, instance, 'settlement-cut-start')
+            trigger_client(report, client, instance, 'settlement-cut-start', transport)
             ready, limits = observe_debugged_owner(report, owner, unit, directory, binary_hash, cut)
-            stdio = capture_stdio(client, ready, Path(fsm.FSM))
+            stdio, http = capture_client(client, ready, Path(fsm.FSM), transport)
             prefix = read_journal_prefix(store); original = completed_prefix(prefix, instance, cut)
             trace_prefix = _fixture_rows(native.resource / 'trace.jsonl')
             result_prefix = _fixture_rows(native.resource / 'results.jsonl')
@@ -150,7 +148,7 @@ def installed_completed_cut(report, kind: str, cut: str, transport: str = 'stand
             report.equal(digest(Path(fsm.FSM)), binary_hash, 'every original installed candidate byte remains unchanged')
             retain_debugger(directory, native.cache)
             report.note('FSM_INSTALLED_SETTLEMENT_CUT_EVIDENCE ' + json.dumps(dict(namespace=native.namespace,
-                transport=transport, handler_kind=kind, cut=cut, instance=instance, hardware=ready, stdio=stdio,
+                transport=transport, handler_kind=kind, cut=cut, instance=instance, hardware=ready, stdio=stdio, http=http,
                 retirement=retired, enforced_limits=limits, original_claim=original, original_prefix=prefix,
                 original_trace=trace_prefix, original_results=result_prefix, original_closure=closure, original_receipt=receipt,
                 journal=records, trace=trace, results=results, state=state, final=final), sort_keys=True))

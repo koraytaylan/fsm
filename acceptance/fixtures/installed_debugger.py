@@ -158,7 +158,7 @@ def main():
         gdb.execute('set environment SHELL /bin/sh', to_string=True)
         gdb.execute('set startup-with-shell on', to_string=True)
         gdb.execute('set args ' + arguments + ' ' + ' '.join(redirects), to_string=True)
-    elif transport != 'standalone':
+    elif transport not in ('standalone', 'http'):
         raise ValueError('unknown installed hardware-observer transport')
     symbol = resolve_symbol(binary)
     breakpoint = gdb.Breakpoint("*'" + symbol['raw_symbol'] + "'", type=gdb.BP_HARDWARE_BREAKPOINT)
