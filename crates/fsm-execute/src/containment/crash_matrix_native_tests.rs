@@ -179,7 +179,13 @@ fn provisioned_contract_admission_matrix() {
     contracts::run_admission_matrix();
 }
 
-fn scenario(staging: &Path, nonce: &str, case: Scenario) {
+#[test]
+#[ignore = "requires disposable native CI and exact staged contract guard artifacts"]
+fn provisioned_contract_guard_sensitivity() {
+    contracts::run_sensitivity();
+}
+
+fn scenario(staging: &Path, nonce: &str, case: Scenario) -> bool {
     let Scenario {
         host,
         kind,
@@ -338,7 +344,9 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
     let mut command = Command::new("/usr/bin/python3");
     command.args(["-c", "import os,sys;os.setgroups([]);os.setgid(65534);os.setuid(65534);os.execv(sys.argv[1],sys.argv[1:])"])
         .arg(staging.join(artifact))
-        .args(["--exact", if behavior == "contract-cancel-standalone" {
+        .args(["--exact", if let Some(name) = contracts::sensitivity_case(behavior) {
+            name
+        } else if behavior == "contract-cancel-standalone" {
             "provisioned::standalone_native_cancellation_retires_bound_claim_without_entry"
         } else if behavior == "contract-cancel-borrowed" {
             "provisioned::borrowed_native_cancellation_retires_bound_claim_without_entry"
@@ -463,12 +471,8 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
         .read_to_end(&mut output)
         .unwrap();
     assert!(output.len() <= 65_536);
-    assert!(
-        status.success(),
-        "candidate matrix {host}/{kind}: {}",
-        String::from_utf8_lossy(&output)
-    );
-    assert!(String::from_utf8_lossy(&output).contains("1 passed; 0 failed; 0 ignored;"));
+    let sensitivity = contracts::sensitivity_case(behavior).is_some();
+    contracts::check_observer_verdict(behavior, status, &output);
     if behavior == "supervisor-death" {
         assert!(supervisor_killed && supervisor_restarted);
     }
@@ -484,6 +488,9 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
         }
     }
     verify(&fixture, behavior);
+    if sensitivity {
+        contracts::publish_sensitivity(&fixture, &resource, case, status.success());
+    }
     memory_limits::archive(&fixture, staging);
     writeln!(
         std::io::stdout().lock(),
@@ -522,6 +529,7 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
             fs::remove_file(entry.path()).unwrap();
         }
     }
+    status.success()
 }
 
 fn publish_supervisor_observation(fixture: &Fixture, phase: &str, epoch: u64) {
@@ -547,6 +555,8 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                     resource.to_str().unwrap(),
                     if behavior == "private-output" {
                         "exit-root"
+                    } else if behavior.starts_with("contract-sensitivity-") {
+                        "hold-result"
                     } else if matches!(
                         behavior,
                         "collected-result"
@@ -620,40 +630,42 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
         (
             "timeout_ms".into(),
             Value::Num(
-                if matches!(
-                    behavior,
-                    "private-held"
-                        | "boundary-held"
-                        | "boundary-settled"
-                        | "boundary-deferred"
-                        | "capacity-held"
-                        | "private-output"
-                        | "contract-standalone"
-                        | "contract-borrowed"
-                        | "contract-fair-standalone"
-                        | "contract-fair-borrowed"
-                        | "contract-unknown-standalone"
-                        | "contract-unknown-borrowed"
-                        | "contract-argument-standalone"
-                        | "contract-argument-borrowed"
-                        | "contract-contention-standalone"
-                        | "contract-contention-borrowed"
-                        | "contract-manual-standalone"
-                        | "contract-manual-borrowed"
-                        | "contract-ack-only-standalone"
-                        | "contract-ack-only-borrowed"
-                        | "contract-bound-standalone"
-                        | "contract-bound-borrowed"
-                        | "contract-cancel-standalone"
-                        | "contract-cancel-borrowed"
-                        | "contract-recovery-standalone"
-                        | "contract-recovery-borrowed"
-                        | "schedule-success"
-                        | "schedule-recovery"
-                        | "schedule-construction"
-                        | "schedule-fairness"
-                        | "schedule-queues"
-                ) {
+                if behavior.starts_with("contract-sensitivity-")
+                    || matches!(
+                        behavior,
+                        "private-held"
+                            | "boundary-held"
+                            | "boundary-settled"
+                            | "boundary-deferred"
+                            | "capacity-held"
+                            | "private-output"
+                            | "contract-standalone"
+                            | "contract-borrowed"
+                            | "contract-fair-standalone"
+                            | "contract-fair-borrowed"
+                            | "contract-unknown-standalone"
+                            | "contract-unknown-borrowed"
+                            | "contract-argument-standalone"
+                            | "contract-argument-borrowed"
+                            | "contract-contention-standalone"
+                            | "contract-contention-borrowed"
+                            | "contract-manual-standalone"
+                            | "contract-manual-borrowed"
+                            | "contract-ack-only-standalone"
+                            | "contract-ack-only-borrowed"
+                            | "contract-bound-standalone"
+                            | "contract-bound-borrowed"
+                            | "contract-cancel-standalone"
+                            | "contract-cancel-borrowed"
+                            | "contract-recovery-standalone"
+                            | "contract-recovery-borrowed"
+                            | "schedule-success"
+                            | "schedule-recovery"
+                            | "schedule-construction"
+                            | "schedule-fairness"
+                            | "schedule-queues"
+                    )
+                {
                     "30000"
                 } else {
                     "3000"
@@ -784,6 +796,7 @@ fn verify(fixture: &Fixture, behavior: &str) {
     assert_eq!(verification.records, store.records.len() as u64);
     assert_eq!(store.state.execution.unresolved().count(), 0);
     assert_eq!(store.state.execution_handoffs.outstanding().count(), 0);
+    let sensitivity_claims = contracts::sensitivity_claims(&store, behavior);
     if matches!(
         behavior,
         "schedule-construction" | "contract-recovery-standalone" | "contract-recovery-borrowed"
@@ -803,7 +816,9 @@ fn verify(fixture: &Fixture, behavior: &str) {
                 .iter()
                 .filter(|record| record.kind == kind)
                 .count(),
-            if matches!(
+            if let Some(count) = sensitivity_claims {
+                count
+            } else if matches!(
                 behavior,
                 "schedule-construction"
                     | "contract-recovery-standalone"
@@ -874,7 +889,13 @@ fn verify(fixture: &Fixture, behavior: &str) {
                 .unwrap()
         );
         let allocation = number(&domain, "allocation").unwrap();
-        if (behavior == "claimed-result" && claim.run_id() == 1)
+        if (behavior.starts_with("contract-sensitivity-")
+            && !fixture
+                .directory
+                .join(format!("launch-{allocation}.json"))
+                .try_exists()
+                .unwrap())
+            || (behavior == "claimed-result" && claim.run_id() == 1)
             || matches!(
                 behavior,
                 "contract-cancel-standalone" | "contract-cancel-borrowed"
