@@ -24,6 +24,29 @@ def census():
 
 
 class AccountingTests(unittest.TestCase):
+    def test_standalone_retries_only_typed_retryable_lock_with_the_original_request(self):
+        from acceptance.suite.fsm import Result,CliError
+        block=InstalledBlock(MagicMock(),Path('/owned-store'),MagicMock(),Path('/owned-table'),'standalone','process',0)
+        arguments=dict(instance_id='inst-owned',event={'name':'start'},request_id='original-request')
+        locked=Result(1,'',json.dumps(dict(code='store/lock',retryable=True)),['fsm'])
+        success=Result(0,'{"accepted":true}','',['fsm'])
+        with patch('acceptance.suite.soak_installed.fsm.run',side_effect=[locked,success]) as run, \
+             patch('acceptance.suite.soak_installed.time.monotonic',return_value=0), \
+             patch('acceptance.suite.soak_installed.time.sleep'):
+            self.assertEqual(block.call('instance_send',arguments),{'accepted':True})
+        self.assertEqual(run.call_args_list[0],run.call_args_list[1])
+        self.assertIn('--request-id=original-request',run.call_args.args)
+        for failure in (Result(1,'',json.dumps(dict(code='store/lock',retryable=False)),['fsm']),
+                        Result(1,'',json.dumps(dict(code='req/instance_not_found',retryable=True)),['fsm']),
+                        Result(1,'','unstructured failure',['fsm'])):
+            with patch('acceptance.suite.soak_installed.fsm.run',return_value=failure) as run:
+                with self.assertRaises(CliError):block.call('instance_send',arguments)
+            run.assert_called_once()
+        with patch('acceptance.suite.soak_installed.fsm.run',return_value=locked) as run, \
+             patch('acceptance.suite.soak_installed.time.monotonic',side_effect=[0,3]):
+            with self.assertRaises(CliError):block.call('instance_send',arguments)
+        run.assert_called_once()
+
     def test_cancelled_projection_preserves_original_pending_effect_without_acknowledgement(self):
         report=MagicMock()
         report.equal.side_effect=lambda actual,expected,message:self.assertEqual(actual,expected,message)

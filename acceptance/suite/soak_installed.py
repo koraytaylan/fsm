@@ -71,8 +71,11 @@ class InstalledBlock:
         while True:
             result=fsm.run(*command,'--json',data_dir=str(self.store),timeout=10)
             if result.code==0:return result.json()
-            value=result.json();error=value.get('error',value)
-            if not isinstance(error,dict) or error.get('code')!='store/locked' or time.monotonic()>=deadline:
+            try:value=json.loads(result.text)
+            except json.JSONDecodeError:result.ok()
+            error=value.get('error',value) if isinstance(value,dict) else value
+            if (not isinstance(error,dict) or error.get('code')!='store/lock'
+                or error.get('retryable') is not True or time.monotonic()>=deadline):
                 result.ok()
             time.sleep(0.01)
 

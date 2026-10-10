@@ -38,6 +38,9 @@ the twelve cases independently observable.
 The block's Root broker has a five-minute upper bound for its 43 authored
 allocations; smaller existing fixtures keep their two-minute bound.
 Client reads and control requests never repair expected autonomous progress.
+Standalone mutations retry only a structured retryable `store/lock` response
+for at most three seconds with the same request key, including errors emitted
+on stderr; other failures and expired contention remain failures.
 Manual acknowledgements are explicit operator actions and count as manual work.
 No-progress, maximum duration/count, correctness failure, unavailable required
 observation and incomplete cleanup produce an incomplete run with nonzero exit.
