@@ -141,7 +141,8 @@ def installed_claim_cut(report, kind: str) -> None:
             report.equal(owner.returncode, 0, 'the bounded debugger observes original forced termination and retires')
             retired = json.loads((directory / 'retired.json').read_text())
             report.equal(retired['original'], ready['original'], 'actual forced termination matches the original birth identity')
-            report.equal(retired['signal'], 'SIGKILL', 'the original owner receives the actual uncatchable native signal')
+            report.equal(retired['mechanism'], 'gdb-owned-inferior-kill',
+                'the original owner retires through the debugger owned-inferior native kill')
             report.equal(retired['inferior_pid'], 0, 'the debugger has reaped its original owned inferior')
             report.true(process_observation(ready['original'])['alive'] is False, 'the original owner is dead before recovery starts')
             report.equal(read_journal_prefix(store), prefix, 'forced termination preserves the exact original durable claim prefix')

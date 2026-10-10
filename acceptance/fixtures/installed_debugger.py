@@ -132,12 +132,14 @@ def main():
             time.sleep(0.01)
         if identity(inferior.pid) != original:
             raise ValueError('original debugged process identity changed before termination')
-        diagnostic = gdb.execute('signal SIGKILL', to_string=True)
-        if 'SIGKILL' not in diagnostic or inferior.pid != 0:
-            raise ValueError('original inferior SIGKILL retirement is not confirmed')
+        # Linux GDB's owned-inferior kill avoids resuming a selected thread
+        # while its siblings disappear; the original process must be reaped.
+        diagnostic = gdb.execute('kill', to_string=True)
+        if 'killed' not in diagnostic.lower() or inferior.pid != 0:
+            raise ValueError('original inferior forced retirement is not confirmed')
         if hashlib.sha256(binary.read_bytes()).hexdigest() != original_hash:
             raise ValueError('original installed executable bytes changed')
-        publish(directory, 'retired', dict(original=original, signal='SIGKILL',
+        publish(directory, 'retired', dict(original=original, mechanism='gdb-owned-inferior-kill',
             diagnostic=diagnostic, inferior_pid=inferior.pid, binary_sha256=original_hash))
     finally:
         gdb.events.stop.disconnect(stop)
