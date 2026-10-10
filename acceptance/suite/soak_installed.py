@@ -280,6 +280,9 @@ def run_block(report,store,entries,consume):
             report.true(replay['agreement'] is True,'the installed replay reproduces the completed host block')
             (store.parent/f'block-{entries[0]["index"]//12:08}-verification.json').write_text(
                 json.dumps(dict(verification=verification,replay=replay),sort_keys=True))
+        except Exception as failure:
+            (native.cache/'workload-failure.json').write_text(json.dumps(dict(error=str(failure)),sort_keys=True))
+            raise
         finally:
             if block.host is not None:
                 for name in ('stdout','stderr'):

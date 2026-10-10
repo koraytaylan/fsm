@@ -17,8 +17,7 @@ namespace,host_encoded,uid_encoded=sys.argv[1:]
 if os.geteuid()!=0 or not re.fullmatch('[a-f0-9]{32}',namespace): raise ValueError('invalid protected census namespace')
 stage=Path('/usr/libexec')/('fsm-acceptance-'+namespace)
 sys.path.insert(0,str(stage))
-from observation.soak_resources import observe_live_host,observe_pipe_queues
-from observation.soak_socket_queues import observe_unix_queues
+from observation.soak_resources import observe_process_resources
 base=Path('/var/lib/fsm-containment')/namespace/'authority-1'
 def protected(path):
  metadata=path.lstat()
@@ -31,9 +30,7 @@ if type(host.get('pid')) is not int or not 0<host['pid']<1<<31: raise ValueError
 status=Path('/proc',str(host['pid']),'status').read_text()
 owners=[line.split()[1:] for line in status.splitlines() if line.startswith('Uid:')]
 if len(owners)!=1 or len(owners[0])!=4 or any(int(value)!=uid for value in owners[0]): raise ValueError('original host owner differs')
-def process(identity):
- return dict(host=observe_live_host(identity),pipes=observe_pipe_queues(identity),unix=observe_unix_queues(identity))
-owner=process(host)
+owner=observe_process_resources(host)
 counter=protected(base/'counter.json');count=counter.get('last_allocation')
 if counter.get('format')!='fsm.native-allocation-counter/1' or counter.get('namespace')!=namespace or type(counter.get('generation')) is not int or counter['generation']!=1: raise ValueError('original allocation counter identity differs')
 if type(count) is not int or not 0<=count<=64: raise ValueError('original domain census exceeds allocation bound')
@@ -65,7 +62,7 @@ for allocation in range(1,count+1):
    fields=raw.rpartition(b') ')[2].split()
    if len(raw)>4096 or len(fields)<20 or not fields[19].isdigit(): raise ValueError('original native process birth is unavailable')
    identity=dict(pid=pid,pid_starttime=fields[19].decode('ascii'))
-   value=process(identity);value.update(allocation=allocation)
+   value=observe_process_resources(identity);value.update(allocation=allocation)
    processes.append(value)
  domains.append(dict(binding=binding,closed=closed,members=members))
 size=0;files=0

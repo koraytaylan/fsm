@@ -10,6 +10,7 @@ from acceptance.suite.fsm import Scratch
 from acceptance.suite.metrics import METRICS, GROWTH, validate_sample
 from acceptance.suite.soak_run import observed_sample, disk_size, workload_digest
 from acceptance.suite.soak_native_metrics import queue_bytes, ROOT_SAMPLE, sample_native
+from acceptance.suite.soak_resources import observe_process_resources
 from acceptance.suite.soak import schedule
 from acceptance.suite.soak_installed import run_block,InstalledBlock
 from acceptance.suite.executor_control import OwnerUnavailable
@@ -23,6 +24,33 @@ def census():
 
 
 class AccountingTests(unittest.TestCase):
+    def test_original_process_sample_retries_transient_files_without_zero_filling(self):
+        identity=dict(pid=123,pid_starttime='456')
+        missing=FileNotFoundError(2,'gone','/proc/123/fd/5')
+        with patch('acceptance.suite.soak_resources.observe_live_host',return_value={'original':True}) as host, \
+             patch('acceptance.suite.soak_resources.observe_pipe_queues',return_value={'queued_pipe_bytes':7}), \
+             patch('acceptance.suite.soak_socket_queues.observe_unix_queues',side_effect=[missing,{'queued_unix_bytes':9}]), \
+             patch('acceptance.suite.soak_resources.time.sleep'):
+            value=observe_process_resources(identity)
+        self.assertEqual(value,dict(host={'original':True},pipes={'queued_pipe_bytes':7},
+            unix={'queued_unix_bytes':9},sample_attempts=2))
+        self.assertEqual(host.call_args_list,[unittest.mock.call(identity)]*2)
+
+    def test_original_process_sample_refuses_death_changed_birth_and_persistent_gaps(self):
+        identity=dict(pid=123,pid_starttime='456')
+        failures=[FileNotFoundError(2,'dead','/proc/123/stat'),
+                  FileNotFoundError(2,'foreign','/proc/124/fd/5'),
+                  ValueError('resource observation lost its original live host identity')]
+        for failure in failures:
+            with patch('acceptance.suite.soak_resources.observe_live_host',side_effect=failure):
+                with self.assertRaises(type(failure)):observe_process_resources(identity)
+        with patch('acceptance.suite.soak_resources.observe_live_host',side_effect=
+                   FileNotFoundError(2,'gone','/proc/123/task/124/children')) as host, \
+             patch('acceptance.suite.soak_resources.time.monotonic',side_effect=[0,1,2]), \
+             patch('acceptance.suite.soak_resources.time.sleep'):
+            with self.assertRaises(FileNotFoundError):observe_process_resources(identity)
+        self.assertEqual(host.call_count,2)
+
     def observation(self):
         return dict(active=census(),quiescent=census(),warmed=census(),
             schedule=dict(handler_kind='process',transport='stdio'),started_ns=10,

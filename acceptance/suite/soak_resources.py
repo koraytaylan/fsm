@@ -85,6 +85,28 @@ def observe_live_host(identity, proc_root=Path('/proc')):
                 descriptors=descriptors, thread_children=children, clock_ticks_per_second=frequency)
 
 
+def observe_process_resources(identity):
+    """Retry a whole original-birth sample only for disappearing fd/thread files."""
+    from .soak_socket_queues import observe_unix_queues
+    deadline, attempts = time.monotonic() + 2, 0
+    root = Path('/proc', str(identity['pid']))
+    while True:
+        attempts += 1
+        try:
+            value = dict(host=observe_live_host(identity), pipes=observe_pipe_queues(identity),
+                         unix=observe_unix_queues(identity), sample_attempts=attempts)
+            return value
+        except FileNotFoundError as error:
+            missing = Path(error.filename) if error.filename else None
+            transient = missing is not None and any(
+                missing.is_relative_to(root / name) for name in ('fd', 'fdinfo', 'task'))
+            if not transient or time.monotonic() >= deadline:
+                raise
+            # Each retry rechecks the same birth and discards the partial sample;
+            # a missing descriptor never becomes a zero-valued observation.
+            time.sleep(0.005)
+
+
 def observe_pipe_queues(identity):
     """Read queued kernel bytes without consuming any owned process stream.
 
