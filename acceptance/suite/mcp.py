@@ -17,14 +17,69 @@ import json
 import subprocess
 import threading
 import queue
+import socket
+import time
 import urllib.parse
 
 PROTOCOL_VERSION = "2025-06-18"
 CLIENT_INFO = {"name": "fsm-acceptance", "version": "1"}
+MAX_FRAME = 1_048_576
+MAX_QUEUED_FRAMES = 128
 
 
 class McpError(RuntimeError):
     """A JSON-RPC error the server returned, or a protocol violation."""
+
+
+class FrameReader:
+    """One bounded reader per stream, retained across calls and timeouts."""
+
+    def __init__(self, frames):
+        self.queue = queue.Queue(maxsize=MAX_QUEUED_FRAMES)
+        self.stopped = threading.Event()
+        self.error = None
+
+        def pump():
+            try:
+                for frame in frames():
+                    if self.stopped.is_set():
+                        break
+                    if not isinstance(frame, dict):
+                        raise McpError("the server sent a non-object frame")
+                    try:
+                        self.queue.put_nowait(frame)
+                    except queue.Full:
+                        raise McpError("the client notification queue overflowed") from None
+            except Exception as error:
+                if not self.stopped.is_set():
+                    self.error = McpError(str(error))
+            finally:
+                self.stopped.set()
+
+        self.worker = threading.Thread(target=pump, daemon=True)
+        self.worker.start()
+
+    def receive(self, timeout):
+        deadline = time.monotonic() + timeout
+        while True:
+            if self.error is not None:
+                raise self.error
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise queue.Empty
+            try:
+                return self.queue.get(timeout=min(remaining, 0.05))
+            except queue.Empty:
+                if self.error is not None:
+                    raise self.error
+                if self.stopped.is_set() and self.queue.empty():
+                    raise McpError("the server closed its output") from None
+
+    def join(self):
+        self.stopped.set()
+        self.worker.join(timeout=2)
+        if self.worker.is_alive():
+            raise McpError("the client stream reader did not retire")
 
 
 class StdioClient:
@@ -43,6 +98,24 @@ class StdioClient:
             bufsize=1,
             env=env,
         )
+        self._stderr = bytearray()
+
+        def errors():
+            while chunk := self.process.stderr.read(4096):
+                encoded = chunk.encode("utf-8")
+                self._stderr.extend(encoded[:max(0, 65_536 - len(self._stderr))])
+
+        self._error_worker = threading.Thread(target=errors, daemon=True)
+        self._error_worker.start()
+
+        def frames():
+            while line := self.process.stdout.readline(MAX_FRAME + 1):
+                if len(line.encode("utf-8")) > MAX_FRAME:
+                    raise McpError("the server frame exceeded the client bound")
+                if line.strip():
+                    yield json.loads(line)
+
+        self._reader = FrameReader(frames)
 
     def __enter__(self) -> "StdioClient":
         return self
@@ -61,28 +134,37 @@ class StdioClient:
             except subprocess.TimeoutExpired:
                 self.process.kill()
                 self.process.wait(timeout=10)
+        self._reader.join()
+        self._error_worker.join(timeout=2)
+        for pipe in (self.process.stdin, self.process.stdout, self.process.stderr):
+            if not pipe.closed:
+                pipe.close()
+        if self._error_worker.is_alive():
+            raise McpError("the client diagnostic reader did not retire")
 
     def _send(self, message: dict) -> None:
         self.process.stdin.write(json.dumps(message) + "\n")
         self.process.stdin.flush()
 
-    def _read_until_id(self, want: int) -> dict:
+    def _read_until_id(self, want: int, timeout: float = 30) -> dict:
         """Read frames until the answer to `want` arrives.
 
         Notifications are kept rather than discarded: a test that asserts one
         arrived needs them, and a client that silently dropped anything it did
         not ask for would be a worse client than a real host.
         """
+        deadline = time.monotonic() + timeout
         while True:
-            line = self.process.stdout.readline()
-            if not line:
-                stderr = self.process.stderr.read() if self.process.stderr else ""
-                raise McpError(f"the server closed its output; stderr:\n{stderr}")
-            line = line.strip()
-            if not line:
-                continue
-            frame = json.loads(line)
+            try:
+                frame = self._reader.receive(deadline - time.monotonic())
+            except queue.Empty:
+                raise McpError(f"no reply to {want} arrived within {timeout}s") from None
+            except McpError as error:
+                detail = bytes(self._stderr).decode("utf-8", errors="replace")
+                raise McpError(f"{error}; stderr:\n{detail}") from None
             if "id" not in frame:
+                if len(self._notifications) >= MAX_QUEUED_FRAMES:
+                    raise McpError("the retained notification bound was exceeded")
                 self._notifications.append(frame)
                 continue
             if frame["id"] != want:
@@ -113,22 +195,15 @@ class StdioClient:
     def drain(self, timeout: float = 0.5) -> list[dict]:
         """Collect whatever the server pushed without being asked."""
         collected: list[dict] = []
-        found: queue.Queue = queue.Queue()
-
-        def pump() -> None:
-            while True:
-                line = self.process.stdout.readline()
-                if not line:
-                    return
-                line = line.strip()
-                if line:
-                    found.put(json.loads(line))
-
-        worker = threading.Thread(target=pump, daemon=True)
-        worker.start()
+        deadline = time.monotonic() + timeout
         try:
             while True:
-                collected.append(found.get(timeout=timeout))
+                frame = self._reader.receive(deadline - time.monotonic())
+                if "id" in frame:
+                    raise McpError("an unsolicited response arrived while draining notifications")
+                if len(self._notifications) + len(collected) >= MAX_QUEUED_FRAMES:
+                    raise McpError("the retained notification bound was exceeded")
+                collected.append(frame)
         except queue.Empty:
             pass
         self._notifications.extend(collected)
@@ -198,6 +273,8 @@ class HttpClient:
         self._next_id = 0
         self._stream: http.client.HTTPResponse | None = None
         self._stream_connection: http.client.HTTPConnection | None = None
+        self._stream_reader = None
+        self._stream_socket = None
 
     def __enter__(self) -> "HttpClient":
         return self
@@ -227,7 +304,10 @@ class HttpClient:
                 "POST", self.path, json.dumps(message), self._headers()
             )
             response = connection.getresponse()
-            body = response.read().decode()
+            encoded = response.read(MAX_FRAME + 1)
+            if len(encoded) > MAX_FRAME:
+                raise McpError("the HTTP response exceeded the client frame bound")
+            body = encoded.decode()
             headers = {k.lower(): v for k, v in response.getheaders()}
             if "mcp-session-id" in headers and not self.session:
                 self.session = headers["mcp-session-id"]
@@ -246,6 +326,8 @@ class HttpClient:
         frame = _first_json_frame(body)
         if frame is None:
             raise McpError(f"{method}: no JSON in the answer: {body!r}")
+        if frame.get("id") != self._next_id:
+            raise McpError(f"expected a reply to {self._next_id}, got {frame.get('id')}")
         if "error" in frame:
             raise McpError(f"{method}: {json.dumps(frame['error'])}")
         return frame.get("result", {})
@@ -296,11 +378,37 @@ class HttpClient:
 
     def open_stream(self) -> None:
         """Hold a GET open for server-sent events, on its own connection."""
+        if self._stream_reader is not None:
+            raise McpError("a client event stream is already open")
         self._stream_connection = self._connection()
         self._stream_connection.request("GET", self.path, headers=self._headers(True))
+        self._stream_socket = self._stream_connection.sock
         self._stream = self._stream_connection.getresponse()
         if self._stream.status != 200:
-            raise McpError(f"the event stream was refused: HTTP {self._stream.status}")
+            status = self._stream.status
+            self.close()
+            raise McpError(f"the event stream was refused: HTTP {status}")
+
+        def frames():
+            data = []
+            size = 0
+            while raw := self._stream.readline(MAX_FRAME + 1):
+                if len(raw) > MAX_FRAME:
+                    raise McpError("the event-stream line exceeded the client bound")
+                line = raw.decode().rstrip("\r\n")
+                if line == "":
+                    if data:
+                        yield json.loads("\n".join(data))
+                    data, size = [], 0
+                elif line.startswith("data:"):
+                    size += len(raw)
+                    if size > MAX_FRAME:
+                        raise McpError("the event-stream frame exceeded the client bound")
+                    data.append(line[5:].lstrip())
+            if data:
+                raise McpError("the event stream ended inside a frame")
+
+        self._stream_reader = FrameReader(frames)
 
     def await_event(self, timeout: float = 20.0) -> dict:
         """Read one server-sent event off the open stream.
@@ -311,26 +419,8 @@ class HttpClient:
         """
         if self._stream is None:
             raise McpError("no stream is open")
-        found: queue.Queue = queue.Queue()
-
-        def pump() -> None:
-            data: list[str] = []
-            while True:
-                raw = self._stream.readline()
-                if not raw:
-                    return
-                line = raw.decode().rstrip("\r\n")
-                if line == "":
-                    if data:
-                        found.put("\n".join(data))
-                        data = []
-                    continue
-                if line.startswith("data:"):
-                    data.append(line[5:].lstrip())
-
-        threading.Thread(target=pump, daemon=True).start()
         try:
-            return json.loads(found.get(timeout=timeout))
+            return self._stream_reader.receive(timeout)
         except queue.Empty:
             raise McpError(f"no server-sent event arrived within {timeout}s") from None
 
@@ -346,12 +436,25 @@ class HttpClient:
 
     def close(self) -> None:
         if self._stream_connection is not None:
+            if self._stream_reader is not None:
+                self._stream_reader.stopped.set()
+            if self._stream_socket is not None:
+                try:
+                    self._stream_socket.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
             try:
                 self._stream_connection.close()
             except OSError:
                 pass
+            if self._stream_reader is not None:
+                self._stream_reader.join()
+            if self._stream is not None:
+                self._stream.close()
             self._stream_connection = None
             self._stream = None
+            self._stream_reader = None
+            self._stream_socket = None
 
 
 def _first_json_frame(body: str) -> dict | None:

@@ -10,11 +10,15 @@ import time
 import sys
 import tempfile
 import unittest
+import threading
+import queue
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from acceptance.suite.evidence import source_files
 from acceptance.suite.executor_scenarios import observe_trace
-from acceptance.suite.mcp import StdioClient, McpError
+from acceptance.suite.mcp import (StdioClient, HttpClient, FrameReader, McpError,
+                                 MAX_FRAME, MAX_QUEUED_FRAMES)
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "executor_handler.py"
 
@@ -373,6 +377,140 @@ class McpFixtureTests(FixtureFiles):
                 client.request("unknown")
             self.assertEqual(client.request("ping"), {})
             self.assertEqual(len(client.tools()), 1)
+
+
+class ClientStreamOwnershipTests(unittest.TestCase):
+    def test_stdio_quiet_waits_never_steal_later_replies(self):
+        program = '''import sys, json
+for line in sys.stdin:
+    request = json.loads(line)
+    print(json.dumps({"jsonrpc":"2.0","method":"notifications/test"}), flush=True)
+    print(json.dumps({"jsonrpc":"2.0","id":request["id"],"result":{"ok":True}}), flush=True)
+'''
+        with StdioClient([sys.executable, "-c", program]) as client:
+            worker = client._reader.worker
+            for _ in range(3):
+                self.assertEqual(client.drain(timeout=0.02), [])
+                self.assertEqual(client.request("ping"), {"ok": True})
+                self.assertIs(client._reader.worker, worker)
+            self.assertEqual(len(client.notifications), 3)
+        self.assertFalse(worker.is_alive())
+        self.assertFalse(client._error_worker.is_alive())
+
+    def test_stdio_drains_diagnostics_without_waiting_for_a_reply(self):
+        program = '''import sys, json
+sys.stderr.write("x" * 200000)
+sys.stderr.flush()
+for line in sys.stdin:
+    request = json.loads(line)
+    print(json.dumps({"id":request["id"],"result":{}}), flush=True)
+'''
+        with StdioClient([sys.executable, "-c", program]) as client:
+            self.assertEqual(client.request("ping"), {})
+        self.assertEqual(len(client._stderr), 65_536)
+
+    def test_stdio_frame_limit_rejects_oversized_and_non_object_frames(self):
+        for program in [f'import sys; print("x" * {MAX_FRAME + 1}, flush=True)',
+                        'print("[]", flush=True)']:
+            with StdioClient([sys.executable, "-c", program]) as client:
+                with self.assertRaises(McpError):
+                    client._reader.receive(2)
+
+    def test_reader_queue_and_absolute_wait_are_bounded(self):
+        reader = FrameReader(lambda: iter({"ordinal": index} for index in range(MAX_QUEUED_FRAMES)))
+        reader.worker.join(timeout=2)
+        self.assertEqual([reader.receive(1)["ordinal"] for _ in range(MAX_QUEUED_FRAMES)],
+                         list(range(MAX_QUEUED_FRAMES)))
+        reader.join()
+        reader = FrameReader(lambda: iter({"ordinal": index} for index in range(MAX_QUEUED_FRAMES + 1)))
+        reader.worker.join(timeout=2)
+        self.assertFalse(reader.worker.is_alive())
+        with self.assertRaisesRegex(McpError, "overflow"):
+            reader.receive(1)
+        self.assertEqual(reader.queue.qsize(), MAX_QUEUED_FRAMES)
+        reader.join()
+
+    def test_stdio_reply_wait_has_one_deadline_across_notifications(self):
+        program = '''import sys, json, time
+sys.stdin.readline()
+for _ in range(50):
+    print(json.dumps({"method":"notifications/test"}), flush=True)
+    time.sleep(0.01)
+'''
+        with StdioClient([sys.executable, "-c", program]) as client:
+            client._send({"id": 1})
+            start = time.monotonic()
+            with self.assertRaisesRegex(McpError, "no reply"):
+                client._read_until_id(1, timeout=0.1)
+            self.assertLess(time.monotonic() - start, 1)
+
+    def test_http_timeout_keeps_one_reader_for_later_events_and_close(self):
+        events = queue.Queue()
+        stopped = threading.Event()
+
+        class Handler(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def log_message(self, *_args):
+                pass
+
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.end_headers()
+                self.wfile.flush()
+                try:
+                    while not stopped.is_set():
+                        try:
+                            event = events.get(timeout=0.05)
+                        except queue.Empty:
+                            continue
+                        self.wfile.write(event)
+                        self.wfile.flush()
+                except (OSError, ConnectionError):
+                    pass
+
+            def do_POST(self):
+                request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                identifier = request["id"] + (request["method"] == "wrong-id")
+                body = (b'x' * (MAX_FRAME + 1) if request["method"] == "large" else
+                        json.dumps({"id": identifier, "result": {}}).encode())
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                self.wfile.flush()
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        worker = threading.Thread(target=server.serve_forever)
+        worker.start()
+        try:
+            with HttpClient("127.0.0.1", server.server_port) as client:
+                self.assertEqual(client.request("ping"), {})
+                with self.assertRaisesRegex(McpError, "expected a reply"):
+                    client.request("wrong-id")
+                with self.assertRaisesRegex(McpError, "frame bound"):
+                    client.request("large")
+                client.open_stream()
+                reader = client._stream_reader.worker
+                for ordinal in range(3):
+                    with self.assertRaisesRegex(McpError, "no server-sent event"):
+                        client.await_event(timeout=0.02)
+                    events.put(f'data: {{"ordinal":{ordinal}}}\n\n'.encode())
+                    self.assertEqual(client.await_event(timeout=2), {"ordinal": ordinal})
+                    self.assertIs(client._stream_reader.worker, reader)
+                with self.assertRaisesRegex(McpError, "already open"):
+                    client.open_stream()
+                events.put(b'data: ' + b'x' * (MAX_FRAME + 1) + b'\n\n')
+                with self.assertRaisesRegex(McpError, "bound"):
+                    client.await_event(timeout=2)
+            self.assertFalse(reader.is_alive())
+        finally:
+            stopped.set()
+            server.shutdown()
+            server.server_close()
+            worker.join(timeout=2)
+        self.assertFalse(worker.is_alive())
 
 
 if __name__ == "__main__":
