@@ -1807,11 +1807,18 @@ absolute deadline rather than extending it while preparing the next request.
 
 Pending-effect reconstruction now retains the historical emitting machine identity for subsequent contract admission across migration; the provisional Rust PendingEffect struct gains emitting_machine_id, requiring callers constructing literals to adapt, without changing journal bytes, hashes or runtime spawn policy.
 
-Added provisional read-only contract::check_pending evidence for shared service admission: incompatible later steps and current receiving outcomes are checked alongside concrete pending arguments, without changing journal bytes or runtime spawn policy; production wiring and admission caching remain pending.
+The provisional read-only `contract::check_pending` API checks incompatible
+later steps, current receiving outcomes and concrete pending arguments without
+changing journal bytes or granting spawn permission; shared native services
+now repeat these checks at queue, pre-claim and bound entry, with bounded
+private structural caching as described below.
 
 Pending-contract checks preserve explicitly manual effects as compatible evidence without changing their pending state or allowing automatic execution.
 
-The shared native preparation path now refuses incompatible or unknown pending contracts before helper preparation, retaining pending work without new journal entries or preparation reservations; final claim/entry rechecks and provisioned native acceptance remain pending.
+The shared native preparation path refuses incompatible or unknown pending
+contracts before helper preparation, retaining pending work without new journal
+entries or preparation reservations; pre-claim and bound-entry rechecks are
+implemented, while final integration acceptance remains pending.
 
 Fixed warm native owners remaining retained after another host delivered their original acknowledged event: exact acknowledgement and closure-bound handoff reconciliation now recognizes accepted-event fold retirement without another event send, preserving outstanding obligations and historical acknowledgement behavior.
 
@@ -1950,7 +1957,7 @@ connections despite retained shutdown descriptors. This correction does not
 establish native executor closure or interrupt application work outside socket
 I/O, and changes no journal or wire format.
 
-Shared native queue, pre-claim and bound-entry admission cache onlysuccessful
+Shared native queue, pre-claim and bound-entry admission cache only successful
 structural analyses in a private scheduler-owned set of at most 128 digests,
 keyed by analyzer format, emitter/receiver, the complete available definition
 catalogue and full private handler settings; cache hits still reconstruct
