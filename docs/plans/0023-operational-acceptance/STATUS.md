@@ -235,6 +235,23 @@ checks, eighteen focused consumer/reporter checks and formatting/size checks pas
 Frozen implementing-author review digest:
 `5796b7e7bba0ff01454b86fa91c32acad60ce0f2702071418919adfe30b3f3c8`.
 
+Frozen claim-cut acceptance for `8725e794..89efa594` establishes two standalone
+process/MCP cuts after durable claiming and before native binding or handler entry:
+[disposable installed evidence](https://github.com/koraytaylan/fsm/actions/runs/38061321027)
+retains 66 passing assertions, ten original domain closures, 46 journal records,
+24 raw trace records and two explicit successor-owner drains.
+Hardware stops preserve the original installed CLI instructions; exact owner
+death precedes quiet recovery, original closure precedes successor entry, and
+receipt-only interruption preserves retry counts without an invented result.
+Replay revalidates 1,297 source blobs and retained CLI/helper bytes; the debugger
+unit enforces 1 GiB memory, zero swap and a 45-second runtime limit.
+The three preceding failures remain failed; repairs resolve the exact original
+symbol, connect the native debugger target and reap its owned inferior.
+142 disposable observer checks, five current cut tests, five named guard
+controls and formatting/size checks pass; filtered proof remains release-ineligible.
+Frozen implementing-author review digest:
+`e56b05b6c3d9e322c5f3404589684f2accb994cfe6c23909b1d1f34834387588`.
+
 Task 9502 remains in progress: remaining installed crash cuts are outstanding.
 Sustained native operation, nine human-reviewed uncoached
 live-model sessions, Desktop compatibility and independent final review remain
