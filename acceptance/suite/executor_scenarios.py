@@ -12,11 +12,127 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 import sys
 import json
+from itertools import islice
+import re
 
 from . import fsm
 
 MAX_TRACE_EVENTS = 100_000
 MAX_TRACE_TEXT = 256
+MAX_JOURNAL_BYTES = 4_194_304
+MAX_JOURNAL_SEGMENTS = 16
+
+
+def _unique_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate journal observation member")
+        result[key] = value
+    return result
+
+
+def _invalid_constant(value):
+    raise ValueError(f"invalid journal observation constant: {value}")
+
+
+def read_journal_prefix(store: Path) -> list[dict]:
+    """Observe a bounded fresh fixture store without contacting its executor.
+
+    SPEC's read-only prefix rule permits an unfinished final line only in the
+    final segment; malformed complete lines and unfinished interior segments
+    fail. This reader does not verify hashes or replay the engine: the final
+    installed CLI verification remains a separate obligation.
+    """
+    paths = list(islice((store / "journal").glob("seg-*.jsonl"), MAX_JOURNAL_SEGMENTS + 1))
+    if len(paths) > MAX_JOURNAL_SEGMENTS:
+        raise ValueError("journal observation exceeds its segment bound")
+    remaining = MAX_JOURNAL_BYTES
+    records = []
+    for index, path in enumerate(sorted(paths)):
+        if (path.is_symlink() or not path.is_file()
+            or not re.fullmatch(r"seg-[0-9]{20}\.jsonl", path.name)):
+            raise ValueError("journal observation requires regular canonical segments")
+        with path.open("rb") as stream:
+            encoded = stream.read(remaining + 1)
+        if len(encoded) > remaining:
+            raise ValueError("journal observation exceeds its byte bound")
+        remaining -= len(encoded)
+        lines = encoded.split(b"\n")
+        if lines[-1] and index != len(paths) - 1:
+            raise ValueError("journal observation has an unfinished interior segment")
+        for line in lines[:-1]:
+            record = json.loads(line.decode("utf-8"), object_pairs_hook=_unique_object,
+                                parse_constant=_invalid_constant)
+            if not isinstance(record, dict):
+                raise ValueError("journal observation requires object records")
+            records.append(record)
+            if len(records) > MAX_TRACE_EVENTS:
+                raise ValueError("journal observation exceeds its record bound")
+    return records
+
+
+def observe_success_journal(records: list[dict], instance: str,
+                            events: tuple[str, ...]) -> tuple[str, ...]:
+    """Independent ledger for one-effect-per-step, one-attempt success fixtures.
+
+    Native acknowledgements are execution_settled records with disposition
+    acked, rather than extra effect_acked records (SPEC's journal body table).
+    Every emitted effect needs exactly one matching claim, stop and settlement
+    before its intended advance; ordinary acknowledgements, retries, duplicate
+    ownership or out-of-order advances cannot satisfy this observation.
+    A passing ledger is neither a containment proof nor hash-chain verification.
+    """
+    if (not _name(instance) or not isinstance(events, tuple) or not 2 <= len(events) <= 16
+        or any(not _name(event) for event in events)):
+        raise ValueError("success ledger needs a bounded instance and event sequence")
+    if not isinstance(records, list) or len(records) > MAX_TRACE_EVENTS:
+        raise ValueError("success ledger requires a bounded record list")
+    owned = []
+    previous = -1
+    for record in records:
+        if (not isinstance(record, dict) or type(record.get("seq")) is not int
+            or record["seq"] <= previous or not isinstance(record.get("body"), dict)
+            or not isinstance(record.get("kind"), str)):
+            return ("journal/shape_or_order",)
+        previous = record["seq"]
+        if record["body"].get("instance_id") == instance:
+            owned.append(record)
+    advances = [record for record in owned if record["kind"] == "event_applied"]
+    if tuple(record["body"].get("event") for record in advances) != events:
+        return ("journal/missing_or_extra_advance",)
+    violations = []
+    if any(record["kind"] in {"effect_acked", "effect_attempted", "event_rejected",
+                               "instance_cancelled"} for record in owned):
+        violations.append("journal/unexpected_disposition")
+    for kind in ("execution_claimed", "execution_stopped", "execution_settled"):
+        if sum(record["kind"] == kind for record in owned) != len(events) - 1:
+            violations.append("journal/ownership_inventory")
+    runs = set()
+    for emitted, advanced in zip(advances, advances[1:]):
+        effect = f"{instance}/{emitted['seq']}/0"
+        phases = [[record for record in owned if record["kind"] == kind
+                   and record["body"].get("effect_id") == effect]
+                  for kind in ("execution_claimed", "execution_stopped", "execution_settled")]
+        if any(len(phase) != 1 for phase in phases):
+            violations.append("journal/missing_or_duplicate_owner")
+            continue
+        claim, stopped, settled = [phase[0] for phase in phases]
+        run = claim["body"].get("run_id")
+        if (type(run) is not int or run <= 0 or run in runs
+            or stopped["body"].get("run_id") != run or settled["body"].get("run_id") != run
+            or type(stopped["body"].get("run_id")) is not int
+            or type(settled["body"].get("run_id")) is not int
+            or type(claim["body"].get("attempt")) is not int
+            or claim["body"].get("attempt") != 1):
+            violations.append("journal/owner_identity")
+        if type(run) is int:
+            runs.add(run)
+        if not emitted["seq"] < claim["seq"] < stopped["seq"] < settled["seq"] < advanced["seq"]:
+            violations.append("journal/settlement_order")
+        if settled["body"].get("disposition") != "acked" or settled["body"].get("outcome") != "ok":
+            violations.append("journal/acknowledgement_outcome")
+    return tuple(dict.fromkeys(violations))
 
 
 def workflow_table(root: Path, fixture: Path, *, kind: str, outcome: str,

@@ -17,7 +17,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from acceptance.suite.evidence import source_files
-from acceptance.suite.executor_scenarios import observe_trace, workflow_table
+from acceptance.suite.executor_scenarios import (observe_trace, workflow_table,
+                                               read_journal_prefix, observe_success_journal)
 from acceptance.suite.fsm import task_cache, Scratch
 from acceptance.suite.mcp import (StdioClient, HttpClient, FrameReader, McpError,
                                  MAX_FRAME, MAX_QUEUED_FRAMES)
@@ -573,6 +574,130 @@ for _ in range(50):
             server.server_close()
             worker.join(timeout=2)
         self.assertFalse(worker.is_alive())
+
+
+class QuietJournalObserverTests(unittest.TestCase):
+    """Handwritten journal counterexamples, not native candidate execution."""
+
+    EVENTS = ("start", "validated", "suspended", "processed", "restored")
+
+    def good_records(self):
+        # SPEC's native settlement consumes the acknowledgement in one record.
+        records = [{"seq": 0, "kind": "genesis", "body": {}}]
+        def add(kind, **body):
+            record = {"seq": len(records), "kind": kind,
+                      "body": {"instance_id": "fixture", **body}}
+            records.append(record)
+            return record["seq"]
+        emitted = add("event_applied", event="start")
+        for run, event in enumerate(self.EVENTS[1:], 1):
+            effect = f"fixture/{emitted}/0"
+            add("execution_claimed", run_id=run, effect_id=effect, attempt=1)
+            add("execution_stopped", run_id=run, effect_id=effect)
+            add("execution_settled", run_id=run, effect_id=effect,
+                disposition="acked", outcome="ok")
+            emitted = add("event_applied", event=event)
+        return records
+
+    def test_native_settlement_sequence_satisfies_success_ledger(self):
+        self.assertEqual(observe_success_journal(self.good_records(), "fixture", self.EVENTS), ())
+
+    def test_missing_duplicate_and_unmatched_owners_fail(self):
+        for mutate in (lambda rows: rows.pop(3),
+                       lambda rows: rows[3].update(kind="execution_claimed"),
+                       lambda rows: rows[3]["body"].update(effect_id="other")):
+            rows = self.good_records()
+            mutate(rows)
+            self.assertIn("journal/missing_or_duplicate_owner",
+                          observe_success_journal(rows, "fixture", self.EVENTS))
+
+    def test_failed_interrupted_and_manual_acknowledgements_fail(self):
+        for changes in ({"outcome": "failed"}, {"disposition": "interrupted"}):
+            rows = self.good_records()
+            rows[4]["body"].update(changes)
+            self.assertIn("journal/acknowledgement_outcome",
+                          observe_success_journal(rows, "fixture", self.EVENTS))
+        rows = self.good_records()
+        rows[4]["kind"] = "effect_acked"
+        self.assertIn("journal/unexpected_disposition",
+                      observe_success_journal(rows, "fixture", self.EVENTS))
+
+    def test_identity_retry_and_boolean_impostors_fail(self):
+        for index, field, value in ((2, "attempt", 2), (2, "attempt", True),
+                                    (3, "run_id", 9), (3, "run_id", True),
+                                    (4, "run_id", True), (6, "run_id", 1)):
+            rows = self.good_records()
+            rows[index]["body"][field] = value
+            self.assertIn("journal/owner_identity",
+                          observe_success_journal(rows, "fixture", self.EVENTS))
+
+    def test_advance_before_settlement_and_extra_event_fail(self):
+        rows = self.good_records()
+        rows[4], rows[5] = rows[5], rows[4]
+        rows[4]["seq"], rows[5]["seq"] = 4, 5
+        self.assertIn("journal/settlement_order",
+                      observe_success_journal(rows, "fixture", self.EVENTS))
+        rows = self.good_records()
+        rows.append({"seq": len(rows), "kind": "event_applied",
+                     "body": {"instance_id": "fixture", "event": "restored"}})
+        self.assertEqual(observe_success_journal(rows, "fixture", self.EVENTS),
+                         ("journal/missing_or_extra_advance",))
+
+    def test_missing_and_malformed_prefix_cannot_pass(self):
+        self.assertTrue(observe_success_journal([], "fixture", self.EVENTS))
+        for row in ({"seq": True, "kind": "genesis", "body": {}},
+                    {"seq": 0, "kind": "genesis", "body": []}):
+            self.assertEqual(observe_success_journal([row], "fixture", self.EVENTS),
+                             ("journal/shape_or_order",))
+
+    def test_reader_omits_only_the_unfinished_final_line(self):
+        with Scratch("quiet-journal") as scratch:
+            store = Path(scratch.path)
+            journal = store / "journal"
+            journal.mkdir()
+            first = journal / "seg-00000000000000000000.jsonl"
+            first.write_bytes(b'{"seq":0}\n{"unfinished":')
+            self.assertEqual(read_journal_prefix(store), [{"seq": 0}])
+            (journal / "seg-00000000000000000001.jsonl").write_bytes(b'{"seq":1}\n')
+            with self.assertRaisesRegex(ValueError, "interior"):
+                read_journal_prefix(store)
+
+    def test_reader_refuses_complete_corruption_and_non_json_members(self):
+        with Scratch("quiet-journal") as scratch:
+            store = Path(scratch.path)
+            journal = store / "journal"
+            journal.mkdir()
+            segment = journal / "seg-00000000000000000000.jsonl"
+            for encoded in (b'{invalid}\n', b'[]\n', b'{"seq":0,"seq":1}\n',
+                            b'{"seq":NaN}\n', b'{"value":"\xff"}\n'):
+                segment.write_bytes(encoded)
+                with self.assertRaises(ValueError):
+                    read_journal_prefix(store)
+
+    def test_reader_charges_bytes_across_segments_and_segment_inventory(self):
+        with Scratch("quiet-journal") as scratch:
+            store = Path(scratch.path)
+            journal = store / "journal"
+            journal.mkdir()
+            first = journal / "seg-00000000000000000000.jsonl"
+            second = journal / "seg-00000000000000000001.jsonl"
+            first.write_bytes(b'{}\n')
+            second.write_bytes(b'{}\n')
+            with patch("acceptance.suite.executor_scenarios.MAX_JOURNAL_BYTES", 6):
+                self.assertEqual(read_journal_prefix(store), [{}, {}])
+                second.write_bytes(b'{}\n ')
+                with self.assertRaisesRegex(ValueError, "byte bound"):
+                    read_journal_prefix(store)
+            with patch("acceptance.suite.executor_scenarios.MAX_JOURNAL_SEGMENTS", 1):
+                with self.assertRaisesRegex(ValueError, "segment bound"):
+                    read_journal_prefix(store)
+
+    def test_reader_refuses_non_regular_segments(self):
+        with Scratch("quiet-journal") as scratch:
+            store = Path(scratch.path)
+            (store / "journal" / "seg-00000000000000000000.jsonl").mkdir(parents=True)
+            with self.assertRaisesRegex(ValueError, "regular canonical"):
+                read_journal_prefix(store)
 
 
 if __name__ == "__main__":
