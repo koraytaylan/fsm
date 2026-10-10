@@ -147,6 +147,34 @@ def emit_noise(args, run):
             stream.flush();os.fsync(stream.fileno())
 
 
+def record_timing(args, run, phase, status=None):
+    """Optional physical observations, separate from the existing entry schema."""
+    if not args.observe_timing:
+        return
+    value = dict(run=run, resource=args.resource, operation=args.operation,
+                 phase=phase, monotonic_ns=time.monotonic_ns(), **process_identity())
+    if status is not None:
+        value['exit_code'] = status
+    with (args.root / 'timings.jsonl').open('a', encoding='utf-8') as stream:
+        stream.write(json.dumps(value, sort_keys=True) + '\n')
+        stream.flush();os.fsync(stream.fileno())
+
+
+def entry_attempt(args):
+    """Count the exact caller's physical entries; retained slots survive retries."""
+    with (args.root / 'entries.jsonl').open('rb') as stream:
+        raw = stream.read(65_537)
+    if len(raw) > 65_536 or not raw.endswith(b'\n'):
+        raise RuntimeError('fixture retry entry inventory is incomplete or oversized')
+    entries = [json.loads(line) for line in raw.splitlines()]
+    if any(not isinstance(value, dict)
+           or set(value) != {'run', 'resource', 'operation', 'pid', 'pid_starttime'}
+           or not isinstance(value['run'], str) for value in entries):
+        raise RuntimeError('fixture retry entry inventory is malformed')
+    return sum(value['run'].rsplit(':', 1)[0] == args.run and value['resource'] == args.resource
+               and value['operation'] == args.operation for value in entries)
+
+
 def operation(args) -> int:
     root = args.root
     root.mkdir(parents=True, exist_ok=True)
@@ -180,6 +208,8 @@ def operation(args) -> int:
                 stream.write(json.dumps(identity) + "\n")
                 stream.flush()
                 os.fsync(stream.fileno())
+            attempt = entry_attempt(args) if args.fail_first else None
+            record_timing(args, run, 'entered')
         atomic_json(root / (token + ".ready"), identity)
         if args.descendant:
             start_descendant(args, run)
@@ -190,6 +220,11 @@ def operation(args) -> int:
                 if time.monotonic() >= deadline:
                     raise RuntimeError("fixture release barrier timed out")
                 time.sleep(0.005)
+        # Delay occurs inside accepted physical work, never as idle soak padding.
+        if args.delay_ms:
+            time.sleep(args.delay_ms / 1000)
+        if args.fail_first and attempt == 1:
+            return finish(3)
         if args.failure == "before":
             return finish(3)
         with locked(root):
@@ -234,6 +269,7 @@ def operation(args) -> int:
                 stream.flush()
                 os.fsync(stream.fileno())
             append(root, "end", run, args.resource)
+            record_timing(args, run, 'finished', result)
 
 
 
@@ -335,6 +371,7 @@ def mcp(args) -> int:
                 items = int(items)
             failure, action = fields.get("failure", "none"), fields["operation"]
             if (type(items) is not int or not 1 <= items <= 16
+                or (args.fail_first and failure != 'none')
                 or (failure == "partial" and action != "process")
                 or (failure == "restore" and action != "restore")):
                 reply(identifier, code=-32602, message="invalid fixture operation bounds")
@@ -367,6 +404,9 @@ def main() -> int:
     parser.add_argument("--wait-seconds", type=float, default=5)
     parser.add_argument('--descendant', action='store_true')
     parser.add_argument('--noise-bytes', type=int, default=0)
+    parser.add_argument('--observe-timing', action='store_true')
+    parser.add_argument('--fail-first', action='store_true')
+    parser.add_argument('--delay-ms', type=int, default=0)
     args = parser.parse_args()
     if args.mode in ("exit-ok", "exit-failed"):
         return 0 if args.mode == "exit-ok" else 3
@@ -374,6 +414,8 @@ def main() -> int:
         or len(args.run) > 223 or len(args.resource) > 256 or not 1 <= args.items <= 16
         or not 0 < args.wait_seconds <= 60
         or not 0 <= args.noise_bytes <= 131_072
+        or not 0 <= args.delay_ms <= 2000
+        or (args.fail_first and args.failure != 'none')
         or ((args.descendant or args.mode == 'descendant') and sys.platform != 'linux')
         or (args.failure == "partial" and args.operation != "process")
         or (args.failure == "restore" and args.operation != "restore")):

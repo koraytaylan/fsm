@@ -49,9 +49,12 @@ def schedule(seed, maximum_cycles):
         for case in block:
             if index == maximum_cycles:
                 return
+            # Keep one twelve-case block in the same host; six blocks cover
+            # every case on both handler kinds and all three host frontends.
+            block_number = index // len(CASES)
             yield dict(index=index, case=case,
-                       handler_kind=('process', 'mcp')[index % 2],
-                       transport=('standalone', 'stdio', 'http')[(index // 2) % 3])
+                       handler_kind=('process', 'mcp')[block_number % 2],
+                       transport=('standalone', 'stdio', 'http')[(block_number // 2) % 3])
             index += 1
 
 

@@ -104,6 +104,12 @@ class CompletionTests(unittest.TestCase):
         for start in range(0, 120, 12): self.assertEqual({row['case'] for row in first[start:start+12]}, set(CASES))
         self.assertEqual({(row['handler_kind'], row['transport']) for row in first},
             {(kind, transport) for kind in ('process','mcp') for transport in ('standalone','stdio','http')})
+        self.assertEqual({(row['case'], row['handler_kind'], row['transport']) for row in first[:72]},
+            {(case, kind, transport) for case in CASES for kind in ('process','mcp')
+             for transport in ('standalone','stdio','http')})
+        for start in range(0, 120, 12):
+            self.assertEqual(len({(row['handler_kind'], row['transport'])
+                                  for row in first[start:start+12]}), 1)
 
 
 class ResourceTests(unittest.TestCase):

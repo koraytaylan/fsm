@@ -163,7 +163,7 @@ class DisposableAuthority:
             privileged("mkdir", "-m", "0777", str(self.resource))
             self._remember(self.resource)
             # Different DynamicUser identities share only these fixture logs.
-            for name in ("trace.jsonl", "results.jsonl", "entries.jsonl", "descendants.jsonl", "noise.jsonl"):
+            for name in ("trace.jsonl", "results.jsonl", "entries.jsonl", "descendants.jsonl", "noise.jsonl", "timings.jsonl"):
                 privileged("install", "-m", "0666", "/dev/null", str(self.resource / name))
             for name, value in (("sequence.json", 0),
                                 (hashlib.sha256(b"supplier").hexdigest() + ".json",

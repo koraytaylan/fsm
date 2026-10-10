@@ -70,7 +70,8 @@ class TreeObserverTests(unittest.TestCase):
             child=real_spawn(*args,**kwargs);children.append(child);return child
         with Scratch('labelled-ordinary-descendant') as scratch:
             args=SimpleNamespace(root=Path(scratch.path),run='labelled',resource='supplier',operation='validate',
-                release=None,wait_seconds=5,failure='none',items=2,descendant=True,noise_bytes=0)
+                release=None,wait_seconds=5,failure='none',items=2,descendant=True,noise_bytes=0,
+                observe_timing=False,fail_first=False,delay_ms=0)
             try:
                 with patch.object(module.subprocess,'Popen',side_effect=spawn):
                     self.assertEqual(module.operation(args),0)
