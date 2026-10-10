@@ -24,6 +24,20 @@ def census():
 
 
 class AccountingTests(unittest.TestCase):
+    def test_cancelled_projection_preserves_original_pending_effect_without_acknowledgement(self):
+        report=MagicMock()
+        report.equal.side_effect=lambda actual,expected,message:self.assertEqual(actual,expected,message)
+        block=InstalledBlock(report,Path('/owned-store'),MagicMock(),Path('/owned-table'),'standalone','process',0)
+        original=['inst-cancel/2/0']
+        projection=dict(status='cancelled',leaf='validating',effects_pending=list(original))
+        with patch.object(block,'call',return_value=projection):
+            self.assertEqual(block.verify_terminal('inst-cancel','cancel',original),projection)
+        for pending in ([],['inst-cancel/3/0'],original+original):
+            with patch.object(block,'call',return_value={**projection,'effects_pending':pending}):
+                with self.assertRaises(AssertionError):block.verify_terminal('inst-cancel','cancel',original)
+        with patch.object(block,'call',return_value={**projection,'effects_pending':[]}):
+            block.verify_terminal('inst-manual','manual',['inst-manual/2/0'])
+
     def test_original_process_sample_retries_transient_files_without_zero_filling(self):
         identity=dict(pid=123,pid_starttime='456')
         missing=FileNotFoundError(2,'gone','/proc/123/fd/5')

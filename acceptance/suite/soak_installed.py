@@ -165,12 +165,8 @@ class InstalledBlock:
             if extra:
                 observe_completed_cycle(completed_ledger('contention','soak-contention-right'),
                     self.resource_observations('soak-contention-right'),started,completed)
-        terminal='cancelled' if case in ('cancel','manual') else 'prerequisite_failed' if case=='deadline' else 'compensated' if case=='compensate' else 'completed'
         right=None;reopened=None
-        final=self.call('instance_get',dict(instance_id=instance))
-        self.report.equal(final['status'],'cancelled' if case in ('cancel','manual') else 'completed','the installed instance reaches its authored disposition')
-        if case not in ('cancel','manual'):self.report.equal(final['leaf'],terminal,'the installed instance reaches its authored leaf')
-        self.report.equal(final['effects_pending'],[],'completed fixture work leaves no pending effect')
+        final=self.verify_terminal(instance,case,triggered['effects_pending'])
         if extra:
             right=self.call('instance_get',dict(instance_id=extra))
             self.report.equal(right['status'],'completed','the second contending instance completes')
@@ -196,6 +192,18 @@ class InstalledBlock:
             scheduler_lag_ns=dispatched-started,control_latency_ns=control_latency,
             control=control,final=final,extra_final=right,reopened=reopened,
             original_host=before_restart,host=self.identity)
+
+    def verify_terminal(self,instance,case,original_pending):
+        final=self.call('instance_get',dict(instance_id=instance))
+        self.report.equal(final['status'],'cancelled' if case in ('cancel','manual') else 'completed','the installed instance reaches its authored disposition')
+        terminal='prerequisite_failed' if case=='deadline' else 'compensated' if case=='compensate' else 'completed'
+        if case not in ('cancel','manual'):self.report.equal(final['leaf'],terminal,'the installed instance reaches its authored leaf')
+        # SPEC execution settlement consumes interrupted ownership without an
+        # acknowledgement; cancellation preserves the original pending effect.
+        if case=='cancel':self.report.equal(len(original_pending),1,'cancellation retains one originally emitted effect')
+        self.report.equal(final['effects_pending'],original_pending if case=='cancel' else [],
+                          'the terminal projection preserves the authored pending-effect disposition')
+        return final
 
     def _interrupted(self,case,observed,records,instance):
         self.report.equal(len(observed['entries']),1,'one original handler enters interrupted work')

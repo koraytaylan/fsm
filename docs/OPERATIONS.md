@@ -47,6 +47,9 @@ fixture entries, birth identities, monotonic entry/finish times, external
 mutation order and final resource state.
 Cancelled and expired work retain their absent physical result and finish;
 original native closure and observed process death provide separate proof.
+Cancellation leaves its original effect visible in the cancelled instance;
+interrupted settlement consumes native ownership without acknowledging that
+effect or inventing an outcome event.
 The installed verifier checks each host block and the latest archived prefix;
 the installed replay must reproduce the store, and archive manifests must
 continue their retained predecessor hashes.
