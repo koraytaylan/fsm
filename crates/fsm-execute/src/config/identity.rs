@@ -123,7 +123,6 @@ pub(super) fn recover(
 }
 
 /// Bound caller-owned material before cloning the normalized contract.
-#[cfg(target_os = "linux")]
 pub(super) fn checked_material(handler: &HandlerSpec) -> Result<(String, Value), super::ExecError> {
     let refused =
         || super::ExecError::new("exec/config", "native handler input exceeds JSON bounds");
@@ -158,7 +157,7 @@ pub(super) fn checked_material(handler: &HandlerSpec) -> Result<(String, Value),
     Ok((fingerprint, material))
 }
 
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(test)]
 mod tests {
     use super::*;
 

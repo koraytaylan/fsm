@@ -195,7 +195,6 @@ pub struct HandlerSpec {
 }
 
 impl HandlerSpec {
-    #[cfg(target_os = "linux")]
     pub(crate) fn checked_contract(&self) -> Result<(String, Value), ExecError> {
         identity::checked_material(self)
     }
