@@ -164,7 +164,22 @@ fn execute(
     let directory = directory.to_path_buf();
     let worker = std::thread::Builder::new()
         .name("fsm-broker-runner".into())
-        .spawn(move || runner::execute_cancellable(&directory, allocation, &control))
+        .spawn(move || {
+            let result = runner::execute_cancellable(&directory, allocation, &control);
+            // Crash observers deliberately disconnect before cleanup returns;
+            // preserve the original refusal where the protected fixture can
+            // export it instead of losing it with the disconnected response.
+            #[cfg(test)]
+            if directory.join("crash-candidate-barrier.json").exists()
+                && let Err(error) = &result
+            {
+                let _ = super::publish_once(
+                    &directory.join(format!("crash-runner-error-{allocation}.json")),
+                    &object([("error", Value::Str(error.chars().take(1024).collect()))]),
+                );
+            }
+            result
+        })
         .map_err(io)?;
     let mut authority_error = None;
     while !worker.is_finished() {
