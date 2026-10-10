@@ -3872,6 +3872,10 @@ permanently broken; it MUST retain the initiating failure and actual output
 drainage facts rather than waiting solely for the original deadline or
 claiming delivery. A merely blocked, healthy output still uses the original
 deadline and MUST NOT be classified as broken.
+The composing owner MUST retain the actual queued protocol write or flush
+error, including its kind and message, when no earlier initiating failure was
+recorded; an output-triggered stop MUST NOT erase that error as an ordinary
+input interruption or substitute an uncertain-shutdown message.
 
 The installed process panic hook MUST permit unwind on the current owned
 stdio protocol-adapter catcher and on internally marked opt-in transport/proof

@@ -216,6 +216,9 @@ pub(in crate::mcp) fn serve_with_adapter_start<C: Clock + Send + 'static, R: Buf
         }
         std::thread::sleep(Duration::from_millis(10));
     }
+    if failure.is_none() {
+        failure = queued.take_failure();
+    }
     Ok(HostedReport {
         shutdown,
         output_drained: queued.drained(),

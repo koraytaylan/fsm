@@ -35,6 +35,7 @@ struct State {
     charged_bytes: usize,
     closed: bool,
     broken: bool,
+    failure: Option<io::Error>,
     failure_hook: Option<Box<dyn FnOnce() + Send>>,
     failure_hook_set: bool,
 }
@@ -88,7 +89,8 @@ impl ProtocolOutput {
                     let mut state = lock.lock().unwrap_or_else(|error| error.into_inner());
                     state.charged_frames -= 1;
                     state.charged_bytes -= allocation;
-                    if result.is_err() {
+                    if let Err(error) = result {
+                        state.failure = Some(error);
                         state.broken = true;
                         state.closed = true;
                         state.frames.clear();
@@ -153,6 +155,18 @@ impl ProtocolOutput {
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .broken
+    }
+
+    // Only the original composing owner consumes the actual worker error;
+    // taking it cannot clear the permanently broken output/drainage state.
+    #[cfg(target_os = "linux")]
+    pub(crate) fn take_failure(&self) -> Option<io::Error> {
+        self.0
+            .0
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .failure
+            .take()
     }
 
     // Hosted overflow is a session failure, observable by idle input/lifecycle controls.

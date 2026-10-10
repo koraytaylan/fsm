@@ -1725,6 +1725,10 @@ it preserves failed-delivery facts and the initiating error, while merely
 blocked output still shares the original deadline. This prevents a known
 failed output from consuming the final diagnostic delivery window and does
 not change native ownership proof, public Rust APIs or persistence.
+The original composing owner now retains the actual queued write/flush error
+when no earlier failure exists, so an output-triggered stop cannot hide its
+kind or message behind ordinary interrupted-input suppression; the broken and
+drained facts remain independent, with no new public signatures or formats.
 
 The installed panic hook now permits unwind only inside the hosted adapter
 thread cleanup scope, recording the failure through bounded operator output

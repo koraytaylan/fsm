@@ -106,8 +106,59 @@ fn execution_host_owned_stdio_write_failure_retires_original_writer_with_quiet_i
     assert!(report.shutdown.writer_released && report.shutdown.helpers_retired);
     assert!(report.shutdown.inventory_complete && report.shutdown.admission_closed);
     assert!(!report.output_drained);
+    let failure = report
+        .failure
+        .as_ref()
+        .expect("retain original write failure");
+    assert_eq!(failure.kind(), std::io::ErrorKind::BrokenPipe);
+    assert_eq!(failure.to_string(), "fixture transport disconnected");
     assert!(report.worker.is_none());
     assert_eq!(control.report().phase, ExecutorPhase::Stopped);
+    assert_eq!(Store::open(&scratch.0).unwrap().journal.last_seq, 1);
+}
+
+#[test]
+fn execution_host_owned_stdio_flush_failure_preserves_original_kind_and_message() {
+    struct FailedFlush;
+    impl Write for FailedFlush {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "fixture original flush timed out",
+            ))
+        }
+    }
+    let scratch = Scratch::new();
+    let driver = OwnedNativeExecutor::new(seeded(&scratch.0), HandlerTable::default()).unwrap();
+    let (mut client, server) = UnixStream::pair().unwrap();
+    let (reported, received) = std::sync::mpsc::channel();
+    let worker = std::thread::spawn(move || {
+        reported
+            .send(hosted::serve(
+                driver,
+                FixedClock::new(1000, 0),
+                move || BufReader::new(server),
+                FailedFlush,
+                std::io::sink(),
+            ))
+            .unwrap();
+    });
+    let initialize = r#"{"jsonrpc":"2.0","id":1,"method":"initialize"}"#;
+    writeln!(client, "{initialize}").unwrap();
+    let report = received.recv_timeout(Duration::from_secs(3));
+    client.shutdown(Shutdown::Write).unwrap();
+    worker.join().unwrap();
+    let report = report.unwrap().unwrap();
+    let failure = report.failure.as_ref().expect("retain actual flush error");
+    assert_eq!(failure.kind(), std::io::ErrorKind::TimedOut);
+    assert_eq!(failure.to_string(), "fixture original flush timed out");
+    assert_eq!(report.shutdown.phase, ExecutorPhase::Stopped);
+    assert!(report.shutdown.writer_released && report.shutdown.helpers_retired);
+    assert!(report.worker.is_none());
+    assert!(!report.output_drained);
     assert_eq!(Store::open(&scratch.0).unwrap().journal.last_seq, 1);
 }
 
@@ -167,6 +218,10 @@ fn execution_host_owned_stdio_blocked_output_does_not_keep_the_writer() {
         "an unreleased output fixture cannot prove delivery"
     );
     assert!(report.operator_output_drained);
+    assert!(
+        report.failure.is_none(),
+        "a healthy blocked writer is not an I/O failure"
+    );
     assert!(report.worker.is_none());
     assert_eq!(Store::open(&scratch.0).unwrap().journal.last_seq, 1);
     release.send(()).unwrap();
