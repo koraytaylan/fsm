@@ -820,6 +820,9 @@ state, acknowledgement handoffs and instance state committed by the instance
 hash, as well as the journal position, catalog and request ledger. Verified
 original claim hashes remain separately reconstructed replay context, not
 mutable snapshot authority or logical execution serialization.
+On sealed stores, first-divergence diagnosis MUST start from the authenticated
+base and compare only the live suffix; a restricted replay window MUST retain
+the full suffix for seal authentication.
 
 `Store::open_read_only` and CLI inspection MUST NOT create directories, take
 the advisory writer lock, stamp or migrate `VERSION`, or write snapshots.

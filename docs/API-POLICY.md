@@ -5,6 +5,8 @@ snapshot divergence in execution admission, ownership, acknowledgement handoffs
 or complete instance state; separately verified claim hashes remain replay
 context. This corrects agreement reporting without changing signatures, error
 codes, persisted formats, hash domains or versions.
+Sealed first-divergence diagnosis uses the authenticated base and full suffix
+for authentication even when the requested replay window ends earlier.
 
 Native owner observation now stops an exact current locally admitted cancelled
 claim even after paired polling consumed its cancellation notification; foreign

@@ -3,6 +3,8 @@
 CLI `journal replay` now detects snapshot disagreement in execution state,
 acknowledgement handoffs and complete instance hashes using the store's full
 logical comparator, with no persisted format or version changes.
+Its first-divergence diagnosis now starts sealed stores from their authenticated
+base and keeps full-suffix authentication for restricted replay windows.
 
 Paired native cancellation now acts on the exact current local claim's cancelled
 instance after polling refreshes, preserving original completion, closure and

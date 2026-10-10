@@ -291,7 +291,8 @@ fn journal_replay(ctx: &mut Ctx, args: &Args) -> u8 {
             ) {
                 Ok(s) => s,
                 Err(_) => {
-                    let div = first_divergent_view(&recs, &ctx.data_dir).unwrap_or(folded.last_seq);
+                    let div =
+                        first_divergent_view(&recs, &all, &ctx.data_dir).unwrap_or(folded.last_seq);
                     emit_success(
                         ctx,
                         &Value::Obj(BTreeMap::from([
@@ -317,7 +318,7 @@ fn journal_replay(ctx: &mut Ctx, args: &Args) -> u8 {
                 );
             }
             if !agreement {
-                let div = first_divergent_view(&recs, &ctx.data_dir)
+                let div = first_divergent_view(&recs, &all, &ctx.data_dir)
                     .unwrap_or_else(|| folded.last_seq.min(live_at.last_seq).saturating_add(1));
                 out.insert("first_divergent_seq".into(), Value::Num(div.to_string()));
             }
@@ -646,17 +647,28 @@ fn first_divergent_seq(
 
 fn first_divergent_view(
     journal: &[fsm_core::record::Record],
+    all: &[fsm_core::record::Record],
     data_dir: &std::path::Path,
 ) -> Option<u64> {
     use fsm_core::replay::{NopSink, fold_with};
+    // Authenticate with the full suffix even for a diagnostic window that
+    // ends before the seal record; archived sequences cannot diverge here.
+    let sealed = sealed_origin(data_dir, all).ok()?;
+    let first = match &sealed {
+        Some((_, base)) => base.last_seq.checked_add(1)?,
+        None => 1,
+    };
     let max = journal.last().map(|r| r.seq).unwrap_or(0);
-    for seq in 1..=max {
+    for seq in first..=max {
         let jp: Vec<_> = journal.iter().filter(|r| r.seq <= seq).cloned().collect();
-        let Ok(jf) = fold_with(jp, &mut NopSink) else {
+        let folded = match &sealed {
+            Some((_, base)) => fsm_core::replay::fold_from(base.clone(), jp, &mut NopSink),
+            None => fold_with(jp, &mut NopSink),
+        };
+        let Ok(jf) = folded else {
             return Some(seq);
         };
-        let Ok(live) = crate::snapshot::reconstruct_snapshot_plus_tail(data_dir, journal, seq)
-        else {
+        let Ok(live) = crate::snapshot::reconstruct_snapshot_plus_tail(data_dir, all, seq) else {
             return Some(seq);
         };
         if !states_agree(&jf, &live) {

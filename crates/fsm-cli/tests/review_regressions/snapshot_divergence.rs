@@ -165,6 +165,15 @@ fn journal_replay_disagrees_on_stripped_dedup_snapshot() {
 
 #[test]
 fn journal_replay_disagrees_on_execution_admission_divergent_snapshot() {
+    execution_admission_divergence(false);
+}
+
+#[test]
+fn journal_replay_reports_execution_divergence_above_the_sealed_base() {
+    execution_admission_divergence(true);
+}
+
+fn execution_admission_divergence(sealed: bool) {
     let _g = gate();
     let dir = tmp("execdiv");
     let mut store = Store::open(&dir).unwrap();
@@ -172,6 +181,10 @@ fn journal_replay_disagrees_on_execution_admission_divergent_snapshot() {
     store
         .create_instance("case_review", "i1", "c1", None)
         .unwrap();
+    if sealed {
+        store.seal_and_archive(&dir.join("archive"), None).unwrap();
+        store.annotate("i1", "above-seal", "live suffix").unwrap();
+    }
     store.shutdown_snapshot().unwrap();
     let snap_seq = store.journal.last_seq;
     drop(store);

@@ -3,6 +3,8 @@
 CLI `journal replay` compares execution admission and ownership, acknowledgement
 handoffs and complete instance state using the store's logical comparator;
 separately reconstructed original claim hashes remain verified replay context.
+On sealed stores, divergence sequences refer to the live suffix above the
+authenticated base, including when replay uses a restricted sequence window.
 
 Paired polling observes current instance cancellation when stopping an exact
 locally admitted native claim, so cancellation remains actionable after a
