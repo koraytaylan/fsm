@@ -124,5 +124,22 @@ class AccountingTests(unittest.TestCase):
              patch('acceptance.suite.soak_installed._wait_for_files',side_effect=lambda predicate,*args:predicate()):
             with self.assertRaisesRegex(ValueError,'ambiguous'):block.start()
 
+    def test_noise_observation_binds_the_closed_physical_run_and_original_birth(self):
+        report=MagicMock()
+        def equal(actual,expected,message):self.assertEqual(actual,expected,message)
+        report.equal.side_effect=equal
+        block=InstalledBlock(report,Path('/owned-store'),MagicMock(),Path('/owned-table'),'standalone','process',0)
+        original=dict(run='original-validation',operation='validate',pid=123,pid_starttime='456')
+        physical=dict(run=original['run'],pid=123,pid_starttime='456',bytes=131072,descriptor=2)
+        import hashlib
+        records=[dict(kind='execution_stopped',body=dict(instance_id='inst-noise',outcome=dict(result={
+            'stderr':'n'*4096,'stderr_sha256':hashlib.sha256(b'n'*131072).hexdigest()})))]
+        with patch('acceptance.suite.soak_installed._fixture_rows',return_value=[physical]):
+            block._noise(records,'inst-noise',dict(entries=[original]))
+        for key,value in (('run','foreign'),('pid_starttime','789'),('descriptor',1)):
+            changed={**physical,key:value}
+            with patch('acceptance.suite.soak_installed._fixture_rows',return_value=[changed]):
+                with self.assertRaises(AssertionError):block._noise(records,'inst-noise',dict(entries=[original]))
+
 
 if __name__=='__main__':unittest.main()

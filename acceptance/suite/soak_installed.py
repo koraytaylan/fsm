@@ -212,8 +212,13 @@ class InstalledBlock:
             self.report.true(process_observation(descendants[0])['alive'] is False,'deadline closure retires the original descendant')
 
     def _noise(self,records,instance,observed):
-        rows=[row for row in _fixture_rows(self.native.resource/'noise.jsonl') if row['resource']=='soak-noise']
+        original=next(row for row in observed['entries'] if row['operation']=='validate')
+        rows=[row for row in _fixture_rows(self.native.resource/'noise.jsonl') if row.get('run')==original['run']]
         self.report.equal(len(rows),1,'one original handler emits the bounded output flood')
+        self.report.equal(set(rows[0]),{'run','bytes','descriptor','pid','pid_starttime'},'physical noise retains its original closed schema')
+        for key in ('pid','pid_starttime'):
+            self.report.equal(rows[0][key],original[key],'the physical flood binds its original handler birth')
+        self.report.equal(rows[0]['descriptor'],2,'the original flood writes its declared stderr stream')
         self.report.equal(rows[0]['bytes'],131072,'the physical flood writes its entire authored byte count')
         stopped=next(row for row in records if row['kind']=='execution_stopped' and row['body'].get('instance_id')==instance)
         candidate=stopped['body']['outcome']['result']
@@ -248,7 +253,7 @@ def run_block(report,store,entries,consume):
     fixture=Path(fsm.REPO)/'acceptance/fixtures/executor_handler.py'
     workflow=fixture.with_name('executor_workflow.json')
     kind,transport=entries[0]['handler_kind'],entries[0]['transport']
-    with DisposableAuthority(fixture,resources=resource_names(),record_limit=1024) as native:
+    with DisposableAuthority(fixture,resources=resource_names(),record_limit=1024,broker_seconds=300) as native:
         inputs=block_inputs(kind,native.resource,native.handler,workflow)
         for case,machine in inputs['machines'].items():
             path=native.cache/(case+'.json');path.write_text(json.dumps(machine))

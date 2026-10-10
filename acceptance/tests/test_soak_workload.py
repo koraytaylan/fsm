@@ -302,6 +302,9 @@ class FixtureCatalogTests(unittest.TestCase):
         for maximum in (127,1025,True,None):
             with self.assertRaises(ValueError):DisposableAuthority(FIXTURE,record_limit=maximum)
         self.assertEqual(DisposableAuthority(FIXTURE,record_limit=1024).record_limit,1024)
+        self.assertEqual(DisposableAuthority(FIXTURE,broker_seconds=300).broker_seconds,300)
+        for maximum in (119,301,True,None):
+            with self.assertRaises(ValueError):DisposableAuthority(FIXTURE,broker_seconds=maximum)
         for names in ([], (), ['supplier'], ('supplier','supplier'), ('',), tuple(str(i) for i in range(33))):
             with self.assertRaises(ValueError): DisposableAuthority(FIXTURE,resources=names)
         self.assertEqual(DisposableAuthority(FIXTURE).resources, ('supplier',))

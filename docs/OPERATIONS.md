@@ -35,6 +35,8 @@ same store and retain prior archives.
 Eight shared handler definitions, including the four explicit fault variants,
 fit the unchanged 8 KiB protected catalog envelope; per-resource barriers keep
 the twelve cases independently observable.
+The block's Root broker has a five-minute upper bound for its 43 authored
+allocations; smaller existing fixtures keep their two-minute bound.
 Client reads and control requests never repair expected autonomous progress.
 Manual acknowledgements are explicit operator actions and count as manual work.
 No-progress, maximum duration/count, correctness failure, unavailable required

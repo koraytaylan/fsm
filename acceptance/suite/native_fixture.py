@@ -24,6 +24,8 @@ BROKER_OWNER = """import json,os,re,select,subprocess,sys,time
 from pathlib import Path
 namespace=sys.argv[1]
 if not re.fullmatch('[a-f0-9]{32}',namespace): raise ValueError('invalid fixture namespace')
+maximum=int(sys.argv[2]) if len(sys.argv)>2 else 120
+if not 120<=maximum<=300: raise ValueError('invalid broker lifetime bound')
 os.umask(0o077)
 directory=Path('/var/lib/fsm-containment')/namespace/'authority-1'
 stage=Path('/usr/libexec/fsm-acceptance-'+namespace)
@@ -54,7 +56,7 @@ explicit=False
 killed=False
 restarted=False
 try:
- deadline=time.monotonic()+120
+ deadline=time.monotonic()+maximum
  while time.monotonic()<deadline:
   status=child.poll()
   if status is not None and not (killed and not restarted): raise RuntimeError('owned broker exited unexpectedly')
@@ -117,7 +119,7 @@ class DisposableAuthority:
     original authority and diagnostic files on the disposable runner.
     """
 
-    def __init__(self, handler: Path, *, resources=("supplier",), record_limit=128):
+    def __init__(self, handler: Path, *, resources=("supplier",), record_limit=128, broker_seconds=120):
         if (not isinstance(resources, tuple) or not 1 <= len(resources) <= 32
             or any(not isinstance(name, str) or not 1 <= len(name) <= 256 for name in resources)
             or len(set(resources)) != len(resources)):
@@ -125,6 +127,9 @@ class DisposableAuthority:
         if type(record_limit) is not int or not 128 <= record_limit <= 1024:
             raise ValueError('fixture record inventory must be bounded between 128 and 1024')
         self.record_limit = record_limit
+        if type(broker_seconds) is not int or not 120<=broker_seconds<=300:
+            raise ValueError('fixture broker lifetime must be bounded between 120 and 300 seconds')
+        self.broker_seconds=broker_seconds
         self.resources = resources
         self.handler_source = handler.resolve()
         self.namespace = uuid.uuid4().hex
@@ -216,7 +221,7 @@ class DisposableAuthority:
 
     def _start_broker(self):
         return subprocess.Popen(
-            ["sudo", "-n", sys_executable(), "-c", BROKER_OWNER, self.namespace],
+            ["sudo", "-n", sys_executable(), "-c", BROKER_OWNER, self.namespace,str(self.broker_seconds)],
             stdin=subprocess.PIPE, stdout=self.log, stderr=subprocess.STDOUT,
             start_new_session=True, umask=0o077)
 
