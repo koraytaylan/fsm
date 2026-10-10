@@ -328,6 +328,14 @@ def executor_http_shutdown_and_restart_preserve_original_claims(report) -> None:
             installed_restart(report, kind, control, "http")
 
 
+def executor_standalone_shutdown_and_restart_preserve_original_claims(report) -> None:
+    """Original standalone abort and actual signals, without protocol triggers."""
+    from .executor_lifecycle import installed_restart
+    for kind in ("process", "mcp"):
+        for control in ("abort", "interrupt", "terminate", "kill"):
+            installed_restart(report, kind, control, "standalone")
+
+
 @contextmanager
 def _unread_http_subscription(client, uri: str):
     """A separate actual subscriber retains its body unread until retirement."""
@@ -470,18 +478,18 @@ def _installed_client(store: Path, table: Path, transport: str):
                 pipe.close()
 
 
-def _retire_http_owner(report, host, store: Path, namespace: str) -> None:
+def _retire_execution_owner(report, host, store: Path, namespace: str, frontend: str = "HTTP") -> None:
     """Request original-owner drain; ordinary signals are crash mechanisms."""
     shutdown = fsm.run_json("execute", "stop", "--mode=drain", "--timeout-ms=10000",
                             data_dir=str(store), timeout=15)
     report.note("FSM_INSTALLED_SHUTDOWN_EVIDENCE " + json.dumps(dict(
         namespace=namespace, report=shutdown), sort_keys=True))
-    report.equal(shutdown.get("phase"), "stopped", "the original HTTP execution owner confirms drain")
+    report.equal(shutdown.get("phase"), "stopped", f"the original {frontend} execution owner confirms drain")
     for field in ("admission_closed", "inventory_complete", "helpers_retired", "writer_released"):
-        report.true(shutdown.get(field) is True, f"original HTTP shutdown confirms {field}")
-    report.equal(shutdown.get("unresolved_run_ids"), [], "original HTTP shutdown leaves no unresolved local run")
-    report.equal(shutdown.get("unclaimed_reservations"), 0, "original HTTP shutdown leaves no preparation reservation")
-    report.true(shutdown.get("timed_out") is False, "original HTTP shutdown completes inside its first deadline")
+        report.true(shutdown.get(field) is True, f"original {frontend} shutdown confirms {field}")
+    report.equal(shutdown.get("unresolved_run_ids"), [], f"original {frontend} shutdown leaves no unresolved local run")
+    report.equal(shutdown.get("unclaimed_reservations"), 0, f"original {frontend} shutdown leaves no preparation reservation")
+    report.true(shutdown.get("timed_out") is False, f"original {frontend} shutdown completes inside its first deadline")
     host.wait(timeout=15)
 
 
@@ -645,7 +653,7 @@ def _installed_workflow(report, transport: str, kind: str, outcome: str, *,
                     clients.close()
                 report.true(client.delete_session() in (200, 204), "HTTP session deletion succeeds")
                 report.true(host.poll() is None, "deleting an HTTP session leaves the shared execution host alive")
-                _retire_http_owner(report, host, store, native.namespace)
+                _retire_execution_owner(report, host, store, native.namespace)
         report.equal(host.returncode, 0, "stdio EOF or explicit HTTP owner drain completes supervised host retirement")
     report.true(native.cleaned, "original domain closures permit owned fixture cleanup")
 
@@ -658,7 +666,8 @@ SCENARIOS = (executor_contract_fixtures_are_checked_without_external_work,
              executor_transport_read_only_and_degraded_hosts_refuse_execution,
              executor_http_unread_and_disconnected_sessions_do_not_stop_active_work,
              executor_stdio_shutdown_and_restart_preserve_original_claims,
-             executor_http_shutdown_and_restart_preserve_original_claims)
+             executor_http_shutdown_and_restart_preserve_original_claims,
+             executor_standalone_shutdown_and_restart_preserve_original_claims)
 
 
 def _name(value) -> bool:

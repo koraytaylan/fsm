@@ -26,7 +26,8 @@ SCENARIOS = ("executor_stdio_process_success_progresses_with_a_quiet_client",
              "executor_transport_read_only_and_degraded_hosts_refuse_execution",
              "executor_http_unread_and_disconnected_sessions_do_not_stop_active_work",
              "executor_stdio_shutdown_and_restart_preserve_original_claims",
-             "executor_http_shutdown_and_restart_preserve_original_claims")
+             "executor_http_shutdown_and_restart_preserve_original_claims",
+             "executor_standalone_shutdown_and_restart_preserve_original_claims")
 
 
 def main() -> int:
@@ -35,7 +36,7 @@ def main() -> int:
     parser.add_argument("--scenario", choices=SCENARIOS, default=SCENARIOS[0])
     arguments = parser.parse_args()
     scenario = arguments.scenario
-    cells = (1, 8, 16, 4, 8, 4, 10, 8)[SCENARIOS.index(scenario)]
+    cells = (1, 8, 16, 4, 8, 4, 10, 8, 8)[SCENARIOS.index(scenario)]
     require_disposable_runner()
     if not re.fullmatch(r"[a-f0-9]{40}", arguments.candidate):
         parser.error("an immutable candidate commit is required")

@@ -21,7 +21,7 @@ from acceptance.suite.evidence import source_files
 from acceptance.suite.executor_scenarios import (observe_trace, workflow_table,
                                                read_journal_prefix, observe_success_journal,
                                                observe_workflow_journal, _installed_client,
-                                               _retire_http_owner, _unread_http_subscription)
+                                               _retire_execution_owner, _unread_http_subscription)
 from acceptance.suite.fsm import task_cache, Scratch, BoundedCapture, Serving, CliError
 from acceptance.suite.mcp import (StdioClient, HttpClient, FrameReader, McpError,
                                  MAX_FRAME, MAX_QUEUED_FRAMES)
@@ -527,7 +527,7 @@ for line in sys.stdin:
                        unclaimed_reservations=0, timed_out=False)
         host = Mock()
         with patch("acceptance.suite.executor_scenarios.fsm.run_json", return_value=stopped) as command:
-            _retire_http_owner(Report("labelled-control-stub"), host, Path("fixture-store"), "namespace")
+            _retire_execution_owner(Report("labelled-control-stub"), host, Path("fixture-store"), "namespace")
             self.assertEqual(command.call_args.args,
                              ("execute", "stop", "--mode=drain", "--timeout-ms=10000"))
             host.wait.assert_called_once_with(timeout=15)
@@ -537,7 +537,7 @@ for line in sys.stdin:
                 with patch("acceptance.suite.executor_scenarios.fsm.run_json",
                            return_value={**stopped, field: unconfirmed}):
                     with self.assertRaises(AssertionError):
-                        _retire_http_owner(Report("labelled-uncertain-stub"), host, Path("fixture-store"), "namespace")
+                        _retire_execution_owner(Report("labelled-uncertain-stub"), host, Path("fixture-store"), "namespace")
                     host.wait.assert_not_called()
 
     def test_transport_launch_respects_stdio_only_poll_option(self):
