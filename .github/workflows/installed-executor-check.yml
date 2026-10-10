@@ -33,6 +33,7 @@ on:
           - executor_helper_closed_cut_recovers_without_publishing_an_original_result
           - executor_helper_hardware_cut_matrix_recovers_original_claims
           - executor_original_descendants_and_noisy_pipes_close_before_replacement
+          - executor_original_timeouts_close_retained_pipes_before_replacement
           - full
 
 permissions:
@@ -62,7 +63,7 @@ jobs:
       - name: Focused independent observer checks
         run: python3 -m unittest discover -s acceptance/tests -p 'test*observer.py'
       - name: Install the external hardware observer
-        if: ${{ contains(inputs.scenario, 'cut') || contains(inputs.scenario, 'descendants') || inputs.scenario == 'full' }}
+        if: ${{ contains(inputs.scenario, 'cut') || contains(inputs.scenario, 'descendants') || contains(inputs.scenario, 'timeouts') || inputs.scenario == 'full' }}
         run: |
           sudo -n env "TMPDIR=$TMPDIR" apt-get update
           sudo -n env "TMPDIR=$TMPDIR" apt-get install -y --no-install-recommends gdb binutils

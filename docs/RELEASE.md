@@ -972,6 +972,13 @@ original descendant before releasing fresh validation on all three hosts.
 Original/final descendant and output-write logs retain their bytes separately
 from native closure records, and every observed descendant must be dead before
 the successor owner confirms its final drain.
+The installed timeout matrix observes the original deadline predicate's
+hardware entry, then its stack-derived same-thread return with a true boolean
+and the runner's exact pre-fence call; original ELF call bytes must target those
+unchanged functions, excluding error/Drop cleanup as timeout evidence.
+An original still-live parent and inherited-pipe descendant must both die under
+claim-bound native closure before fresh validation is released; the raw
+interrupted start remains in the fixture trace without an invented end/result.
 
 `acceptance/` builds an image with `cargo install --path crates/fsm-cli
 --locked`, the same command a consumer runs, and drives that binary from a

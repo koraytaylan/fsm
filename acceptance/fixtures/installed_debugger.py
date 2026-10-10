@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import shlex
 import stat
+import struct
 import subprocess
 import time
 
@@ -17,6 +18,9 @@ import gdb
 
 CUT = os.environ.get('FSM_DEBUGGER_CUT', 'claimed-before-binding')
 AUTHORITY_SYMBOLS = {
+    'deadline-predicate-entry': 'fsm_containment_authority::authority::runner::process_exit::handler_deadline_expired',
+    'deadline-expired-return': 'fsm_containment_authority::authority::runner::process_exit::handler_deadline_expired',
+    'timeout-before-fence': 'fsm_containment_authority::authority::stop::fence',
     'spawn-before-submission': 'fsm_containment_authority::authority::launch::begin',
     'authorization-before-grant': 'fsm_containment_authority::authority::authorize::publish_enrolled',
     'candidate-before-fence': 'fsm_containment_authority::authority::runner::observed_candidate',
@@ -30,7 +34,7 @@ SYMBOL = AUTHORITY_SYMBOLS[CUT] if ROOT_CUT else 'fsm_execute::run::pipeline::Pi
 DEMANGLED = (SYMBOL,) if ROOT_CUT else (SYMBOL, '<fsm_execute::run::pipeline::Pipeline>::' + METHODS[CUT])
 
 
-def resolve_symbol(binary):
+def resolve_symbol(binary, names=DEMANGLED):
     outputs = []
     for arguments in (['-C'], []):
         result = subprocess.run(['nm', '--defined-only', *arguments, str(binary)],
@@ -39,7 +43,7 @@ def resolve_symbol(binary):
             raise ValueError('original installed symbol inventory exceeds its bound')
         outputs.append(result.stdout.splitlines())
     matches = [row.split(maxsplit=2) for row in outputs[0]
-        if len(row.split(maxsplit=2)) == 3 and row.split(maxsplit=2)[2] in DEMANGLED]
+        if len(row.split(maxsplit=2)) == 3 and row.split(maxsplit=2)[2] in names]
     if len(matches) != 1 or matches[0][1] not in ('t', 'T'):
         raise ValueError('the exact installed pre-binding symbol is missing or ambiguous')
     offset, kind, demangled = matches[0]
@@ -104,20 +108,57 @@ def code_observations(inferior, binary):
     return observations
 
 
-def stopped_observation(inferior, breakpoint, stops, expected, binary, binary_hash, symbol, cut, diagnostic):
+def stopped_observation(inferior, breakpoint, stops, expected, binary, binary_hash, symbol, cut, diagnostic, max_hits=1):
     locations = breakpoint.locations
     threads = inferior.threads()
     if (stops != expected or breakpoint.type != gdb.BP_HARDWARE_BREAKPOINT
-        or breakpoint.hit_count != 1 or len(locations) != 1
+        or not 1 <= breakpoint.hit_count <= max_hits or len(locations) != 1
         or not threads or len(threads) > 256 or not all(thread.is_stopped() for thread in threads)
         or gdb.selected_frame().pc() != locations[0].address):
         raise ValueError('the exact original hardware breakpoint did not stop every thread')
     return dict(schema='fsm.installed-hardware-cut/1', cut=cut,
-        symbol=SYMBOL, breakpoint_type='hardware', breakpoint_hits=1,
+        symbol=AUTHORITY_SYMBOLS.get(cut, SYMBOL), breakpoint_type='hardware', breakpoint_hits=breakpoint.hit_count,
         pc=gdb.selected_frame().pc(), breakpoint_address=locations[0].address,
         original=identity(inferior.pid), all_threads_stopped=True, threads=len(threads),
         binary_sha256=binary_hash, mapped_code=code_observations(inferior, binary),
         debugger_version=gdb.VERSION, startup_diagnostic=diagnostic, **symbol)
+
+
+def caller_observation(inferior, binary, ready, callee):
+    frame = gdb.selected_frame()
+    if frame.architecture().name() != 'i386:x86-64' or frame.older() is None:
+        raise ValueError('timeout observation requires the original x86-64 call frame')
+    stack = int(frame.read_register('rsp'))
+    address = int.from_bytes(bytes(inferior.read_memory(stack, 8)), 'little')
+    if frame.older().pc() != address:
+        raise ValueError('timeout call has no original stack-derived return address')
+    caller = resolve_symbol(binary, ('fsm_containment_authority::authority::runner::execute_cancellable',))
+    inventory = subprocess.run(['nm','-S','--defined-only',str(binary)],capture_output=True,text=True,check=True,timeout=10)
+    rows = [row.split() for row in inventory.stdout.splitlines() if row.split()[-1:] == [caller['raw_symbol']]]
+    if len(inventory.stdout.encode()) > 16_777_216 or len(rows) != 1 or len(rows[0]) != 4:
+        raise ValueError('timeout caller lacks its unique original function range')
+    caller['symbol_size'] = int(rows[0][1], 16)
+    mapped = [row for row in ready['mapped_code'] if row['begin'] <= address - 5 < address <= row['end']]
+    if len(mapped) != 1:
+        raise ValueError('timeout caller is outside the original executable')
+    file_offset = mapped[0]['file_offset'] + address - mapped[0]['begin']
+    with binary.open('rb') as stream:
+        header = stream.read(64)
+        if header[:6] != b'\x7fELF\x02\x01':raise ValueError('timeout requires the original x86-64 ELF')
+        offset = struct.unpack_from('<Q',header,32)[0];stride,count = struct.unpack_from('<HH',header,54)
+        if stride != 56 or not 0 < count <= 64:raise ValueError('timeout ELF segment inventory is invalid')
+        stream.seek(offset);segments = [struct.unpack('<IIQQQQQQ',stream.read(stride)) for _ in range(count)]
+        stream.seek(file_offset - 5);instruction = stream.read(5)
+    segments = [row for row in segments if row[0] == 1 and row[1] & 1 and row[2] <= file_offset - 5 < file_offset <= row[2]+row[5]]
+    if len(segments) != 1:raise ValueError('timeout caller has no original executable ELF segment')
+    virtual = segments[0][3] + file_offset - segments[0][2]
+    if (instruction[:1] != b'\xe8' or bytes(inferior.read_memory(address - 5,5)) != instruction
+        or virtual + int.from_bytes(instruction[1:],'little',signed=True) != callee['symbol_offset']
+        or not caller['symbol_offset'] < virtual <= caller['symbol_offset'] + caller['symbol_size']):
+        raise ValueError('timeout fence came from Drop/error cleanup rather than the exact original runner call')
+    return dict(entry_stack_pointer=stack,stack_return_address=address,caller_pc=address,
+        return_virtual_address=virtual,call_bytes=instruction.hex(),caller=caller,
+        thread=gdb.selected_thread().global_num)
 
 
 def main():
@@ -160,7 +201,9 @@ def main():
         gdb.execute('set args ' + arguments + ' ' + ' '.join(redirects), to_string=True)
     elif transport not in ('standalone', 'http'):
         raise ValueError('unknown installed hardware-observer transport')
-    symbol = resolve_symbol(binary)
+    initial_cut = 'deadline-predicate-entry' if CUT == 'timeout-before-fence' else CUT
+    initial_names = (AUTHORITY_SYMBOLS[initial_cut],) if initial_cut in AUTHORITY_SYMBOLS else DEMANGLED
+    symbol = resolve_symbol(binary, initial_names)
     breakpoint = gdb.Breakpoint("*'" + symbol['raw_symbol'] + "'", type=gdb.BP_HARDWARE_BREAKPOINT)
     if breakpoint.pending or breakpoint.type != gdb.BP_HARDWARE_BREAKPOINT or len(breakpoint.locations) != 1:
         raise ValueError('a missing or pending hardware cut cannot launch the original executable')
@@ -176,9 +219,36 @@ def main():
             publish(directory, 'stdio-launch', dict(binary_sha256=original_hash, transport=transport))
         startup = gdb.execute('run', to_string=True)
         inferior = gdb.selected_inferior()
-        first_cut = 'acked-before-event' if CUT == 'event-after-advance' else CUT
+        first_cut = 'acked-before-event' if CUT == 'event-after-advance' else initial_cut
         ready = stopped_observation(inferior, breakpoint, stops, [True], binary,
             original_hash, symbol, first_cut, startup)
+        if CUT == 'timeout-before-fence':
+            entry = ready
+            provenance = caller_observation(inferior,binary,entry,symbol)
+            breakpoint.enabled = False
+            breakpoint = gdb.Breakpoint('*'+hex(provenance['stack_return_address']),type=gdb.BP_HARDWARE_BREAKPOINT)
+            condition = '$al == 1 && $rsp == '+str(provenance['entry_stack_pointer']+8)
+            breakpoint.condition = condition
+            continuation = gdb.execute('continue',to_string=True)
+            expired = stopped_observation(inferior,breakpoint,stops,[True,True],binary,
+                original_hash,symbol,'deadline-expired-return',continuation,2048)
+            returned_stack = int(gdb.selected_frame().read_register('rsp'))
+            returned_thread = gdb.selected_thread().global_num
+            result = int(gdb.selected_frame().read_register('rax')) & 255
+            if returned_stack != provenance['entry_stack_pointer']+8 or returned_thread != provenance['thread'] or result != 1:
+                raise ValueError('the original deadline predicate did not actually return true on its original call stack')
+            expired.update(position='conditional-return',predicate_result=result,condition=condition,
+                return_stack_pointer=returned_stack,return_thread=returned_thread)
+            breakpoint.enabled = False
+            symbol = resolve_symbol(binary)
+            breakpoint = gdb.Breakpoint("*'"+symbol['raw_symbol']+"'",type=gdb.BP_HARDWARE_BREAKPOINT)
+            continuation = gdb.execute('continue',to_string=True)
+            ready = stopped_observation(inferior,breakpoint,stops,[True,True,True],binary,
+                original_hash,symbol,CUT,continuation)
+            fence = caller_observation(inferior,binary,ready,symbol)
+            if fence['thread'] != provenance['thread']:
+                raise ValueError('the original expired runner did not reach its own exact fence call')
+            ready['timeout_path'] = dict(entry=entry,expired=expired,deadline_call=provenance,fence_call=fence)
         if CUT == 'event-after-advance':
             entry = ready
             frame = gdb.selected_frame()

@@ -66,7 +66,7 @@ class ConsumerRetentionTests(unittest.TestCase):
                 diagnostic.write_text('Labelled report stub; no native execution.\n')
                 report.report['artifacts'].append(dict(path=diagnostic.name,sha256=digest(diagnostic)))
                 report.finish()
-                for index in range(143):
+                for index in range(149):
                     fixture=cache/f'installed-native-{index}';fixture.mkdir()
                     (fixture/'retirement.json').write_text('{"cleaned":true}')
                 return SimpleNamespace(returncode=0)
@@ -99,4 +99,4 @@ class ConsumerRetentionTests(unittest.TestCase):
     def test_valid_stub_receipt_and_original_copy_can_finish_the_producer(self):
         result,control,invoked=self.invoke()
         self.assertEqual(result,0);self.assertTrue(control['passed']);self.assertEqual(invoked,1)
-        self.assertEqual(control['cells'],143);self.assertFalse(control['complete_matrix'])
+        self.assertEqual(control['cells'],149);self.assertFalse(control['complete_matrix'])

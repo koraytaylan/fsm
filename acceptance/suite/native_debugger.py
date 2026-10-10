@@ -17,6 +17,8 @@ from .native_fixture import AUTHORITY, DisposableAuthority, privileged, require_
 
 CUT = 'closed-before-result-publication'
 CUTS = ('spawn-before-submission', 'authorization-before-grant', 'candidate-before-fence', CUT)
+TIMEOUT_CUT = 'timeout-before-fence'
+SUPPORTED_CUTS = (*CUTS,TIMEOUT_CUT)
 
 
 def helper_digest():
@@ -105,7 +107,7 @@ def validate_restart(dead_record: dict, restarted_record: dict, namespace: str, 
 
 class DebuggedAuthority(DisposableAuthority):
     def __init__(self, handler, cut=CUT):
-        if cut not in CUTS:
+        if cut not in SUPPORTED_CUTS:
             raise ValueError('unknown installed Root helper hardware cut')
         super().__init__(handler)
         self.cut = cut

@@ -801,6 +801,16 @@ def executor_original_descendants_and_noisy_pipes_close_before_replacement(repor
 SCENARIOS += (executor_original_descendants_and_noisy_pipes_close_before_replacement,)
 
 
+def executor_original_timeouts_close_retained_pipes_before_replacement(report) -> None:
+    from .executor_helper_cut import installed_helper_cut
+    for transport in ('standalone','stdio','http'):
+        for kind in ('process','mcp'):
+            installed_helper_cut(report,kind,transport,'timeout-before-fence','timeout-retained-pipes')
+
+
+SCENARIOS += (executor_original_timeouts_close_retained_pipes_before_replacement,)
+
+
 def _name(value) -> bool:
     return isinstance(value, str) and 0 < len(value) <= MAX_TRACE_TEXT
 

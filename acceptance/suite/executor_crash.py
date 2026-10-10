@@ -21,6 +21,9 @@ from .native_fixture import DisposableAuthority, privileged, require_disposable_
 
 SYMBOL = 'fsm_execute::run::pipeline::Pipeline::start_native'
 CUT_SYMBOLS = {'claimed-before-binding': SYMBOL,
+    'deadline-predicate-entry': 'fsm_containment_authority::authority::runner::process_exit::handler_deadline_expired',
+    'deadline-expired-return': 'fsm_containment_authority::authority::runner::process_exit::handler_deadline_expired',
+    'timeout-before-fence': 'fsm_containment_authority::authority::stop::fence',
     'stopped-before-settlement': 'fsm_execute::run::pipeline::Pipeline::settle_native_stopped',
     'acked-before-event': 'fsm_execute::run::pipeline::Pipeline::deliver_native_handoff',
     'event-after-advance': 'fsm_execute::run::pipeline::Pipeline::deliver_native_handoff',
@@ -44,7 +47,8 @@ def validate_cut(value: dict, binary_hash: str, cut: str = 'claimed-before-bindi
         or value.get('demangled_symbol') not in (symbol, display)
         or type(value.get('symbol_offset')) is not int or value['symbol_offset'] <= 0
         or value.get('breakpoint_type') != 'hardware'
-        or type(value.get('breakpoint_hits')) is not int or value['breakpoint_hits'] != 1
+        or type(value.get('breakpoint_hits')) is not int
+        or not 1 <= value['breakpoint_hits'] <= (2048 if cut == 'deadline-expired-return' else 1)
         or type(value.get('pc')) is not int or value['pc'] <= 0
         or value.get('breakpoint_address') != value['pc']
         or value.get('all_threads_stopped') is not True
@@ -81,8 +85,14 @@ def validate_cut(value: dict, binary_hash: str, cut: str = 'claimed-before-bindi
             or entry['original'] != original or entry['mapped_code'] != maps
             or any(entry.get(key) != value.get(key) for key in ('raw_symbol', 'demangled_symbol', 'symbol_offset'))):
             raise ValueError('original event cut is not the same unchanged hardware-observed call return')
+    elif cut == 'deadline-expired-return':
+        if value.get('position') != 'conditional-return':
+            raise ValueError('the original deadline predicate lacks its actual conditioned return')
     elif value.get('position', 'entry') != 'entry':
         raise ValueError('this original cut requires the exact hardware function entry')
+    if cut == 'timeout-before-fence':
+        from .executor_timeout import validate_timeout
+        validate_timeout(value, binary_hash)
     return value
 
 

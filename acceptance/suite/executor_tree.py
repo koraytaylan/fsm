@@ -46,21 +46,24 @@ def tree_rows(root, parents):
     return children, noise
 
 
-def original_tree(report, native, parents):
+def original_tree(report, native, parents, profile='root-exit-retained-pipes'):
     children, noise = tree_rows(native.resource, parents)
     if len(parents) != 1 or len(children) != 1:
         raise ValueError('the original exact tree boundary requires one original validation')
     original = parents[0]; child = children[0]
-    _wait_for_files(lambda: not process_observation(original)['alive'], native.process, 5)
+    expired = profile == 'timeout-retained-pipes'
+    if not expired:
+        _wait_for_files(lambda: not process_observation(original)['alive'], native.process, 5)
     dead = process_observation(original); live = process_observation(child)
-    report.true(dead['alive'] is False and live['alive'] is True,
-        'the original descendant really outlives its exited process/MCP handler at the exact pre-fence cut')
+    report.true(dead['alive'] is expired and live['alive'] is True,
+        'the original parent/descendant liveness matches the exact expired or exited pre-fence cut')
     expected = 'fsm-containment-' + native.namespace + '-1-1.service'
     report.true(child['cgroup'].strip().split('/')[-1] == expected,
         'the inherited-pipe descendant occupies the exact original claimed native domain')
     report.equal(noise[0]['bytes'], NOISE_BYTES,
         'the original handler writes a complete bounded output flood before its genuine result')
-    return dict(original_children=children,original_noise=noise,parent_dead=dead,child_before=live)
+    return dict(original_children=children,original_noise=noise,parent_dead=None if expired else dead,
+        parent_observation=dead,original_parent_exited=not expired,child_before=live)
 
 
 def tree_before_successor(report, native, parents, proof):

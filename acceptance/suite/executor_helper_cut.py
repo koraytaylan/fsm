@@ -10,10 +10,10 @@ import stat
 from . import fsm
 from .evidence import digest
 from .executor_crash import claim_prefix
-from .executor_lifecycle import _restart_host, interruption_ledger, MUTATIONS, process_observation
+from .executor_lifecycle import _restart_host, interruption_ledger, interrupted_trace, MUTATIONS, process_observation
 from .executor_scenarios import (_fixture_rows, _wait_for_files, read_journal_prefix,
     workflow_table, observe_trace, _retire_execution_owner)
-from .native_debugger import CUT, CUTS, DebuggedAuthority, validate_restart
+from .native_debugger import CUT, CUTS, SUPPORTED_CUTS, TIMEOUT_CUT, DebuggedAuthority, validate_restart
 from .native_fixture import privileged
 
 
@@ -42,12 +42,12 @@ def closed_prefix(records, instance, binding, closed, receipt):
 
 
 def phase_prefix(records, instance, cut, material, expected_argv):
-    if cut not in CUTS:
+    if cut not in SUPPORTED_CUTS:
         raise ValueError('unknown original helper boundary')
     claim = bound_prefix(records, instance, material['binding'])
     binding = material['binding']; domain = claim['body']['domain']
     completed = cut in ('candidate-before-fence', CUT)
-    expected_trace = ['start', 'end'] if completed else []
+    expected_trace = ['start'] if cut == TIMEOUT_CUT else ['start', 'end'] if completed else []
     trace = material['trace']; results = material['results']
     if ([row.get('kind') for row in trace] != expected_trace
         or len(results) != int(completed)
@@ -77,7 +77,7 @@ def phase_prefix(records, instance, cut, material, expected_argv):
         or not isinstance(gate['invocation_id'], str) or not re.fullmatch('[a-f0-9]{32}', gate['invocation_id'])):
         raise ValueError('the protected original isolated gate identity differs')
     expected_entry = dict(format='fsm.native-entry/1', claim=binding['claim'],
-        journal_claim=binding['journal_claim'], argv=expected_argv) if cut == 'candidate-before-fence' else None
+        journal_claim=binding['journal_claim'], argv=expected_argv) if cut in ('candidate-before-fence',TIMEOUT_CUT) else None
     if material['entry'] != expected_entry:
         raise ValueError('original entry authorization differs from the precise helper phase')
     return claim
@@ -114,9 +114,11 @@ def installed_helper_closed_cut(report, kind, transport):
 
 
 def installed_helper_cut(report, kind, transport, cut, profile=None):
-    if kind not in ('process', 'mcp') or transport not in ('standalone', 'stdio', 'http') or cut not in CUTS:
+    if kind not in ('process', 'mcp') or transport not in ('standalone', 'stdio', 'http') or cut not in SUPPORTED_CUTS:
         raise ValueError('unsupported installed helper hardware cell')
-    if profile not in (None, 'root-exit-retained-pipes') or (profile is not None and cut != 'candidate-before-fence'):
+    if (profile not in (None, 'root-exit-retained-pipes','timeout-retained-pipes')
+        or (profile == 'root-exit-retained-pipes' and cut != 'candidate-before-fence')
+        or (profile == 'timeout-retained-pipes') != (cut == TIMEOUT_CUT)):
         raise ValueError('unsupported original helper tree boundary')
     fixture = Path(fsm.REPO) / 'acceptance/fixtures/executor_handler.py'
     machine = Path(fsm.REPO) / 'acceptance/fixtures/executor_workflow.json'
@@ -126,11 +128,12 @@ def installed_helper_cut(report, kind, transport, cut, profile=None):
         table = workflow_table(native.resource, native.handler, kind=kind, outcome='success', release=native.release)
         validation = table['handlers'][0]
         validation['argv'][validation['argv'].index('--wait-seconds') + 1] = '60'
-        validation['timeout_ms'] = 70_000
+        validation['timeout_ms'] = 4000 if cut == TIMEOUT_CUT else 70_000
         if profile is not None:
             validation['argv'].extend(['--descendant','--noise-bytes','131072'])
         expected_argv = [argument.replace('{resource}', 'supplier') for argument in validation['argv']]
-        native.release.write_text('original validation may complete\n')
+        if cut != TIMEOUT_CUT:
+            native.release.write_text('original validation may complete\n')
         table_path = native.approve(store, table)
         instance = fsm.run_json('instance', 'new', 'acceptance_workflow',
             '--request-id=helper-cut-create', data_dir=str(store))['instance_id']
@@ -167,7 +170,7 @@ def installed_helper_cut(report, kind, transport, cut, profile=None):
             tree = None
             if profile is not None:
                 from .executor_tree import original_tree
-                tree = original_tree(report,native,originals)
+                tree = original_tree(report,native,originals,profile)
             report.equal(native_record(native, 'counter.json')['last_allocation'], 1,
                 'only the original native domain exists at the exact helper boundary')
             paths = [native.directory / name for name in ('result-1-1.json', 'completed-1-1.json',
@@ -175,7 +178,8 @@ def installed_helper_cut(report, kind, transport, cut, profile=None):
             report.true(all(not path.exists() for path in paths),
                 'the hardware cut precedes every original result and completed-response publication')
             report.true(host.poll() is None, 'the original execution host is alive independently of the stopped helper')
-            native.release.unlink()
+            if native.release.exists():
+                native.release.unlink()
             host.kill(); host.wait(timeout=15)
             report.equal(host.returncode, -signal.SIGKILL, 'the original owned host is independently killed and reaped')
             report.true(process_observation(ready['original'])['alive'] is True,
@@ -226,7 +230,9 @@ def installed_helper_cut(report, kind, transport, cut, profile=None):
             report.equal(results[:len(original_results)], original_results, 'recovery preserves genuine original fixture results')
             report.equal(interruption_ledger(records, instance, 1), (),
                 'receipt-only interruption preserves the attempt and permits exactly one successor validation')
-            report.equal(observe_trace(trace, {'supplier': MUTATIONS}, complete=True).violations, (),
+            observed_trace = (interrupted_trace(trace,originals[0]['run'],dict(before=before[0],after=after[0]))
+                if cut == TIMEOUT_CUT else observe_trace(trace, {'supplier': MUTATIONS}, complete=True).violations)
+            report.equal(observed_trace, (),
                 'all original and successor work remains sequential with exactly the required mutations')
             report.equal([row['exit_code'] for row in results], [0] * result_count, 'every reported outcome comes from a genuine operation')
             report.equal(entry_log_identity(native.resource), entry_identity,
@@ -235,7 +241,7 @@ def installed_helper_cut(report, kind, transport, cut, profile=None):
             if tree is not None:
                 from .executor_tree import final_tree
                 final_tree(report,native,final_entries,tree)
-            report.equal([row['run'] for row in final_entries], [row['run'] for row in results],
+            report.equal([row['run'] for row in (final_entries[1:] if cut == TIMEOUT_CUT else final_entries)], [row['run'] for row in results],
                 'every genuine outcome has exactly its original physical entry identity')
             shutil.copyfile(native.resource / 'entries.jsonl', native.cache / 'fixture-entries-final.jsonl')
             report.true(all(not path.exists() for path in paths),
