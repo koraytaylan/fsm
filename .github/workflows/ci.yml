@@ -208,6 +208,7 @@ jobs:
           python3 -m unittest discover -s crates/fsm-execute/tests/lifecycle_platform -p 'test_crash_*.py'
           python3 -m unittest discover -s crates/fsm-execute/tests/lifecycle_platform -p 'test_authority_*.py'
           python3 -m unittest discover -s crates/fsm-execute/tests/lifecycle_platform -p 'test_cli_artifact.py'
+          python3 -m unittest discover -s crates/fsm-execute/tests/lifecycle_platform -p 'test_workflow_*.py'
           python3 -m unittest discover -s crates/fsm-execute/tests/lifecycle_platform -p 'test_completion_*.py'
           python3 -m unittest discover -s crates/fsm-execute/tests/lifecycle_platform -p 'test_scheduling_*.py'
           python3 -m unittest discover -s crates/fsm-execute/tests/lifecycle_platform -p 'test_contract_admission_evidence.py'
@@ -297,7 +298,8 @@ jobs:
         if: ${{ !inputs.completion_owner_only && !inputs.scheduling_owner_only && !inputs.contract_admission_only }}
         run: |
           git fetch --depth=1 origin 5730f17202cdeabd8c34f9b1c48fcf02f26b0e06
-          git worktree add --detach "$FSM_NATIVE_CACHE/upgrade-source" 5730f17202cdeabd8c34f9b1c48fcf02f26b0e06
+          mkdir "$FSM_NATIVE_CACHE/upgrade-source"
+          git archive 5730f17202cdeabd8c34f9b1c48fcf02f26b0e06 | tar -x -C "$FSM_NATIVE_CACHE/upgrade-source"
           python3 crates/fsm-execute/tests/lifecycle_platform/workflow_probe.py --toolchain '${{ matrix.rust }}' --upgrade-source "$FSM_NATIVE_CACHE/upgrade-source" --report "$FSM_NATIVE_CACHE/native-evidence/upgrade.json"
       - name: Retain exact native evidence, including failures
         if: ${{ always() && steps.native_matrix.outcome != 'skipped' }}

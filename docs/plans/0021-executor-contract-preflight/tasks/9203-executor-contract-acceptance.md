@@ -24,6 +24,8 @@ touches:
   - crates/fsm-execute/tests/lifecycle_platform/cli_artifact.py
   - crates/fsm-execute/tests/lifecycle_platform/test_cli_artifact.py
   - crates/fsm-execute/tests/lifecycle_platform/workflow_probe.py
+  - crates/fsm-execute/tests/lifecycle_platform/workflow_upgrade_source.py
+  - crates/fsm-execute/tests/lifecycle_platform/test_workflow_upgrade_source.py
   - crates/fsm-execute/tests/lifecycle_platform/test_workflow_producer.py
   - examples/
   - README.md

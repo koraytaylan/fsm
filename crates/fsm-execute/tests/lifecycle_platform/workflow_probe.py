@@ -10,6 +10,7 @@ import sys
 import authority_probe as authority
 from cli_artifact import build_cli, build_contract_mcp_test, build_workflow_handler
 import workflow_failure_export
+import workflow_upgrade_source
 
 CASES = (
     ('native_draft_repair_execution', 1),
@@ -92,9 +93,7 @@ def main():
     original = None
     if args.upgrade_source:
         baseline = args.upgrade_source.resolve()
-        baseline_commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=baseline, text=True).strip()
-        assert baseline_commit == '5730f17202cdeabd8c34f9b1c48fcf02f26b0e06'
-        assert not subprocess.check_output(['git', 'status', '--porcelain'], cwd=baseline)
+        baseline_commit = workflow_upgrade_source.verify(repo, baseline)
         target = os.environ.get('CARGO_TARGET_DIR')
         strip = os.environ.get('CARGO_PROFILE_DEV_STRIP')
         os.environ['CARGO_PROFILE_DEV_STRIP'] = 'debuginfo'
@@ -213,8 +212,7 @@ def main():
             entries=upgrade_transcripts if original else transcripts), indent=2) + '\n')
         report['transcripts_sha256'] = digest(transcript_path)
         if original:
-            assert subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=baseline, text=True).strip() == baseline_commit
-            assert not subprocess.check_output(['git', 'status', '--porcelain'], cwd=baseline)
+            assert workflow_upgrade_source.verify(repo, baseline) == baseline_commit
         assert subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=repo, text=True).strip() == commit
         assert not subprocess.check_output(['git', 'status', '--porcelain', '--untracked-files=no'], cwd=repo)
     except BaseException as error:
