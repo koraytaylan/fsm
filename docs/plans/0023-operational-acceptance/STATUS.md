@@ -157,6 +157,27 @@ failures remain failed in the task-cache ledger.
 Filtered proof remains release-ineligible, with frozen author review digest
 `a225ceb8ca8bf1fa6feb29a66a97d84aece5953c2e8c7c93faced507c72bb880`.
 
+Frozen supervisor-death acceptance at `01d79050f6edfbadce2f3e8f49df8774e2eeec0a`
+establishes six stdio/HTTP/standalone process/MCP cells with 242 passing assertions:
+[disposable installed evidence](https://github.com/koraytaylan/fsm/actions/runs/38051805234)
+proves the Root coordinator forcibly kills and reaps its original broker child,
+while original handler liveness and durable ownership remain unchanged;
+independent execution-owner death and public reconciliation still supply no closure.
+Uncertain reconciliation refuses without mutation, and a distinct broker child
+publishes the next irreversible epoch with the original protected configuration;
+epoch replacement alone supplies no native closure.
+Quiet fresh-owner recovery then establishes matching original closure before entry,
+receipt-only interruption without a fabricated outcome, unchanged retry count,
+exact acknowledgement/advance bookkeeping and actual external restoration.
+Replay revalidates 1,286 source blobs and retained executable/helper bytes,
+thirty original native bindings and closures, 138 journal records and 78 raw
+trace records, with four explicit HTTP/standalone successor drains and complete
+fixture/helper retirement.
+111 focused observer tests pass; removing either the original-configuration or
+complete-response-hash guard makes its named test fail and restoration re-passes.
+Filtered proof remains release-ineligible, with frozen author review digest
+`fb5f47e9e7d4d153f86e693b984d0b8e9d1707d3bf013c5e23b8eb6c1a7e7b2f`.
+
 Task 9502 remains in progress: remaining crash cuts and the pre-existing
 portable acceptance inventory are outstanding.
 Sustained native operation, nine human-reviewed uncoached
