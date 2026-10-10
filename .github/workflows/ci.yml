@@ -25,6 +25,10 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
+      portable_only:
+        description: Repeat affected portable gates while retaining independent native evidence
+        type: boolean
+        default: false
       native_only:
         description: Verify a native acceptance checkpoint without repeating portable gates
         type: boolean
@@ -95,7 +99,7 @@ env:
 
 jobs:
   gate:
-    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.native_only && !inputs.owner_sensitivity_only && !inputs.completion_owner_only && !inputs.scheduling_owner_only && !inputs.contract_admission_only && !inputs.contract_workflow_only) }}
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.portable_only || (!inputs.native_only && !inputs.owner_sensitivity_only && !inputs.completion_owner_only && !inputs.scheduling_owner_only && !inputs.contract_admission_only && !inputs.contract_workflow_only) }}
     strategy:
       fail-fast: false
       matrix:
@@ -111,6 +115,9 @@ jobs:
     env:
       RUSTUP_TOOLCHAIN: ${{ matrix.rust }}
     steps:
+      - name: Reject conflicting portable acceptance modes
+        if: ${{ inputs.portable_only }}
+        run: test '${{ inputs.native_only || inputs.owner_sensitivity_only || inputs.completion_owner_only || inputs.scheduling_owner_only || inputs.contract_admission_only || inputs.contract_workflow_only }}' != 'true'
       - uses: actions/checkout@v7
       - name: Prepare task cache
         shell: bash
@@ -179,7 +186,7 @@ jobs:
   # runtime. These are real administrative fault probes, separate from the
   # portable six-leg Rust gate; missing facilities fail rather than skip.
   native-containment:
-    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.owner_sensitivity_only && !inputs.contract_workflow_only) }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.portable_only && !inputs.owner_sensitivity_only && !inputs.contract_workflow_only) }}
     strategy:
       fail-fast: false
       matrix:
@@ -331,7 +338,7 @@ jobs:
           if-no-files-found: error
 
   owner-sensitivity:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.owner_sensitivity_only && !inputs.contract_workflow_only }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.owner_sensitivity_only && !inputs.contract_workflow_only && !inputs.portable_only }}
     strategy:
       fail-fast: false
       matrix:
@@ -369,7 +376,7 @@ jobs:
           if-no-files-found: error
 
   contract-workflow:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.contract_workflow_only }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.contract_workflow_only && !inputs.portable_only }}
     strategy:
       fail-fast: false
       matrix:

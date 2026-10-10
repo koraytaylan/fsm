@@ -52,6 +52,12 @@ Historical upgrade source verification uses an exact Git archive instead of a
 worktree; seven adversarial cases and the actual historical archive smoke pass,
 including changed-manifest refusal. Frozen focused verdict
 `a424aef9e79e6e8d9de7525e8340847adde7dcb57e676b07634c39c502a2fd7a`; the final integration matrix remains outstanding.
+Portable integration exposed a helper accidentally discovered as a standalone
+Cargo test target; its exact bytes now live under the parent test directory.
+Cargo metadata, seven acceptance cases and feature-enabled CLI all-target lint
+pass; frozen repair review
+`92a9d0b7d7041f256dbc28730757a270578be087bdc7a343ac2ddf1b0d959a4a`.
+Affected portable gates and independent native integration remain outstanding.
 Tasks 9103/9201 remain in progress and 9202/9203 remain planned pending their
 written acceptance inventories and plan-end gates; live-model acceptance belongs
 to plan 0023 and is not claimed by these protocol clients.

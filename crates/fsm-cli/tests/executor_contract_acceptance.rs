@@ -473,5 +473,5 @@ mod embedded {
 }
 
 #[cfg(feature = "lifecycle-test-fixture")]
-#[path = "contract_workflow_mcp.rs"]
+#[path = "contract_mcp/workflow_marker.rs"]
 mod workflow_mcp;

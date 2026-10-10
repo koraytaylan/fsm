@@ -11,7 +11,7 @@ gated: false
 touches:
   - .github/workflows/ci.yml
   - crates/fsm-cli/tests/executor_contract_acceptance.rs
-  - crates/fsm-cli/tests/contract_workflow_mcp.rs
+  - crates/fsm-cli/tests/contract_mcp/workflow_marker.rs
   - crates/fsm-cli/tests/executor_lifecycle_crash/fixture.rs
   - crates/fsm-cli/tests/executor_lifecycle_crash/workflow.rs
   - crates/fsm-cli/tests/fixtures/contract/
