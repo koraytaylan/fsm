@@ -281,6 +281,23 @@ without another acknowledgement, advance or validation invocation.
 pass; filtered proof remains release-ineligible, with frozen author review digest:
 `78192b97e2ba2414de12ed3d781cc4be367eb9e8359a0922e6e01c9c0f9143d0`.
 
+Frozen stdio cut acceptance for `f57b0068..54d30f46` establishes all eight
+process/MCP claim, stopped-result, acknowledgement and accepted-event cells:
+[disposable installed evidence](https://github.com/koraytaylan/fsm/actions/runs/38064993874)
+retains 302 passing assertions, 34 original native closures, 166 journal records,
+96 raw trace records and eight explicit fresh-owner drains.
+Real MCP initialization precedes one trigger through three separate private
+FIFO endpoints; original executable and descriptor identities match at the
+unchanged hardware stops, and quiet stdio recovery preserves each original
+claim, successful result or accepted event without overlapping mutation.
+Replay revalidates 1,302 source blobs and retained CLI/helper bytes; owned
+fixtures/helpers retire, and failed-store copying preserves original bytes
+while retaining FIFO identities separately rather than copying stream contents.
+153 disposable observer checks, focused attachment/retention checks and three
+named guard controls pass; filtered proof remains release-ineligible.
+Frozen implementing-author review digest:
+`c6018826fd1a6a2e79763d01609605fb5f55ccd9308610348934c2c6aecbdbbb`.
+
 Task 9502 remains in progress: remaining installed crash cuts are outstanding.
 Sustained native operation, nine human-reviewed uncoached
 live-model sessions, Desktop compatibility and independent final review remain
