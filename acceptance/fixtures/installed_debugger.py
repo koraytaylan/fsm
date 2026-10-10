@@ -13,8 +13,12 @@ import time
 
 import gdb
 
-SYMBOL = 'fsm_execute::run::pipeline::Pipeline::start_native'
-DEMANGLED = (SYMBOL, '<fsm_execute::run::pipeline::Pipeline>::start_native')
+CUT = os.environ.get('FSM_DEBUGGER_CUT', 'claimed-before-binding')
+METHODS = {'claimed-before-binding': 'start_native',
+    'stopped-before-settlement': 'settle_native_stopped',
+    'acked-before-event': 'deliver_native_handoff'}
+SYMBOL = 'fsm_execute::run::pipeline::Pipeline::' + METHODS[CUT]
+DEMANGLED = (SYMBOL, '<fsm_execute::run::pipeline::Pipeline>::' + METHODS[CUT])
 
 
 def resolve_symbol(binary):
@@ -118,7 +122,7 @@ def main():
             raise ValueError('the exact original hardware breakpoint did not stop every thread')
         original = identity(inferior.pid)
         mapped = code_observations(inferior, binary)
-        ready = dict(schema='fsm.installed-hardware-cut/1', cut='claimed-before-binding',
+        ready = dict(schema='fsm.installed-hardware-cut/1', cut=CUT,
             symbol=SYMBOL, breakpoint_type='hardware', breakpoint_hits=1,
             pc=gdb.selected_frame().pc(), breakpoint_address=locations[0].address,
             original=original, all_threads_stopped=True, threads=len(threads),

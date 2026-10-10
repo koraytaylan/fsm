@@ -16,8 +16,9 @@ SCENARIOS = ("executor_stdio_process_success_progresses_with_a_quiet_client",
              "executor_stdio_paused_and_retired_output_preserves_native_work",
              "executor_supervisor_death_refuses_until_a_new_epoch_recovers_original_work",
              "executor_standalone_claim_cut_recovers_without_unclaimed_entry",
+             "executor_standalone_completed_cuts_recover_without_repeating_success",
              "baseline", "full")
-CELLS = (1, 8, 16, 4, 8, 4, 10, 8, 8, 6, 4, 6, 2, 2, 87)
+CELLS = (1, 8, 16, 4, 8, 4, 10, 8, 8, 6, 4, 6, 2, 4, 2, 91)
 
 
 def selection(scenario: str) -> tuple[list[str], list[str], int]:
@@ -54,7 +55,7 @@ def validate_installed_report(report: dict, scenario: str, candidate: str, binar
 
 def retain_failed_stores(temporary: Path, evidence: Path, cells: int) -> None:
     """Retain only this task's failed stores, without following their symlinks."""
-    tags = ("executor", "policy", "restart-installed", "quiet-installed", "claim-cut-installed",
+    tags = ("executor", "policy", "restart-installed", "quiet-installed", "claim-cut-installed", "settlement-cut-installed",
             "refusing-installed", "paused-stdio", "drain-installed", "supervisor-installed")
     stores = [directory for tag in tags for directory in temporary.glob(f"fsm-acceptance-{tag}-*")]
     if len(stores) > max(2, cells):

@@ -927,6 +927,10 @@ Its disposable systemd unit enforces 1 GiB memory, zero swap, a 45-second runtim
 and control-group termination, including on observer failure; original claim,
 forced termination, closure-before-entry and sequential recovery observations
 remain distinct, and a missing symbol or hardware facility fails the scenario.
+The stopped-result and acknowledged-result cuts use the same external observer
+at exact pre-settlement and pre-event entry points; quiet recovery must retain
+the original successful result, acknowledge and advance exactly once, and
+never repeat validation or allocate a replacement for its completed domain.
 
 `acceptance/` builds an image with `cargo install --path crates/fsm-cli
 --locked`, the same command a consumer runs, and drives that binary from a

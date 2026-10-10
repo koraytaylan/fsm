@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 
 from . import fsm
@@ -19,17 +20,22 @@ from .executor_scenarios import (_fixture_rows, _wait_for_files, read_journal_pr
 from .native_fixture import DisposableAuthority, privileged, require_disposable_runner
 
 SYMBOL = 'fsm_execute::run::pipeline::Pipeline::start_native'
+CUT_SYMBOLS = {'claimed-before-binding': SYMBOL,
+    'stopped-before-settlement': 'fsm_execute::run::pipeline::Pipeline::settle_native_stopped',
+    'acked-before-event': 'fsm_execute::run::pipeline::Pipeline::deliver_native_handoff'}
 
 
-def validate_cut(value: dict, binary_hash: str) -> dict:
+def validate_cut(value: dict, binary_hash: str, cut: str = 'claimed-before-binding') -> dict:
     """Reject approximate, software, modified-code or unowned cut observations."""
     original = value.get('original', {})
     maps = value.get('mapped_code', [])
+    symbol = CUT_SYMBOLS[cut]
+    display = '<fsm_execute::run::pipeline::Pipeline>::' + symbol.rsplit('::', 1)[1]
     if (value.get('schema') != 'fsm.installed-hardware-cut/1'
-        or value.get('cut') != 'claimed-before-binding' or value.get('symbol') != SYMBOL
+        or value.get('cut') != cut or value.get('symbol') != symbol
         or not isinstance(value.get('raw_symbol'), str)
         or not re.fullmatch(r'_(?:R|ZN)[A-Za-z0-9_]+', value['raw_symbol'])
-        or value.get('demangled_symbol') not in (SYMBOL, '<fsm_execute::run::pipeline::Pipeline>::start_native')
+        or value.get('demangled_symbol') not in (symbol, display)
         or type(value.get('symbol_offset')) is not int or value['symbol_offset'] <= 0
         or value.get('breakpoint_type') != 'hardware'
         or type(value.get('breakpoint_hits')) is not int or value['breakpoint_hits'] != 1
@@ -69,8 +75,11 @@ def claim_prefix(records: list[dict], instance: str) -> dict:
 
 
 @contextmanager
-def debugger(store: Path, table: Path, directory: Path, namespace: str):
+def debugger(store: Path, table: Path, directory: Path, namespace: str,
+             cut: str = 'claimed-before-binding'):
     require_disposable_runner()
+    if cut not in CUT_SYMBOLS:
+        raise ValueError('unknown exact installed hardware cut')
     directory.mkdir()
     script = Path(fsm.REPO) / 'acceptance/fixtures/installed_debugger.py'
     commands = directory / 'observer.gdb'
@@ -85,7 +94,8 @@ def debugger(store: Path, table: Path, directory: Path, namespace: str):
         '--property=MemoryMax=1G', '--property=MemorySwapMax=0',
         'env', 'GITHUB_ACTIONS=true', 'FSM_ACCEPTANCE_DISPOSABLE_NATIVE=1',
         'PYTHONDONTWRITEBYTECODE=1', 'TMPDIR=' + fsm.task_cache(),
-        'FSM_DEBUGGER_DIRECTORY=' + str(directory), 'FSM_BIN=' + str(Path(fsm.FSM).resolve()),
+        'FSM_DEBUGGER_DIRECTORY=' + str(directory), 'FSM_DEBUGGER_CUT=' + cut,
+        'FSM_BIN=' + str(Path(fsm.FSM).resolve()),
         'gdb', '--batch', '--nx', '--quiet', '-iex', 'set auto-load off',
         '-iex', 'set startup-with-shell off', '-iex', 'set disable-randomization off',
         '-iex', 'set debuginfod enabled off', '-x', str(commands), '--args', fsm.FSM,
@@ -102,6 +112,38 @@ def debugger(store: Path, table: Path, directory: Path, namespace: str):
             process.wait(timeout=10)
         if (directory / 'debugger.log').stat().st_size > 1_048_576:
             raise ValueError('original debugger diagnostics exceed their bound')
+
+
+def observe_debugged_owner(report, owner, unit, directory, binary_hash, cut):
+    _wait_for_files(lambda: (directory / 'ready.json').exists(), owner, 15)
+    ready = validate_cut(json.loads((directory / 'ready.json').read_text()), binary_hash, cut)
+    report.true(process_observation(ready['original'])['alive'] is True,
+        'the exact original hardware-stopped installed owner is independently alive')
+    properties = privileged('systemctl', 'show', unit, '--property=MemoryMax,MemorySwapMax,RuntimeMaxUSec,KillMode')
+    limits = dict(line.split('=', 1) for line in properties.splitlines())
+    report.equal(limits, dict(MemoryMax='1073741824', MemorySwapMax='0',
+        RuntimeMaxUSec='45s', KillMode='control-group'), 'the debugger and owner have finite enforced zero-swap retirement')
+    return ready, limits
+
+
+def retire_debugged_owner(report, owner, directory, ready, store, prefix):
+    (directory / 'kill').write_text('terminate only the original debugged inferior\n')
+    owner.wait(timeout=15)
+    report.equal(owner.returncode, 0, 'the bounded debugger observes original forced termination and retires')
+    retired = json.loads((directory / 'retired.json').read_text())
+    report.equal(retired['original'], ready['original'], 'actual forced termination matches the original birth identity')
+    report.equal(retired['mechanism'], 'gdb-owned-inferior-kill',
+        'the original owner retires through the debugger owned-inferior native kill')
+    report.equal(retired['inferior_pid'], 0, 'the debugger has reaped its original owned inferior')
+    report.true(process_observation(ready['original'])['alive'] is False, 'the original owner is dead before recovery starts')
+    report.equal(read_journal_prefix(store), prefix, 'forced termination preserves the exact original durable prefix')
+    return retired
+
+
+def retain_debugger(directory: Path, cache: Path) -> None:
+    retained = cache / 'debugger'; retained.mkdir()
+    for name in ('ready.json', 'retired.json', 'debugger.log', 'observer.gdb'):
+        shutil.copy2(directory / name, retained / name)
 
 
 def installed_claim_cut(report, kind: str) -> None:
@@ -123,30 +165,14 @@ def installed_claim_cut(report, kind: str) -> None:
         directory = Path(scratch.path) / 'debugger'
         binary_hash = digest(Path(fsm.FSM))
         with debugger(store, table_path, directory, native.namespace) as (owner, unit):
-            _wait_for_files(lambda: (directory / 'ready.json').exists(), owner, 15)
-            ready = validate_cut(json.loads((directory / 'ready.json').read_text()), binary_hash)
-            report.true(process_observation(ready['original'])['alive'] is True,
-                'the exact original hardware-stopped installed owner is independently alive')
-            properties = privileged('systemctl', 'show', unit, '--property=MemoryMax,MemorySwapMax,RuntimeMaxUSec,KillMode')
-            limits = dict(line.split('=', 1) for line in properties.splitlines())
-            report.equal(limits, dict(MemoryMax='1073741824', MemorySwapMax='0',
-                RuntimeMaxUSec='45s', KillMode='control-group'), 'the debugger and owner have finite enforced zero-swap retirement')
+            ready, limits = observe_debugged_owner(report, owner, unit, directory, binary_hash, 'claimed-before-binding')
             prefix = read_journal_prefix(store)
             original = claim_prefix(prefix, instance)
             report.equal(_fixture_rows(native.resource / 'trace.jsonl'), [], 'durable claiming has not entered user code')
             report.equal(_fixture_rows(native.resource / 'results.jsonl'), [], 'durable claiming has no fabricated outcome')
             report.true(not (native.directory / 'binding-1.json').exists(), 'the exact installed cut precedes native binding')
             report.true(not (native.directory / 'entry-1.json').exists(), 'the original claim has not authorized handler entry')
-            (directory / 'kill').write_text('terminate only the original debugged inferior\n')
-            owner.wait(timeout=15)
-            report.equal(owner.returncode, 0, 'the bounded debugger observes original forced termination and retires')
-            retired = json.loads((directory / 'retired.json').read_text())
-            report.equal(retired['original'], ready['original'], 'actual forced termination matches the original birth identity')
-            report.equal(retired['mechanism'], 'gdb-owned-inferior-kill',
-                'the original owner retires through the debugger owned-inferior native kill')
-            report.equal(retired['inferior_pid'], 0, 'the debugger has reaped its original owned inferior')
-            report.true(process_observation(ready['original'])['alive'] is False, 'the original owner is dead before recovery starts')
-            report.equal(read_journal_prefix(store), prefix, 'forced termination preserves the exact original durable claim prefix')
+            retired = retire_debugged_owner(report, owner, directory, ready, store, prefix)
         with _restart_host(store, table_path, 'standalone') as (_, successor):
             entries = _wait_for_files(lambda: list(native.resource.glob('*.ready')), successor, 10)
             report.equal(len(entries), 1, 'one genuine successor reaches the first user-code barrier')
@@ -172,10 +198,7 @@ def installed_claim_cut(report, kind: str) -> None:
             report.equal(fsm.run_json('journal', 'verify', data_dir=str(store))['health'], 'Ok', 'the actual recovered journal verifies')
             report.true(fsm.run_json('journal', 'replay', data_dir=str(store))['agreement'] is True, 'actual installed replay agrees')
             report.equal(digest(Path(fsm.FSM)), binary_hash, 'every original installed candidate byte remains unchanged')
-            retained = native.cache / 'debugger'; retained.mkdir()
-            import shutil
-            for name in ('ready.json', 'retired.json', 'debugger.log', 'observer.gdb'):
-                shutil.copy2(directory / name, retained / name)
+            retain_debugger(directory, native.cache)
             report.note('FSM_INSTALLED_CLAIM_CUT_EVIDENCE ' + json.dumps(dict(namespace=native.namespace,
                 transport='standalone', handler_kind=kind, instance=instance, hardware=ready,
                 retirement=retired, enforced_limits=limits, original_claim=original, original_prefix=prefix,

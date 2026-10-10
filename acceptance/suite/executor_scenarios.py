@@ -726,6 +726,16 @@ def executor_standalone_claim_cut_recovers_without_unclaimed_entry(report) -> No
 SCENARIOS += (executor_standalone_claim_cut_recovers_without_unclaimed_entry,)
 
 
+def executor_standalone_completed_cuts_recover_without_repeating_success(report) -> None:
+    from .executor_settlement import installed_completed_cut, CUTS
+    for cut in CUTS:
+        for kind in ('process', 'mcp'):
+            installed_completed_cut(report, kind, cut)
+
+
+SCENARIOS += (executor_standalone_completed_cuts_recover_without_repeating_success,)
+
+
 def _name(value) -> bool:
     return isinstance(value, str) and 0 < len(value) <= MAX_TRACE_TEXT
 

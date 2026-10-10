@@ -26,6 +26,7 @@ on:
           - executor_stdio_paused_and_retired_output_preserves_native_work
           - executor_supervisor_death_refuses_until_a_new_epoch_recovers_original_work
           - executor_standalone_claim_cut_recovers_without_unclaimed_entry
+          - executor_standalone_completed_cuts_recover_without_repeating_success
           - full
 
 permissions:
@@ -55,7 +56,7 @@ jobs:
       - name: Focused independent observer checks
         run: python3 -m unittest discover -s acceptance/tests -p 'test*observer.py'
       - name: Install the external hardware observer
-        if: ${{ inputs.scenario == 'executor_standalone_claim_cut_recovers_without_unclaimed_entry' || inputs.scenario == 'full' }}
+        if: ${{ inputs.scenario == 'executor_standalone_claim_cut_recovers_without_unclaimed_entry' || inputs.scenario == 'executor_standalone_completed_cuts_recover_without_repeating_success' || inputs.scenario == 'full' }}
         run: |
           sudo -n env "TMPDIR=$TMPDIR" apt-get update
           sudo -n env "TMPDIR=$TMPDIR" apt-get install -y --no-install-recommends gdb binutils
