@@ -267,6 +267,24 @@ def _wait_for_files(predicate, process, seconds: float):
         time.sleep(0.01)
 
 
+def _wait_for_update(client, uri: str, previous_notifications: int, seconds: float = 2) -> bool:
+    """Wait for the subscribed push without sending any progress request.
+
+    Journal completion may precede the host's next change-feed poll; one
+    200 ms drain cannot establish failure against its 250 ms default interval.
+    """
+    deadline = time.monotonic() + seconds
+    while True:
+        if any(frame.get("method") == "notifications/resources/updated"
+               and frame.get("params", {}).get("uri") == uri
+               for frame in client.notifications[previous_notifications:]):
+            return True
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        client.drain(timeout=min(remaining, 0.05))
+
+
 def executor_stdio_process_success_progresses_with_a_quiet_client(report) -> None:
     """One actual contained installed path; other matrix cells remain separate."""
     _installed_workflow(report, "stdio", "process", "success")
@@ -639,10 +657,7 @@ def _installed_workflow(report, transport: str, kind: str, outcome: str, *,
             report.equal(state, expected_state, "the external resource matches the declared restoration outcome")
             report.equal(observe_workflow_journal(records, instance, events, stopped_statuses), (), "each native owner settles and advances exactly once")
             if observer != "disconnected":
-                client.drain(timeout=0.2)
-                report.true(any(frame.get("method") == "notifications/resources/updated"
-                                and frame.get("params", {}).get("uri") == uri
-                                for frame in client.notifications[previous_notifications:]),
+                report.true(_wait_for_update(client, uri, previous_notifications),
                             "the quiet subscribed client receives an autonomous update")
             report.equal(client._next_id, quiet_id, "external work and native settlements complete without another client request")
             if unread is not None:

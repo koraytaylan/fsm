@@ -52,7 +52,9 @@ def process_observation(identity: dict) -> dict:
     try:
         with (Path("/proc") / str(pid) / "stat").open("rb") as stream:
             encoded = stream.read(4097)
-    except FileNotFoundError:
+    except (FileNotFoundError, ProcessLookupError):
+        # Linux may return ESRCH from an already opened procfs file when the
+        # original task exits between open and read; other I/O remains unknown.
         return dict(alive=False, reason="absent", pid=pid, pid_starttime=starttime)
     if len(encoded) > 4096:
         raise ValueError("process observation exceeds its byte bound")

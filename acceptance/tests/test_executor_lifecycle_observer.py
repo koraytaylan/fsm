@@ -14,6 +14,18 @@ from acceptance.tests import test_executor_observer as baseline
 
 
 class OriginalProcessWitnessTests(unittest.TestCase):
+    def test_procfs_task_disappearing_during_read_proves_absence_but_other_io_does_not(self):
+        identity = {"pid": 123, "pid_starttime": "12"}
+        with patch("acceptance.suite.executor_lifecycle.sys.platform", "linux"):
+            for error in (ProcessLookupError("task exited"), PermissionError("unknown"), OSError("unknown")):
+                with self.subTest(error=type(error).__name__), patch("pathlib.Path.open") as opened:
+                    opened.return_value.__enter__.return_value.read.side_effect = error
+                    if isinstance(error, ProcessLookupError):
+                        self.assertEqual(process_observation(identity), dict(alive=False, reason="absent", **identity))
+                    else:
+                        with self.assertRaises(type(error)):
+                            process_observation(identity)
+
     def test_actual_child_birth_and_death_are_observed_without_signalling_a_pid(self):
         if sys.platform != "linux":
             with self.assertRaisesRegex(ValueError, "requires Linux"):
