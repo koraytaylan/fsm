@@ -1,5 +1,10 @@
 # Releasing
 
+Paired native cancellation now acts on the exact current local claim's cancelled
+instance after polling refreshes, preserving original completion, closure and
+interrupted settlement instead of waiting for its handler timeout.
+No persisted format or version changes.
+
 Sealing now removes dropped request keys from the existing writer and retires
 cached outcomes whose records moved to the archive, matching a reopened handle;
 subsequent shutdown snapshots agree with the sealed base and live suffix.

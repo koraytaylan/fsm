@@ -11,6 +11,7 @@ touches:
   - crates/fsm-store/tests/archive_operation.rs
   - crates/fsm-execute/src/run/native_owners.rs
   - crates/fsm-execute/src/run/native_owners/cancellation.rs
+  - crates/fsm-execute/src/run/native_owners/contract_tests.rs
   - docs/SPEC.md
   - docs/API-POLICY.md
   - docs/EMBEDDING.md

@@ -2498,6 +2498,12 @@ binding or launching again; settlement still requires the original claim,
 physical store identity, authenticated result and verified native closure.
 Absent or invalid publication MUST retain unresolved ownership.
 
+Native owner observation MUST request cancellation for an exact current
+locally admitted claim whose instance is cancelled, even when a prior polling
+refresh consumed the watcher's cancellation delta. It MUST NOT stop a foreign
+or substituted claim, launch work, mutate the journal, or treat that request
+as proof of closure; existing original completion and settlement checks apply.
+
 The execution state block contains admission/quarantine state, the run
 high-water mark, unresolved claims including stopped results, and retained
 retry ledgers. Current state MUST be authenticated by `fsm.state-root/5` with hash domain

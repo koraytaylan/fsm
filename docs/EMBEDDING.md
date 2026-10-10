@@ -1,5 +1,9 @@
 # Embedding fsm as a library
 
+Paired polling observes current instance cancellation when stopping an exact
+locally admitted native claim, so cancellation remains actionable after a
+watcher refresh; stopping its transport grants no closure or settlement fact.
+
 After `Store::seal_and_archive` succeeds, its existing handle uses the same
 carried request ledger as reopen, and requests whose records moved to the
 archive follow the existing reconstruction/refusal path; a later

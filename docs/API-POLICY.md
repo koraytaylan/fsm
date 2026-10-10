@@ -1,5 +1,10 @@
 # API and version policy
 
+Native owner observation now stops an exact current locally admitted cancelled
+claim even after paired polling consumed its cancellation notification; foreign
+ownership and verified closure/settlement checks remain unchanged, with no
+signature, error-code, format, hash-domain or version change.
+
 Successful sealing now reconciles the existing writer's request ledger and
 response caches with the carried base and live suffix before later snapshots;
 archived requests use the existing reconstruction/refusal path, matching reopen.

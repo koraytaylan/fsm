@@ -3,9 +3,34 @@
 //! SPEC execution settlement keeps cancelled claims until authenticated closure;
 //! helper death is not proof, and recovery here never binds or launches work.
 
-use super::{ExecError, NativeOwners, NativeRunPhase, Owner, deferred};
+use super::{ExecError, NativeOwners, NativeRunPhase, Observation, Owner, Store, deferred};
 
 impl NativeOwners {
+    pub(super) fn cancel_observed(&mut self, snapshot: &Store, observation: &mut Observation) {
+        // Paired polling can observe cancellation before the scheduling tick;
+        // stopping an original local run must not depend on a one-scan delta.
+        let effects: Vec<_> =
+            self.owners
+                .values()
+                .filter(|owner| {
+                    let (instance, effect) = owner.claim.effect();
+                    owner.locally_admitted
+                        && !owner.cancellation_requested
+                        && snapshot.state.execution.claim_for(instance, effect)
+                            == Some(&owner.claim)
+                        && snapshot.state.instances.get(instance).is_some_and(|state| {
+                            state.status == fsm_core::machine::Status::Cancelled
+                        })
+                })
+                .map(|owner| owner.claim.effect().1.to_owned())
+                .collect();
+        for effect in effects {
+            if let Some(Err(error)) = self.cancel(&effect) {
+                observation.unresolved.push(error);
+            }
+        }
+    }
+
     pub(in crate::run) fn cancel(&mut self, effect: &str) -> Option<Result<(), ExecError>> {
         if let Some(result) = self.admissions.cancel(effect) {
             return Some(result);

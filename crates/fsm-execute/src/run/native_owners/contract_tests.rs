@@ -187,6 +187,53 @@ fn bound_cancellation_retains_original_owner_and_distinguishes_consumed_entry() 
 }
 
 #[test]
+fn observed_cancellation_without_delta_stops_only_the_current_local_original_claim() {
+    use fsm_core::machine::Status;
+    use fsm_core::record::execution::PendingEffect;
+    for (status, current, local) in [
+        (Status::Cancelled, true, true),
+        (Status::Running, true, true),
+        (Status::Cancelled, false, true),
+        (Status::Cancelled, true, false),
+    ] {
+        // Pure fixture state and an ordinary owned transport; no native proof.
+        let (mut store, mut owner, _table) = bound_owner();
+        owner.locally_admitted = local;
+        owner.entry_requested = true;
+        let claim = owner.claim.clone();
+        if current {
+            store
+                .state
+                .execution
+                .claim(claim.clone(), PendingEffect::Present, 1000)
+                .unwrap();
+        }
+        store
+            .state
+            .instances
+            .get_mut("entry-instance")
+            .unwrap()
+            .status = status;
+        let before = store.state.clone();
+        let records = store.records.clone();
+        let mut owners = NativeOwners::default();
+        owners.owners.insert(claim.run_id(), owner);
+        let mut observation = Observation::default();
+        assert!(observation.cancellations.is_empty());
+        owners.cancel_observed(&store, &mut observation);
+        let original = &owners.owners[&claim.run_id()];
+        assert_eq!(
+            original.cancellation_requested,
+            status == Status::Cancelled && current && local
+        );
+        assert_eq!(original.claim, claim);
+        assert!(original.execution.progress().retained);
+        assert!(fsm_store::snapshot::store_states_eq(&before, &store.state));
+        assert_eq!(store.records, records);
+    }
+}
+
+#[test]
 fn bound_service_entry_refuses_cancelled_or_acknowledged_work_without_consuming_permission() {
     for acknowledged in [false, true] {
         let (mut store, mut owner, table) = bound_owner();

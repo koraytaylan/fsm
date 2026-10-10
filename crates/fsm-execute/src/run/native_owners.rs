@@ -223,6 +223,7 @@ impl NativeOwners {
                     .push((owner.claim.clone(), owner.stopped.clone()));
             }
         }
+        self.cancel_observed(snapshot, observation);
         self.close_cancelled_bound(snapshot, observation);
         // One owned recovery transport at a time, independent of owner count.
         // A failed request is never replaced by a bind/execute request.
