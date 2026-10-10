@@ -955,6 +955,9 @@ never replaces these hardware stops. Original launch intent, isolated gate,
 entry grant, fixture history and closure presence must match the declared
 phase, and every fresh validation waits until the original claim-bound
 closure receipt and absence of original user-code processes are observed.
+Fixture entry identities append to an existing shared observation slot, so
+DynamicUser cleanup of an invocation-owned readiness marker cannot erase
+the original PID and birth identity; this fixture log grants no closure authority.
 
 `acceptance/` builds an image with `cargo install --path crates/fsm-cli
 --locked`, the same command a consumer runs, and drives that binary from a

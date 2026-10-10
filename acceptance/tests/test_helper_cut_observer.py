@@ -2,14 +2,17 @@
 import copy
 import hashlib
 import json
+import os
 from pathlib import Path
 import runpy
+import subprocess
+import sys
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
 from acceptance.suite.executor_crash import CUT_SYMBOLS, validate_cut
-from acceptance.suite.executor_helper_cut import closed_prefix, phase_prefix
+from acceptance.suite.executor_helper_cut import closed_prefix, phase_prefix, fixture_entries
 from acceptance.suite.native_debugger import CUT, CUTS, validate_restart, helper_digest, retain_original_file
 from acceptance.suite.fsm import Scratch
 
@@ -200,6 +203,36 @@ class HelperCutTests(unittest.TestCase):
             source.chmod(0o644);source.write_text('{"label":"changed observer stub"}');source.chmod(0o444)
             with self.assertRaises(ValueError): retain_original_file(source,destination)
             self.assertEqual(destination.read_text(),'{"label":"original observer stub"}')
+
+    @unittest.skipUnless(sys.platform=='linux','labelled Linux process birth identity control')
+    def test_original_entry_identity_survives_removal_of_an_ordinary_fixture_marker(self):
+        fixture=Path(__file__).resolve().parents[1]/'fixtures/executor_handler.py'
+        with Scratch('labelled-retired-entry-marker') as scratch:
+            root=Path(scratch.dir('resource'));slot=root/'entries.jsonl';slot.write_text('');slot.chmod(0o666)
+            original=slot.stat()
+            result=subprocess.run([sys.executable,str(fixture),'operation','--root',str(root),
+                '--run','validate_resource','--resource','supplier','--operation','validate',
+                '--failure','none','--items','2'],capture_output=True,text=True,timeout=5)
+            self.assertEqual(result.returncode,0,result.stderr)
+            entries=fixture_entries(root);self.assertEqual(len(entries),1)
+            markers=list(root.glob('*.ready'));self.assertEqual(len(markers),1)
+            self.assertEqual(json.loads(markers[0].read_text()),entries[0])
+            markers[0].unlink()
+            self.assertEqual(fixture_entries(root),entries)
+            current=slot.stat();self.assertEqual((current.st_dev,current.st_ino,current.st_uid),
+                (original.st_dev,original.st_ino,original.st_uid))
+            self.assertGreater(entries[0]['pid'],0);self.assertTrue(entries[0]['pid_starttime'].isdigit())
+
+    def test_entry_log_cannot_invent_or_duplicate_a_physical_fixture_identity(self):
+        with Scratch('labelled-entry-log-faults') as scratch:
+            root=Path(scratch.path);slot=root/'entries.jsonl'
+            original=dict(run='labelled-original',resource='supplier',operation='validate',pid=123,pid_starttime='456')
+            for change in (dict(pid=True),dict(pid=0),dict(pid_starttime=None),dict(pid_starttime='unknown'),
+                dict(resource='foreign'),dict(operation='invented'),dict(extra=True)):
+                slot.write_text(json.dumps({**original,**change})+'\n')
+                with self.subTest(change=change),self.assertRaises(ValueError):fixture_entries(root)
+            slot.write_text((json.dumps(original)+'\n')*2)
+            with self.assertRaises(ValueError):fixture_entries(root)
 
 
 if __name__ == '__main__':

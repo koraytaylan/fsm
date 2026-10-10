@@ -3,7 +3,9 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import shutil
 import signal
+import stat
 
 from . import fsm
 from .evidence import digest
@@ -86,6 +88,27 @@ def native_record(native, name):
     return json.loads(privileged('cat', str(path))) if path.exists() else None
 
 
+def fixture_entries(root):
+    rows = _fixture_rows(root / 'entries.jsonl')
+    for row in rows:
+        if (set(row) != {'run', 'resource', 'operation', 'pid', 'pid_starttime'}
+            or not isinstance(row['run'], str) or not row['run']
+            or row['resource'] != 'supplier' or row['operation'] not in ('validate', 'suspend', 'process', 'restore')
+            or type(row['pid']) is not int or not 0 < row['pid'] < 1 << 31
+            or not isinstance(row['pid_starttime'], str) or not re.fullmatch('[0-9]{1,20}', row['pid_starttime'])):
+            raise ValueError('the original fixture entry log has an invalid process identity')
+    if len({row['run'] for row in rows}) != len(rows):
+        raise ValueError('the original fixture entry log duplicates an invocation')
+    return rows
+
+
+def entry_log_identity(root):
+    metadata = (root / 'entries.jsonl').lstat()
+    if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != 0 or stat.S_IMODE(metadata.st_mode) != 0o666:
+        raise ValueError('native fixture entry observations require their pre-provisioned shared slot')
+    return dict(device=metadata.st_dev, inode=metadata.st_ino, uid=metadata.st_uid, mode=metadata.st_mode)
+
+
 def installed_helper_closed_cut(report, kind, transport):
     installed_helper_cut(report, kind, transport, CUT)
 
@@ -131,7 +154,9 @@ def installed_helper_cut(report, kind, transport, cut):
             report.equal(len(original_results), int(cut in ('candidate-before-fence', CUT)),
                 'original external validation results match the exact observed helper phase')
             original_runs = {row['run'] for row in original_trace}
-            originals = [json.loads(path.read_text()) for path in native.resource.glob('*.ready')]
+            originals = fixture_entries(native.resource)
+            entry_identity = entry_log_identity(native.resource)
+            shutil.copyfile(native.resource / 'entries.jsonl', native.cache / 'fixture-entries-original.jsonl')
             report.equal({row['run'] for row in originals}, original_runs,
                 'the original physical fixture entries match the complete original trace')
             before = [process_observation(row) for row in originals]
@@ -165,8 +190,8 @@ def installed_helper_cut(report, kind, transport, cut):
             if replacement is not None:
                 replacement.initialize()
             quiet = replacement._next_id if replacement is not None else 0
-            entries = _wait_for_files(lambda: [path for path in native.resource.glob('*.ready')
-                if json.loads(path.read_text())['run'] not in original_runs], successor, 35)
+            entries = _wait_for_files(lambda: [row for row in fixture_entries(native.resource)
+                if row['run'] not in original_runs], successor, 35)
             report.equal(len(entries), 1, 'one genuine successor validation waits at its external barrier')
             closure_before = native_record(native, 'closed-1.json')
             receipt_before = native_record(native, 'closure-1-1.json')
@@ -193,6 +218,12 @@ def installed_helper_cut(report, kind, transport, cut):
             report.equal(observe_trace(trace, {'supplier': MUTATIONS}, complete=True).violations, (),
                 'all original and successor work remains sequential with exactly the required mutations')
             report.equal([row['exit_code'] for row in results], [0] * result_count, 'every reported outcome comes from a genuine operation')
+            report.equal(entry_log_identity(native.resource), entry_identity,
+                'the original shared identity-log owner and inode survive every DynamicUser retirement')
+            final_entries = fixture_entries(native.resource)
+            report.equal([row['run'] for row in final_entries], [row['run'] for row in results],
+                'every genuine outcome has exactly its original physical entry identity')
+            shutil.copyfile(native.resource / 'entries.jsonl', native.cache / 'fixture-entries-final.jsonl')
             report.true(all(not path.exists() for path in paths),
                 'closure-only recovery never publishes a fabricated original completed result')
             report.equal(replacement._next_id if replacement is not None else 0, quiet,
@@ -212,6 +243,7 @@ def installed_helper_cut(report, kind, transport, cut):
                 original_prefix=prefix, binding=binding, closed=closed, receipt=receipt,
                 phase_material=material, expected_argv=expected_argv, original_fixture_before=before,
                 original_fixture_after=after, closure_before_successor=closure_before, receipt_before_successor=receipt_before,
+                original_fixture_entries=originals, fixture_entries=final_entries, fixture_entry_log=entry_identity,
                 original_results=original_results, original_trace=original_trace,
                 journal=records, trace=trace, results=results, state=state, final=final), sort_keys=True))
             _retire_execution_owner(report, successor, store, native.namespace, transport)

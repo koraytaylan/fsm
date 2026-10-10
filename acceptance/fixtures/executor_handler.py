@@ -108,8 +108,17 @@ def operation(args) -> int:
         if sys.platform == "linux":
             with Path("/proc/self/stat").open("rb") as process_stat:
                 pid_starttime = process_stat.read(4096).rsplit(b") ", 1)[1].split()[19].decode("ascii")
-        atomic_json(root / (token + ".ready"), {"run": run, "resource": args.resource,
-            "operation": args.operation, "pid": os.getpid(), "pid_starttime": pid_starttime})
+        identity = {"run": run, "resource": args.resource,
+            "operation": args.operation, "pid": os.getpid(), "pid_starttime": pid_starttime}
+        # The provisioned shared slot keeps its original owner and inode when
+        # DynamicUser retirement removes this invocation's own /dev/shm marker.
+        # This records fixture identity, never native domain-closure authority.
+        with locked(root):
+            with (root / "entries.jsonl").open("a", encoding="utf-8") as stream:
+                stream.write(json.dumps(identity) + "\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+        atomic_json(root / (token + ".ready"), identity)
         if args.release is not None:
             deadline = time.monotonic() + args.wait_seconds
             while not args.release.exists():
