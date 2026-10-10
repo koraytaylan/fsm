@@ -344,6 +344,15 @@ def executor_active_drain_preserves_original_success_and_pending_work(report) ->
             installed_active_drain(report, transport, kind)
 
 
+def executor_stdio_paused_and_retired_output_preserves_native_work(report) -> None:
+    """Real pipe backpressure completes work; broken output recovers ownership."""
+    from .executor_stdio import installed_paused_stdio
+    from .executor_lifecycle import installed_restart
+    for kind in ("process", "mcp"):
+        installed_paused_stdio(report, kind)
+        installed_restart(report, kind, "retired-output", "stdio")
+
+
 @contextmanager
 def _unread_http_subscription(client, uri: str):
     """A separate actual subscriber retains its body unread until retirement."""
@@ -676,7 +685,8 @@ SCENARIOS = (executor_contract_fixtures_are_checked_without_external_work,
              executor_stdio_shutdown_and_restart_preserve_original_claims,
              executor_http_shutdown_and_restart_preserve_original_claims,
              executor_standalone_shutdown_and_restart_preserve_original_claims,
-             executor_active_drain_preserves_original_success_and_pending_work)
+             executor_active_drain_preserves_original_success_and_pending_work,
+             executor_stdio_paused_and_retired_output_preserves_native_work)
 
 
 def _name(value) -> bool:

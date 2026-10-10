@@ -23,6 +23,7 @@ touches:
   - acceptance/suite/executor_lifecycle.py
   - acceptance/suite/executor_control.py
   - acceptance/suite/executor_drain.py
+  - acceptance/suite/executor_stdio.py
   - acceptance/suite/mcp.py
   - acceptance/suite/fsm.py
   - acceptance/suite/run.py
@@ -32,6 +33,7 @@ touches:
   - acceptance/tests/test_executor_lifecycle_observer.py
   - acceptance/tests/test_executor_control_observer.py
   - acceptance/tests/test_executor_drain_observer.py
+  - acceptance/tests/test_stdio_output_observer.py
   - acceptance/fixtures/executor_handler.py
   - acceptance/fixtures/executor_workflow.json
   - acceptance/Containerfile

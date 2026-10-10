@@ -38,6 +38,9 @@ class FrameReader:
         self.queue = queue.Queue(maxsize=MAX_QUEUED_FRAMES)
         self.stopped = threading.Event()
         self.error = None
+        self.paused = threading.Event()
+        self._pause = threading.Condition()
+        self._pause_id = None
 
         def pump():
             try:
@@ -50,6 +53,15 @@ class FrameReader:
                         self.queue.put_nowait(frame)
                     except queue.Full:
                         raise McpError("the client notification queue overflowed") from None
+                    with self._pause:
+                        if (self._pause_id is not None and type(frame.get("id")) is int
+                            and frame["id"] == self._pause_id):
+                            self.paused.set()
+                            while self._pause_id is not None and not self.stopped.is_set():
+                                self._pause.wait()
+                            self.paused.clear()
+                    if self.stopped.is_set():
+                        break
             except Exception as error:
                 if not self.stopped.is_set():
                     self.error = McpError(str(error))
@@ -77,9 +89,23 @@ class FrameReader:
 
     def join(self):
         self.stopped.set()
+        self.resume()
         self.worker.join(timeout=2)
         if self.worker.is_alive():
             raise McpError("the client stream reader did not retire")
+
+    def pause_after_reply(self, identifier: int):
+        """Arm before sending: stop before the read following this exact reply."""
+        with self._pause:
+            if (type(identifier) is not int or identifier <= 0 or self.stopped.is_set()
+                or self._pause_id is not None or self.paused.is_set()):
+                raise McpError("the client requires one live, positive reply pause")
+            self._pause_id = identifier
+
+    def resume(self):
+        with self._pause:
+            self._pause_id = None
+            self._pause.notify_all()
 
 
 class StdioClient:
@@ -123,6 +149,7 @@ class StdioClient:
         self.close()
 
     def close(self) -> None:
+        self._reader.resume()
         if self.process.poll() is None:
             try:
                 self.process.stdin.close()
@@ -140,6 +167,27 @@ class StdioClient:
                 pipe.close()
         if self._error_worker.is_alive():
             raise McpError("the client diagnostic reader did not retire")
+
+    def pause_output(self, timeout: float = 2) -> None:
+        """A matching ping establishes that stdout will not be read again."""
+        self._reader.pause_after_reply(self._next_id + 1)
+        try:
+            self.request("ping", timeout=timeout)
+            if not self._reader.paused.wait(timeout):
+                raise McpError("the client output reader did not acknowledge its pause")
+        except Exception:
+            self._reader.resume()
+            raise
+
+    def resume_output(self) -> None:
+        self._reader.resume()
+
+    def retire_output(self) -> None:
+        """Close the actual read end only after its worker has acknowledged pause."""
+        if not self._reader.paused.is_set():
+            raise McpError("output retirement requires an acknowledged reader pause")
+        self._reader.join()
+        self.process.stdout.close()
 
     def _send(self, message: dict) -> None:
         self.process.stdin.write(json.dumps(message) + "\n")

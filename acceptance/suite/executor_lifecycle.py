@@ -162,8 +162,8 @@ def _restart_host(store: Path, table: Path, transport: str):
 def installed_restart(report, kind: str, control: str, transport: str) -> None:
     """Interrupt the actual owner, then recover through a fresh same-transport host."""
     if (transport not in {"stdio", "http", "standalone"} or kind not in {"process", "mcp"}
-        or control not in {"eof", "abort", "interrupt", "terminate", "kill"}
-        or (control == "eof" and transport != "stdio")):
+        or control not in {"eof", "abort", "interrupt", "terminate", "kill", "retired-output"}
+        or (control in {"eof", "retired-output"} and transport != "stdio")):
         raise ValueError("unsupported installed owner interruption cell")
     fixture = Path(fsm.REPO) / "acceptance/fixtures/executor_handler.py"
     machine = Path(fsm.REPO) / "acceptance/fixtures/executor_workflow.json"
@@ -197,9 +197,19 @@ def installed_restart(report, kind: str, control: str, transport: str) -> None:
             original_claim = claims[0]
             report.equal(_fixture_rows(native.resource / "results.jsonl"), [], "the original handler has not completed")
             shutdown = None
+            output_evidence = None
             if control == "eof":
                 host.stdin.close()
                 expected_exit = 0
+            elif control == "retired-output":
+                client.pause_output()
+                client.retire_output()
+                report.true(host.stdout.closed, "the actual observer read end is closed while native work waits")
+                report.true(not client._reader.worker.is_alive(), "the observer reader retires before closing stdout")
+                client._next_id += 1
+                client._send({"jsonrpc": "2.0", "id": client._next_id, "method": "ping"})
+                output_evidence = dict(stdout_closed=True, reader_retired=True, request_id=client._next_id)
+                expected_exit = 1
             elif control == "abort":
                 shutdown = fsm.run_json("execute", "stop", "--mode=abort", "--timeout-ms=10000",
                                         data_dir=str(store), timeout=15)
@@ -214,6 +224,13 @@ def installed_restart(report, kind: str, control: str, transport: str) -> None:
                 expected_exit = -selected
             host.wait(timeout=15)
             report.equal(host.returncode, expected_exit, "the original owned host retires by its actual requested mechanism")
+            if output_evidence is not None:
+                client._error_worker.join(timeout=2)
+                report.true(not client._error_worker.is_alive(), "original broken-output diagnostics reach actual EOF")
+                diagnostic = bytes(host.acceptance_stderr).decode("utf-8", errors="replace")
+                report.true("exec/inflight_deferred" in diagnostic and "BrokenPipe" in diagnostic,
+                    "broken stdout retains its original native-session failure and initiating I/O cause")
+                output_evidence["diagnostic"] = diagnostic
             deadline = time.monotonic() + 10
             while (after := process_observation(original))["alive"]:
                 if time.monotonic() >= deadline:
@@ -276,6 +293,7 @@ def installed_restart(report, kind: str, control: str, transport: str) -> None:
             report.note("FSM_INSTALLED_RESTART_EVIDENCE " + json.dumps(dict(namespace=native.namespace,
                 transport=transport, handler_kind=kind, control=control, instance=instance, original=original, witness=witness,
                 original_claim=original_claim, closure_before_successor=closure, shutdown=shutdown,
+                output_evidence=output_evidence,
                 original_completion=completed, original_attestation=attestation,
                 original_exit=host.returncode, quiet_request_id=quiet_id, trace=trace, results=results,
                 journal=records, state=state, final=final), sort_keys=True))
