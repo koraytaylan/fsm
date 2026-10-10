@@ -6,13 +6,13 @@ Task frontmatter is authoritative; the coordinator owns registration and complet
 |---|---|---|
 | [acceptance-evidence-reports](tasks/9501-acceptance-evidence-reports.md) | done | 83de6523169394fa5bc329034a9b857d489c73ad |
 | [installed-executor-acceptance](tasks/9502-installed-executor-acceptance.md) | done | 0308a1a9e4a777a690e3aa170aae3baf522ff047 |
-| [operational-soak-harness](tasks/9601-operational-soak-harness.md) | in_progress | — |
+| [operational-soak-harness](tasks/9601-operational-soak-harness.md) | done | d56579fd3d8cfb35622d1e38e812acd46a0a980c |
 | [native-operational-evidence](tasks/9602-native-operational-evidence.md) | planned | — |
 | [live-model-acceptance-protocol](tasks/9701-live-model-acceptance-protocol.md) | planned | — |
 | [candidate-evidence-gate](tasks/9702-candidate-evidence-gate.md) | planned | — |
 | [operational-review-closure](tasks/9703-operational-review-closure.md) | planned | — |
 
-Progress: 2/7 tasks completed.
+Progress: 3/7 tasks completed.
 
 Manual Phase R binds the seven-task bundle to clean validation base
 `106c833cfc1b9aee18947164f752ee7f244476e0` after plans 0022, 0020 and 0021
@@ -398,6 +398,30 @@ labelled observer guard controls pass, and failed/cancelled attempts stay failed
 or cancelled in the task cache.
 Frozen implementing-author review digest:
 `28d77431eff9359fab9f77b3e676836cfc44705aad65fed6dcaa69a8563f836b`.
+
+Frozen task-9601 verdict through `d56579fd` closes its written harness inventory:
+[original calibration](https://github.com/koraytaylan/fsm/actions/runs/38089163514)
+completes 100 installed cycles in 1,444.947 seconds before numeric budgets are
+committed for `github-ubuntu-24.04-x86_64-stable`;
+[separate validation](https://github.com/koraytaylan/fsm/actions/runs/38091100630)
+completes 100 cycles in 1,191.652 seconds against those frozen budgets.
+Both runs pass 1,187 assertions across all 72 workload cells, close all 362
+original native claims, verify/replay nine store blocks and remove owned
+fixtures/helpers; strict artifact replay verifies 1,337 original source blobs,
+unchanged executable bytes and every active/quiescent resource sample.
+Focused operational controls run 55 tests (54 pass and one optional local fixture
+check skips); 14 profile/threshold tests, 19 archive, 13 seal-safety, 12 sealed-diagnostic,
+nine snapshot-divergence and ten native-owner tests pass, as do affected-crate
+all-target clippy checks; sustained floor controls require both eight hours
+and 10,000 genuinely completed cycles, without claiming an executed sustained run.
+Builds enforce one worker, 1 GiB memory and zero swap; failed predecessors retain
+their original verdicts and are not promoted by later fixes.
+Frozen implementing-author validation replay digest:
+`692859a2a1f6c2f4271998216cc7d0618d787d754b46c8ae078fbee01c1da5ec`;
+original report digest:
+`148c3157eb35f968f8bb0493d48532103c98c7c7bb6a097f12fc2506eb2984f1`.
+This documentation-only completion record identifies the tested source above;
+it does not supply independent review or the remaining plan evidence.
 
 Sustained native operation, nine human-reviewed uncoached
 live-model sessions, Desktop compatibility and independent final review remain

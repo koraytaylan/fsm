@@ -44,8 +44,8 @@ touches:
   - acceptance/profiles/operational.json
   - acceptance/fixtures/executor_handler.py
   - docs/OPERATIONS.md
-status: in_progress
-merged_as: ""
+status: done
+merged_as: "d56579fd3d8cfb35622d1e38e812acd46a0a980c"
 ---
 # Operational Soak Harness
 
