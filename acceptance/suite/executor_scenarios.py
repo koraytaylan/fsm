@@ -312,6 +312,14 @@ def executor_http_unread_and_disconnected_sessions_do_not_stop_active_work(repor
             _installed_workflow(report, "http", kind, "success", observer=observer)
 
 
+def executor_stdio_shutdown_and_restart_preserve_original_claims(report) -> None:
+    """Original EOF, abort and actual signals, followed by autonomous recovery."""
+    from .executor_lifecycle import installed_stdio_restart
+    for kind in ("process", "mcp"):
+        for control in ("eof", "abort", "interrupt", "terminate", "kill"):
+            installed_stdio_restart(report, kind, control)
+
+
 @contextmanager
 def _unread_http_subscription(client, uri: str):
     """A separate actual subscriber retains its body unread until retirement."""
@@ -640,7 +648,8 @@ SCENARIOS = (executor_contract_fixtures_are_checked_without_external_work,
              executor_transport_outcome_matrix_progresses_with_quiet_clients,
              executor_transport_admission_and_manual_effects_preserve_pending_work,
              executor_transport_read_only_and_degraded_hosts_refuse_execution,
-             executor_http_unread_and_disconnected_sessions_do_not_stop_active_work)
+             executor_http_unread_and_disconnected_sessions_do_not_stop_active_work,
+             executor_stdio_shutdown_and_restart_preserve_original_claims)
 
 
 def _name(value) -> bool:

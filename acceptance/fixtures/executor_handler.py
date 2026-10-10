@@ -102,7 +102,14 @@ def operation(args) -> int:
         return code
 
     try:
-        atomic_json(root / (token + ".ready"), {"run": run, "resource": args.resource, "operation": args.operation})
+        # Linux lifecycle observers match birth identity, never PID absence
+        # alone; other platforms still run the portable operation fixture.
+        pid_starttime = None
+        if sys.platform == "linux":
+            with Path("/proc/self/stat").open("rb") as process_stat:
+                pid_starttime = process_stat.read(4096).rsplit(b") ", 1)[1].split()[19].decode("ascii")
+        atomic_json(root / (token + ".ready"), {"run": run, "resource": args.resource,
+            "operation": args.operation, "pid": os.getpid(), "pid_starttime": pid_starttime})
         if args.release is not None:
             deadline = time.monotonic() + args.wait_seconds
             while not args.release.exists():

@@ -19,6 +19,7 @@ on:
           - executor_transport_admission_and_manual_effects_preserve_pending_work
           - executor_transport_read_only_and_degraded_hosts_refuse_execution
           - executor_http_unread_and_disconnected_sessions_do_not_stop_active_work
+          - executor_stdio_shutdown_and_restart_preserve_original_claims
 
 permissions:
   contents: read
