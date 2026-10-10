@@ -20,7 +20,7 @@ from pathlib import Path
 from acceptance.suite.evidence import source_files
 from acceptance.suite.executor_scenarios import (observe_trace, workflow_table,
                                                read_journal_prefix, observe_success_journal,
-                                               observe_workflow_journal)
+                                               observe_workflow_journal, _installed_client)
 from acceptance.suite.fsm import task_cache, Scratch
 from acceptance.suite.mcp import (StdioClient, HttpClient, FrameReader, McpError,
                                  MAX_FRAME, MAX_QUEUED_FRAMES)
@@ -460,6 +460,19 @@ class WorkflowProvisioningTests(FixtureFiles):
 
 
 class ClientStreamOwnershipTests(unittest.TestCase):
+    def test_transport_launch_respects_stdio_only_poll_option(self):
+        store, table = Path("fixture-store"), Path("fixture-table")
+        with patch("acceptance.suite.executor_scenarios.StdioClient") as stdio:
+            with _installed_client(store, table, "stdio"):
+                pass
+            self.assertIn("--poll-interval-ms=25", stdio.call_args.args[0])
+        with patch("acceptance.suite.executor_scenarios.fsm.Serving") as server, patch(
+            "acceptance.suite.executor_scenarios.HttpClient"):
+            server.return_value.process.poll.return_value = 0
+            with _installed_client(store, table, "http"):
+                pass
+            self.assertEqual(server.call_args.args[2:], ("--execute", "--handlers=fixture-table"))
+
     def test_stdio_quiet_waits_never_steal_later_replies(self):
         program = '''import sys, json
 for line in sys.stdin:

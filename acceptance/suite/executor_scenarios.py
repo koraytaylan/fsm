@@ -289,9 +289,10 @@ def executor_transport_outcome_matrix_progresses_with_quiet_clients(report) -> N
 
 @contextmanager
 def _installed_client(store: Path, table: Path, transport: str):
-    options = ["--execute", f"--handlers={table}", "--poll-interval-ms=25"]
+    options = ["--execute", f"--handlers={table}"]
     if transport == "stdio":
-        with StdioClient([fsm.FSM, "serve", f"--data-dir={store}", *options]) as client:
+        with StdioClient([fsm.FSM, "serve", f"--data-dir={store}", *options,
+                          "--poll-interval-ms=25"]) as client:
             yield client, client.process
     else:
         port = fsm.free_port()
