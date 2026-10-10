@@ -17,7 +17,7 @@ touches:
   - acceptance/fixtures/executor_handler.py
   - acceptance/fixtures/executor_workflow.json
   - acceptance/Containerfile
-status: planned
+status: in_progress
 merged_as: ""
 ---
 # Installed Executor Acceptance

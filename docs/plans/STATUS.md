@@ -26,7 +26,7 @@ One row per plan. Task status is authored in each plan's `tasks/*.md` frontmatte
 | 0020 | Autonomous Embedded Execution | ✅ Complete | 7/7 | Autonomous owned stdio/HTTP execution, bounded channels and truthful discovery complete through `2bee3850`; all six portable stable/MSRV gates and both Linux/systemd native jobs pass in CI 37969821437, with separately verified current embedded documentation. | [status](0020-autonomous-embedded-execution/STATUS.md) |
 | 0021 | Executor Contract Preflight | ✅ Complete | 6/6 | Shared admission, read-only CLI/MCP draft checks and independent cross-surface acceptance complete through `09f81669`; six portable gates, both provisioned native jobs and zero-dependency checks pass with source-backed review of all 83 criteria. | [status](0021-executor-contract-preflight/STATUS.md) |
 | 0022 | Executor Process Lifecycle | ✅ Complete | 7/7 | Durable ownership, bounded shutdown, original-run reconciliation and the complete crash matrix land through `66c785ba`, with six portable stable/MSRV gates and both independently verified native matrices passing; native capability remains Linux/systemd only, and external effects remain at least once. | [status](0022-executor-process-lifecycle/STATUS.md) |
-| 0023 | Operational Acceptance | Unregistered | 0/7 | Independent reporter/fixture preparation passes 55 harness tests and 96 filtered installed-CLI, stdio and HTTP assertions at `a1ef3526`; autonomous installed execution, sustained native, live-model and independent review evidence remain incomplete. | [status](0023-operational-acceptance/STATUS.md) |
+| 0023 | Operational Acceptance | In progress | 1/7 | Registered after implementation-plan integration; the reporter closes at `83de6523` with actual retained host/Podman proof and explicit zero-swap limits; autonomous installed scenarios, sustained operation, live-model acceptance and independent review remain incomplete. | [status](0023-operational-acceptance/STATUS.md) |
 
 ## Review follow-up: plans 0020–0023
 
@@ -35,8 +35,7 @@ These four bundles address the remaining concerns from the review at
 or earn a higher readiness score. Task statuses advance only when their individual acceptance criteria pass;
 independent preparation does not establish task completion. Plan 0022 now
 has a manual Phase R binding at `8e3a8bb`, following the prior by-hand mode;
-plan 0020 now has a manual Phase R binding at `41f9350`; plan 0021 now has a manual Phase R binding at `15172d82`; plan 0023
-remains Unregistered. Registration does not release
+plan 0020 now has a manual Phase R binding at `41f9350`; plan 0021 now has a manual Phase R binding at `15172d82`; plan 0023 has a manual Phase R binding at `106c833c`. Registration does not release
 a gated prerequisite or fabricate a task landing OID. Before registration a
 committed bundle is **Unregistered**; before commit it is AwaitingCommit.
 

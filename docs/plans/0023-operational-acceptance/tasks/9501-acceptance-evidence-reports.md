@@ -11,8 +11,8 @@ touches:
   - acceptance/tests/test_evidence.py
   - acceptance/acceptance.sh
   - acceptance/Containerfile
-status: planned
-merged_as: ""
+status: done
+merged_as: "83de6523169394fa5bc329034a9b857d489c73ad"
 ---
 # Acceptance Evidence Reports
 
@@ -47,3 +47,10 @@ the binary and the checks that actually executed.
 - **Done when:** the same scenario results produce matching verdicts in the
   console and validated evidence report, and every negative case above is
   rejected as release proof by the reporter tests and an installed-binary run.
+
+Frozen acceptance at `83de6523` maps all nine written criteria to reporter
+self-tests, actual host/Podman consumer reports, installed identity refusals,
+labelled synthetic negative controls and an actual permission-denied report
+write with nonzero exit; filtered reports remain ineligible for full release
+proof. Author review digest:
+`a9fec0b99f35caf8ee1f49a897db9f7fcc8e3ea2c29078300bdc49409513685b`.

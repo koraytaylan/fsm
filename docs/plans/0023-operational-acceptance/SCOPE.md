@@ -1,7 +1,7 @@
 ---
 id: 0023
 title: "Operational Acceptance"
-status: planned
+status: in_progress
 ---
 # Scope — Plan 0023
 
@@ -62,7 +62,8 @@ cross-plan prerequisites, not dangling task IDs in the local dependency DAG.
 The lifecycle feasibility gate in 0022 cannot be bypassed by skipping a native
 test or calling an unresolved run safe. Existing release gates remain required.
 
-The seven tasks are planned work, not evidence that any of their proposed
-commands or artifacts exists today. Automated proof, sustained proof and the
+Task frontmatter records the completed reporter and remaining acceptance work;
+individual task evidence does not establish the complete operational matrix.
+Automated proof, sustained proof and the
 manual live-model task must all pass for the same candidate executable and
 contract set before the plan may be marked complete.
