@@ -62,7 +62,9 @@ class Retirement(unittest.TestCase):
                            for host, kind, behavior in probe.CONTRACT_ADMISSION_CASES]
             if repeat:
                 markers = [marker for attempt in range(20) for marker in (
-                    b'FSM_NATIVE_CRASH_CASE candidate-result standalone process collected-timeout',
+                    *[f'FSM_NATIVE_CRASH_CASE candidate-result standalone process {behavior}'.encode()
+                      for behavior in ('hold-result', 'signal-int', 'signal-term', 'torn-tail',
+                                       'noisy-result', 'collected-timeout')],
                     f'FSM_NATIVE_CRASH_DIAGNOSTIC collected-timeout {attempt}'.encode())]
             if missing:
                 markers.pop()
@@ -116,13 +118,16 @@ class Retirement(unittest.TestCase):
                 else:
                     self.assertEqual(probe.main(), 1 if timeout or missing else 0)
                 evidence = json.loads(report.read_text())
-                self.assertEqual(evidence['scope'], 'repeated-standalone-process-collected-timeout' if repeat else 'native-contract-refusal-repair' if contract else 'private-owner-scheduling' if scheduling else 'public-and-private-held-handlers' if private else 'pre-publication-collected-candidates-supervisor-death-domain-close-journal-cuts-host-claim-enrolled-authorization-and-repeated-noisy-hosts')
+                self.assertEqual(evidence['scope'], 'repeated-standalone-process-prefix-through-collected-timeout' if repeat else 'native-contract-refusal-repair' if contract else 'private-owner-scheduling' if scheduling else 'public-and-private-held-handlers' if private else 'pre-publication-collected-candidates-supervisor-death-domain-close-journal-cuts-host-claim-enrolled-authorization-and-repeated-noisy-hosts')
                 self.assertEqual(evidence['passed'], clear and not stages and not timeout and not missing and not changed and not launch_error)
                 self.assertFalse(evidence['gate_released'])
                 self.assertEqual(run.call_args_list[0].kwargs['timeout'], 900 if repeat or contract else 1400 if scheduling else 1200 if private else 3900)
                 if repeat:
                     self.assertEqual(evidence['schema'], 'fsm.native-collected-timeout-diagnostic/1')
                     self.assertEqual(evidence['repetitions'], 20)
+                    self.assertEqual(evidence['sequence'], [
+                        'hold-result', 'signal-int', 'signal-term', 'torn-tail',
+                        'noisy-result', 'collected-timeout'])
                     self.assertEqual(len(evidence['cases']), 20)
                     self.assertEqual([row['attempt'] for row in evidence['cases']], list(range(20)))
                     self.assertFalse(evidence['task_complete'])
@@ -196,6 +201,11 @@ class Retirement(unittest.TestCase):
 
     def test_missing_timeout_repetition_cannot_pass(self):
         self.exercise(repeat=True, missing=True)
+
+    def test_timeout_marker_without_preceding_cases_cannot_pass(self):
+        lines = [f'FSM_NATIVE_CRASH_DIAGNOSTIC collected-timeout {attempt}'.encode()
+                 for attempt in range(20)]
+        self.assertTrue(all(not row['passed'] for row in probe.diagnostic_cases(b'\n'.join(lines))))
 
     def test_timeout_diagnostic_preserves_partial_failure(self):
         self.exercise(repeat=True, timeout=True)

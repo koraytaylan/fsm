@@ -43,15 +43,25 @@ fn provisioned_lifecycle_candidate_matrix() {
     if let Some(request) = std::env::var_os("FSM_NATIVE_CRASH_REPEAT_COLLECTED_TIMEOUT") {
         assert_eq!(request.to_str(), Some("1"));
         for attempt in 0..20 {
-            assert!(scenario(
-                &staging,
-                &format!("{}-{attempt}", &nonce[..24]),
-                Scenario {
-                    host: "standalone",
-                    kind: "process",
-                    behavior: "collected-timeout",
-                },
-            ));
+            // Preserve the original failed run's preceding manager activity.
+            for behavior in [
+                "hold-result",
+                "signal-int",
+                "signal-term",
+                "torn-tail",
+                "noisy-result",
+                "collected-timeout",
+            ] {
+                assert!(scenario(
+                    &staging,
+                    &format!("{}-{attempt}", &nonce[..24]),
+                    Scenario {
+                        host: "standalone",
+                        kind: "process",
+                        behavior
+                    },
+                ));
+            }
             writeln!(
                 std::io::stdout().lock(),
                 "FSM_NATIVE_CRASH_DIAGNOSTIC collected-timeout {attempt}"

@@ -104,7 +104,7 @@ def verify_diagnostic(repo, directory, commit, rustc):
     report = json.loads(encoded)
     common(report, commit, rustc)
     require(report['schema'] == 'fsm.native-collected-timeout-diagnostic/1'
-            and report['scope'] == 'repeated-standalone-process-collected-timeout'
+            and report['scope'] == 'repeated-standalone-process-prefix-through-collected-timeout'
             and report['task_complete'] is False and report['passed'] is True
             and report['timed_out'] is False and type(report['exit_code']) is int
             and report['exit_code'] == 0, 'diagnostic run failed or scope differs')
@@ -114,6 +114,10 @@ def verify_diagnostic(repo, directory, commit, rustc):
     require(type(repetitions) is int and repetitions == 20
             and type(report['repetitions']) is int and report['repetitions'] == repetitions,
             'frozen diagnostic repetition bound differs')
+    sequence = literal(repo, commit, 'crash_probe', 'DIAGNOSTIC_SEQUENCE')
+    require(sequence == ('hold-result', 'signal-int', 'signal-term', 'torn-tail',
+                         'noisy-result', 'collected-timeout')
+            and report['sequence'] == list(sequence), 'frozen diagnostic sequence differs')
     expected = [dict(attempt=attempt, host='standalone', kind='process',
                      behavior='collected-timeout', passed=True)
                 for attempt in range(repetitions)]
@@ -127,7 +131,8 @@ def verify_diagnostic(repo, directory, commit, rustc):
     log = bounded(directory / 'crash.log')
     require(hashlib.sha256(log).hexdigest() == report['log_sha256'], 'diagnostic log digest differs')
     expected_markers = [marker for attempt in range(repetitions) for marker in (
-        b'FSM_NATIVE_CRASH_CASE candidate-result standalone process collected-timeout',
+        *[f'FSM_NATIVE_CRASH_CASE candidate-result standalone process {behavior}'.encode()
+          for behavior in sequence],
         f'FSM_NATIVE_CRASH_DIAGNOSTIC collected-timeout {attempt}'.encode())]
     observed = [line for line in log.splitlines()
                 if line.startswith((b'FSM_NATIVE_CRASH_CASE ', b'FSM_NATIVE_CRASH_DIAGNOSTIC '))]
@@ -135,6 +140,7 @@ def verify_diagnostic(repo, directory, commit, rustc):
     require(('test ' + test + ' ... ok').encode() in log
             and b'1 passed; 0 failed; 0 ignored;' in log, 'diagnostic coordinator pass missing')
     return dict(source_commit=commit, rustc=rustc, scope=report['scope'], cases=repetitions,
+                scenario_runs=repetitions * len(sequence),
                 report_sha256=hashlib.sha256(encoded).hexdigest(), log_sha256=report['log_sha256'],
                 verified=True, gate_released=False, task_complete=False,
                 executable_bytes_verified=False, production_repair_claimed=False)

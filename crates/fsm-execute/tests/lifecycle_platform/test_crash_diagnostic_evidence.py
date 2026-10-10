@@ -19,8 +19,11 @@ class DiagnosticEvidence(unittest.TestCase):
         self.commit = 'a' * 40
         self.compiler = 'rustc diagnostic fixture'
         self.test = 'authority::allocator::native_tests::crash_matrix::provisioned_lifecycle_candidate_matrix'
+        self.sequence = ('hold-result', 'signal-int', 'signal-term', 'torn-tail',
+                         'noisy-result', 'collected-timeout')
         self.lines = [marker for attempt in range(20) for marker in (
-            b'FSM_NATIVE_CRASH_CASE candidate-result standalone process collected-timeout',
+            *[f'FSM_NATIVE_CRASH_CASE candidate-result standalone process {behavior}'.encode()
+              for behavior in self.sequence],
             f'FSM_NATIVE_CRASH_DIAGNOSTIC collected-timeout {attempt}'.encode())]
         self.lines += [('test ' + self.test + ' ... ok').encode(),
                        b'test result: ok. 1 passed; 0 failed; 0 ignored;']
@@ -36,7 +39,8 @@ class DiagnosticEvidence(unittest.TestCase):
         command += ['/fixture/authority-test', '--exact', self.test,
                     '--ignored', '--nocapture', '--color', 'never']
         self.report = dict(schema='fsm.native-collected-timeout-diagnostic/1',
-                           scope='repeated-standalone-process-collected-timeout',
+                           scope='repeated-standalone-process-prefix-through-collected-timeout',
+                           sequence=list(self.sequence),
                            source_commit=self.commit, source_dirty=False, rustc=self.compiler,
                            passed=True, gate_released=False, task_complete=False,
                            timed_out=False, exit_code=0, repetitions=20,
@@ -52,7 +56,7 @@ class DiagnosticEvidence(unittest.TestCase):
         report['log_sha256'] = hashlib.sha256(log).hexdigest()
         (self.directory / 'crash.log').write_bytes(log)
         (self.directory / 'crash.json').write_text(json.dumps(report))
-        with patch('verify_crash_evidence.literal', return_value=20):
+        with patch('verify_crash_evidence.literal', side_effect=[20, self.sequence]):
             return verify_diagnostic(Path('/fixture/repository'), self.directory,
                                      self.commit, self.compiler)
 
@@ -60,6 +64,7 @@ class DiagnosticEvidence(unittest.TestCase):
         result = self.check()
         self.assertTrue(result['verified'])
         self.assertEqual(result['cases'], 20)
+        self.assertEqual(result['scenario_runs'], 120)
         for field in ('gate_released', 'task_complete', 'production_repair_claimed',
                       'executable_bytes_verified'):
             self.assertIs(result[field], False)
@@ -105,6 +110,24 @@ class DiagnosticEvidence(unittest.TestCase):
             with self.subTest(lines=lines):
                 with self.assertRaises(ValueError):
                     self.check(lines=lines)
+
+    def test_passing_timeouts_without_original_prefix_cannot_verify(self):
+        isolated = [line for line in self.lines if b'FSM_NATIVE_CRASH_CASE ' not in line
+                    or line.endswith(b'collected-timeout')]
+        with self.assertRaisesRegex(ValueError, 'runtime inventory'):
+            self.check(lines=isolated)
+        reordered = self.lines.copy()
+        reordered[0], reordered[1] = reordered[1], reordered[0]
+        with self.assertRaisesRegex(ValueError, 'runtime inventory'):
+            self.check(lines=reordered)
+
+    def test_report_cannot_relabel_or_drop_original_prefix(self):
+        for sequence in (['collected-timeout'], list(reversed(self.sequence)), [], None):
+            with self.subTest(sequence=sequence):
+                report = copy.deepcopy(self.report)
+                report['sequence'] = sequence
+                with self.assertRaisesRegex(ValueError, 'sequence differs'):
+                    self.check(report)
 
     def test_changed_artifact_digest_or_missing_diagnostic_invocation_is_rejected(self):
         for change in ('artifact', 'mode', 'duplicate mode'):

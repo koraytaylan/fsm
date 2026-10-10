@@ -38,7 +38,7 @@ on:
         type: boolean
         default: false
       repeat_collected_timeout:
-        description: Diagnose the original standalone process timeout with twenty fresh repetitions
+        description: Repeat the original six-case sequence through the standalone timeout twenty times
         type: boolean
         default: false
       completion_owner_only:

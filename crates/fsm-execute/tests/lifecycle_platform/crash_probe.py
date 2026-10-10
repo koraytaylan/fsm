@@ -13,14 +13,24 @@ from workflow_probe import digest
 import workflow_failure_export
 
 DIAGNOSTIC_REPETITIONS = 20
+DIAGNOSTIC_SEQUENCE = ('hold-result', 'signal-int', 'signal-term', 'torn-tail',
+                       'noisy-result', 'collected-timeout')
 
 
 def diagnostic_cases(output):
-    lines = output.splitlines()
-    return [dict(attempt=attempt, host='standalone', kind='process',
-                 behavior='collected-timeout', passed=lines.count(
-                     f'FSM_NATIVE_CRASH_DIAGNOSTIC collected-timeout {attempt}'.encode()) == 1)
-            for attempt in range(DIAGNOSTIC_REPETITIONS)]
+    lines = [line for line in output.splitlines()
+             if line.startswith((b'FSM_NATIVE_CRASH_CASE ', b'FSM_NATIVE_CRASH_DIAGNOSTIC '))]
+    width = len(DIAGNOSTIC_SEQUENCE) + 1
+    cases = []
+    for attempt in range(DIAGNOSTIC_REPETITIONS):
+        expected = [f'FSM_NATIVE_CRASH_CASE candidate-result standalone process {behavior}'.encode()
+                    for behavior in DIAGNOSTIC_SEQUENCE]
+        expected.append(f'FSM_NATIVE_CRASH_DIAGNOSTIC collected-timeout {attempt}'.encode())
+        cases.append(dict(attempt=attempt, host='standalone', kind='process',
+                          behavior='collected-timeout', passed=(
+                              lines[attempt * width:(attempt + 1) * width] == expected
+                              and len(lines) <= width * DIAGNOSTIC_REPETITIONS)))
+    return cases
 
 PRIVATE_OWNER_CASES = (('private', 'process', 'private-held'),
                        ('private', 'mcp', 'private-held'),
@@ -102,7 +112,7 @@ def main():
     parser.add_argument('--toolchain', choices=('stable', '1.89.0'), required=True)
     parser.add_argument('--report', type=Path, required=True)
     parser.add_argument('--repeat-collected-timeout', action='store_true',
-                        help='diagnose twenty fresh original timeout cases; never full acceptance')
+                        help='repeat twenty original six-case prefixes through timeout; never full acceptance')
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument('--private-owner', action='store_true',
                         help='exercise the public and private held-handler cases')
@@ -155,7 +165,8 @@ def main():
                       scope='private-owner-scheduling', task_complete=False)
     if repeat:
         report.update(schema='fsm.native-collected-timeout-diagnostic/1',
-                      scope='repeated-standalone-process-collected-timeout',
+                      scope='repeated-standalone-process-prefix-through-collected-timeout',
+                      sequence=list(DIAGNOSTIC_SEQUENCE),
                       repetitions=DIAGNOSTIC_REPETITIONS, task_complete=False,
                       cases=diagnostic_cases(b''))
     installed = json.loads(subprocess.check_output(
