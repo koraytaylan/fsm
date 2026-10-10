@@ -423,6 +423,29 @@ original report digest:
 This documentation-only completion record identifies the tested source above;
 it does not supply independent review or the remaining plan evidence.
 
+Frozen native smoke milestone at `935e5af7` passes all six baseline OS/toolchain
+axes and both complete Linux executor inventories:
+[all eight native axes and aggregate verification](https://github.com/koraytaylan/fsm/actions/runs/38093310509)
+pass, including actual pre-launch unsupported-containment refusal on macOS/Windows;
+[complete optimized MSRV Podman consumer](https://github.com/koraytaylan/fsm/actions/runs/38094057965)
+passes separately without a scenario filter.
+Each complete executor run passes 37 scenarios, 149 native fixtures and 5,659
+assertions, retaining 621 original closures, 3,019 journal records, 1,680 trace
+records and 104 owner drains; strict replay verifies all 64 hardware-cut cells,
+1,340 original source blobs, executable bytes, protected bindings and cleanup.
+Linux jobs enforce one worker, 1 GiB memory and zero swap; the original consumer
+container is removed, and cancelled predecessors remain cancelled.
+Frozen implementing-author milestone review digest:
+`96cde34e4970d13ca9150bd035b03e5fd156aafdcf93dc1a7aab4f2181c17478`.
+The later compiler-selection recipe correction at `d63aae41` has its own
+[focused installed seal check](https://github.com/koraytaylan/fsm/actions/runs/38095205679):
+Rust 1.89.0, twelve passing assertions and original-source replay, alongside
+five focused consumer-observer and nine native-evidence guard tests.
+That filtered check supplies no native or complete-candidate proof and does not
+relabel the earlier matrix's tested revision; task 9602 remains in progress
+until a separately calibrated sustained run meets both eight hours and 10,000
+completed cycles on the same final candidate as the required remaining axes.
+
 Sustained native operation, nine human-reviewed uncoached
 live-model sessions, Desktop compatibility and independent final review remain
 mandatory and incomplete; no passing skip or synthetic control replaces them.
