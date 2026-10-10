@@ -13,6 +13,7 @@ import unittest
 from unittest.mock import patch
 import threading
 import queue
+import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -22,6 +23,8 @@ from acceptance.suite.executor_scenarios import (observe_trace, workflow_table,
 from acceptance.suite.fsm import task_cache, Scratch
 from acceptance.suite.mcp import (StdioClient, HttpClient, FrameReader, McpError,
                                  MAX_FRAME, MAX_QUEUED_FRAMES)
+from acceptance.suite.native_fixture import (require_disposable_runner, DisposableAuthority,
+                                           BROKER_OWNER)
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "executor_handler.py"
 
@@ -698,6 +701,71 @@ class QuietJournalObserverTests(unittest.TestCase):
             (store / "journal" / "seg-00000000000000000000.jsonl").mkdir(parents=True)
             with self.assertRaisesRegex(ValueError, "regular canonical"):
                 read_journal_prefix(store)
+
+
+class DisposableProvisioningTests(unittest.TestCase):
+    """Operator guards and an unprivileged broker stub, never native execution."""
+
+    def test_native_provisioning_refuses_before_any_privileged_command(self):
+        for environment in ({}, {"GITHUB_ACTIONS": "true"},
+                            {"FSM_ACCEPTANCE_DISPOSABLE_NATIVE": "1"}):
+            with patch.dict(os.environ, environment, clear=True), patch(
+                "acceptance.suite.native_fixture.privileged") as command:
+                with self.assertRaisesRegex(RuntimeError, "disposable Linux"):
+                    DisposableAuthority(FIXTURE).__enter__()
+                command.assert_not_called()
+
+    def test_root_and_unsupported_platforms_cannot_be_operators(self):
+        with patch.dict(os.environ, {"GITHUB_ACTIONS": "true", "FSM_ACCEPTANCE_DISPOSABLE_NATIVE": "1"}):
+            for system, uid in (("Windows", 1000), ("Darwin", 1000), ("Linux", 0)):
+                with patch("acceptance.suite.native_fixture.platform.system", return_value=system), patch(
+                    "acceptance.suite.native_fixture.os.geteuid", return_value=uid):
+                    with self.assertRaises(RuntimeError):
+                        require_disposable_runner()
+
+    def test_broker_owner_retires_its_real_unprivileged_stub_child(self):
+        with Scratch("broker-owner") as scratch:
+            stub = Path(scratch.path) / "stub.py"
+            marker = Path(scratch.path) / "pid"
+            stub.write_text(f"#!{sys.executable}\nimport os,time\nfrom pathlib import Path\n"
+                            "Path(os.environ['FSM_STUB_PID_PATH']).write_text(str(os.getpid()))\n"
+                            "time.sleep(10)\n", encoding="utf-8")
+            stub.chmod(0o755)
+            code = BROKER_OWNER.replace("/usr/libexec/fsm-containment-authority", str(stub))
+            owner = subprocess.Popen([sys.executable, "-c", code, "a" * 32],
+                                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                     env={**os.environ, "FSM_STUB_PID_PATH": str(marker)})
+            try:
+                deadline = time.monotonic() + 2
+                while not marker.exists() and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                self.assertTrue(marker.exists(), "the harmless stub must actually enter before retirement")
+                output, error = owner.communicate(b"Q", timeout=5)
+                self.assertEqual(owner.returncode, 0, error.decode())
+                self.assertIn(b"FSM_ACCEPTANCE_BROKER_RETIRED", output)
+                with self.assertRaises(ProcessLookupError):
+                    os.kill(int(marker.read_text()), 0)
+            finally:
+                if owner.poll() is None:
+                    owner.communicate(b"Q", timeout=5)
+
+    def test_broker_owner_rejects_invalid_namespace_before_spawning(self):
+        result = subprocess.run([sys.executable, "-c", BROKER_OWNER, "../other"],
+                                capture_output=True, timeout=5)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b"invalid fixture namespace", result.stderr)
+
+    def test_cleanup_failure_is_retained_before_it_is_raised(self):
+        with Scratch("retirement-evidence") as scratch:
+            fixture = DisposableAuthority(FIXTURE)
+            fixture.cache = Path(scratch.path)
+            with patch.object(fixture, "_remove_owned", side_effect=RuntimeError("original cleanup failure")):
+                with self.assertRaisesRegex(RuntimeError, "original cleanup failure"):
+                    fixture._retire(True)
+            retained = json.loads((fixture.cache / "retirement.json").read_text())
+            self.assertFalse(retained["cleaned"])
+            self.assertTrue(retained["retained_authority"])
+            self.assertEqual(retained["error"], "original cleanup failure")
 
 
 if __name__ == "__main__":

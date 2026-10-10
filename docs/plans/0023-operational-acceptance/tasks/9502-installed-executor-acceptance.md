@@ -7,6 +7,9 @@ depends_on:
   - acceptance-evidence-reports
 gated: false
 touches:
+  - .github/workflows/installed-executor-check.yml
+  - acceptance/run-installed-executor.py
+  - acceptance/suite/native_fixture.py
   - acceptance/suite/scenarios.py
   - acceptance/suite/executor_scenarios.py
   - acceptance/suite/mcp.py
@@ -24,6 +27,10 @@ merged_as: ""
 
 An independently written client must observe the three implementation plans
 working together through the consumer-installed executable.
+
+The disposable native fixture and focused dispatch workflow support this task's
+installed execution inventory; task 9602 still owns the complete platform and
+sustained matrix, and the acceptance inventory below remains unchanged.
 
 **Steps:**
 

@@ -14,8 +14,12 @@ import sys
 import json
 from itertools import islice
 import re
+import time
+import hashlib
 
 from . import fsm
+from .mcp import StdioClient
+from .native_fixture import DisposableAuthority
 
 MAX_TRACE_EVENTS = 100_000
 MAX_TRACE_TEXT = 256
@@ -217,7 +221,104 @@ def executor_contract_fixtures_are_checked_without_external_work(report) -> None
         report.note("Offline checks do not establish autonomous execution, shutdown or transport coverage.")
 
 
-SCENARIOS = (executor_contract_fixtures_are_checked_without_external_work,)
+def _fixture_rows(path: Path) -> list[dict]:
+    if not path.exists():
+        return []
+    with path.open("rb") as stream:
+        encoded = stream.read(65_537)
+    if len(encoded) > 65_536:
+        raise ValueError("workflow fixture observation exceeds its bound")
+    return [json.loads(line) for line in encoded.split(b"\n")[:-1]]
+
+
+def _wait_for_files(predicate, process, seconds: float):
+    """Observe external files only; no client request or workflow repair."""
+    deadline = time.monotonic() + seconds
+    while True:
+        found = predicate()
+        if found:
+            return found
+        if process.poll() is not None:
+            raise AssertionError("the installed execution host exited before quiet progress")
+        if time.monotonic() >= deadline:
+            raise AssertionError("the installed workflow did not produce its required external evidence")
+        time.sleep(0.01)
+
+
+def executor_stdio_process_success_progresses_with_a_quiet_client(report) -> None:
+    """One actual contained installed path; other matrix cells remain separate."""
+    fixture = Path(fsm.REPO) / "acceptance/fixtures/executor_handler.py"
+    machine = Path(fsm.REPO) / "acceptance/fixtures/executor_workflow.json"
+    events = ("start", "validated", "suspended", "processed", "restored")
+    with fsm.Scratch("quiet-installed") as scratch, DisposableAuthority(fixture) as native:
+        store = Path(scratch.dir("store"))
+        fsm.run("machine", "add", str(machine), data_dir=str(store)).ok()
+        table = workflow_table(native.resource, native.handler, kind="process", outcome="success",
+                               release=native.release)
+        table_path = native.approve(store, table)
+        with StdioClient([fsm.FSM, "serve", f"--data-dir={store}", "--execute",
+                          f"--handlers={table_path}", "--poll-interval-ms=25"]) as client:
+            client.initialize()
+            draft = client.structured("executor_check", {"spec": json.loads(machine.read_text())})
+            report.equal(draft["status"], "compatible", "the installed host checks its actual loaded table")
+            discovery = client.request("resources/read", {"uri": "fsm://executor"})
+            capability = json.loads(discovery["contents"][0]["text"])
+            report.equal(capability["format"], "fsm.executor/2", "discovery exposes the integrated executor contract")
+            report.equal(capability["progress"], "autonomous", "discovery describes quiet-client execution")
+            report.true(capability["executes_effects"] is True, "the host owns effect execution")
+            created = client.structured("instance_create", {"machine": "acceptance_workflow",
+                                         "request_id": "quiet-installed-create"})
+            instance = created["instance_id"]
+            uri = f"fsm://instance/{instance}"
+            client.request("resources/subscribe", {"uri": uri})
+            triggered = client.structured("instance_send", {"instance_id": instance,
+                                          "event": {"name": "start"}, "request_id": "quiet-installed-start"})
+            report.equal(triggered["leaf"], "validating", "one trigger enters the barrier-protected prerequisite")
+            ready = _wait_for_files(lambda: list(native.resource.glob("*.ready")), client.process, 10)
+            report.equal(len(ready), 1, "exactly one external handler reached its barrier")
+            report.equal(json.loads(ready[0].read_text())["operation"], "validate", "the first external operation is validation")
+            report.equal(_fixture_rows(native.resource / "results.jsonl"), [], "the barrier still holds the actual handler")
+            response = client.request("tools/list", timeout=2)
+            report.true(bool(response.get("tools")), "an unrelated control request responds while the handler waits")
+            report.equal(_fixture_rows(native.resource / "results.jsonl"), [], "the control request did not require handler completion")
+            previous_notifications = len(client.notifications)
+            quiet_id = client._next_id
+            native.release.write_text("release", encoding="utf-8")
+            _wait_for_files(lambda: len(_fixture_rows(native.resource / "results.jsonl")) == 4,
+                            client.process, 30)
+            _wait_for_files(lambda: not observe_success_journal(read_journal_prefix(store), instance, events),
+                            client.process, 10)
+            records = read_journal_prefix(store)
+            trace = _fixture_rows(native.resource / "trace.jsonl")
+            results = _fixture_rows(native.resource / "results.jsonl")
+            state = json.loads((native.resource / (hashlib.sha256(b"supplier").hexdigest() + ".json")).read_text())
+            report.note("FSM_INSTALLED_WORKFLOW_EVIDENCE " + json.dumps(dict(
+                transport="stdio", handler_kind="process", outcome="success", instance=instance,
+                namespace=native.namespace, trace=trace, results=results, state=state, journal=records), sort_keys=True))
+            observed = observe_trace(trace, {"supplier": ["suspend", "process:0", "process:1", "restore"]}, complete=True)
+            report.equal(observed.violations, (), "independent mutations are ordered with no missing work or overlap")
+            report.equal(observed.peak_concurrency, {"supplier": 1}, "independent mutation concurrency never exceeds one")
+            report.equal([row["exit_code"] for row in results], [0, 0, 0, 0], "all four external operations succeeded")
+            report.equal(state, {"suspended": False, "items": [0, 1]}, "the external resource is restored after both items")
+            report.equal(observe_success_journal(records, instance, events), (), "each native owner settles and advances exactly once")
+            client.drain(timeout=0.2)
+            report.true(any(frame.get("method") == "notifications/resources/updated"
+                            and frame.get("params", {}).get("uri") == uri
+                            for frame in client.notifications[previous_notifications:]),
+                        "the quiet subscribed client receives an autonomous update")
+            report.equal(client._next_id, quiet_id, "external work and native settlements complete without another client request")
+            final = client.structured("instance_get", {"instance_id": instance})
+            report.equal(final["leaf"], "completed", "one final read observes the expected terminal leaf")
+            report.equal(final["status"], "completed", "the installed workflow is complete")
+            report.equal(final["effects_pending"], [], "no handled effect remains pending")
+            report.equal(client.structured("journal_verify")["health"], "Ok", "the installed verifier checks the journal chain")
+            report.true(client.structured("journal_replay")["matches"] is True, "the installed replay reproduces every recorded outcome")
+        report.equal(client.process.returncode, 0, "stdio EOF completes supervised host retirement")
+    report.true(native.cleaned, "original domain closures permit owned fixture cleanup")
+
+
+SCENARIOS = (executor_contract_fixtures_are_checked_without_external_work,
+             executor_stdio_process_success_progresses_with_a_quiet_client)
 
 
 def _name(value) -> bool:

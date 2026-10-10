@@ -170,13 +170,13 @@ class StdioClient:
                 raise McpError(f"expected a reply to {want}, got {frame['id']}")
             return frame
 
-    def request(self, method: str, params: dict | None = None) -> dict:
+    def request(self, method: str, params: dict | None = None, *, timeout: float = 30) -> dict:
         self._next_id += 1
         message = {"jsonrpc": "2.0", "id": self._next_id, "method": method}
         if params is not None:
             message["params"] = params
         self._send(message)
-        frame = self._read_until_id(self._next_id)
+        frame = self._read_until_id(self._next_id, timeout)
         if "error" in frame:
             raise McpError(f"{method}: {json.dumps(frame['error'])}")
         return frame.get("result", {})

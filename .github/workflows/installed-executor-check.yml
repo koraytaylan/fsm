@@ -1,0 +1,47 @@
+name: installed-executor-check
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate:
+        description: Immutable develop candidate SHA
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  stdio-process-success:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CARGO_BUILD_JOBS: "1"
+      RUSTUP_TOOLCHAIN: stable
+      PYTHONDONTWRITEBYTECODE: "1"
+      FSM_ACCEPTANCE_DISPOSABLE_NATIVE: "1"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.candidate }}
+      - name: Prepare explicit task cache
+        run: |
+          installed_cache="$HOME/.cache/fsm-installed-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -p "$installed_cache"
+          printf 'TMPDIR=%s\nCARGO_TARGET_DIR=%s\n' "$installed_cache" "$installed_cache/target" >> "$GITHUB_ENV"
+          free -h
+          swapon --show
+      - run: rustup toolchain install stable --profile minimal
+      - name: Focused independent observer checks
+        run: python3 -m unittest discover -s acceptance/tests -p test_executor_observer.py
+      - name: Consumer install and actual contained stdio success
+        env:
+          FSM_INSTALLED_CANDIDATE: ${{ inputs.candidate }}
+        run: timeout 900s python3 acceptance/run-installed-executor.py --candidate "$FSM_INSTALLED_CANDIDATE"
+      - name: Retain focused installed evidence including failures
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: installed-stdio-process-success
+          path: ${{ env.TMPDIR }}/installed-executor-check/evidence
+          if-no-files-found: error
