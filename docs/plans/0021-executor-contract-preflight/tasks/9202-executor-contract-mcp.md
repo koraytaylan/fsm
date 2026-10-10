@@ -8,6 +8,7 @@ depends_on:
   - executor-contract-admission
 gated: false
 touches:
+  - .github/workflows/ci.yml
   - crates/fsm-cli/src/mcp/tools/mod.rs
   - crates/fsm-cli/src/mcp/tools/dispatch.rs
   - crates/fsm-cli/src/mcp/tools/validate.rs

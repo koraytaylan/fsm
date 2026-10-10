@@ -70,6 +70,11 @@ on:
         required: false
         type: boolean
         default: false
+      contract_workflow_only:
+        description: Run only native MCP draft repair and staged contract workflows
+        required: false
+        type: boolean
+        default: false
       scheduling_owner_only:
         description: Run only the independent private scheduling slice
         required: false
@@ -90,7 +95,7 @@ env:
 
 jobs:
   gate:
-    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.native_only && !inputs.owner_sensitivity_only && !inputs.completion_owner_only && !inputs.scheduling_owner_only && !inputs.contract_admission_only) }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.native_only && !inputs.owner_sensitivity_only && !inputs.completion_owner_only && !inputs.scheduling_owner_only && !inputs.contract_admission_only && !inputs.contract_workflow_only) }}
     strategy:
       fail-fast: false
       matrix:
@@ -174,7 +179,7 @@ jobs:
   # runtime. These are real administrative fault probes, separate from the
   # portable six-leg Rust gate; missing facilities fail rather than skip.
   native-containment:
-    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.owner_sensitivity_only }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.owner_sensitivity_only && !inputs.contract_workflow_only) }}
     strategy:
       fail-fast: false
       matrix:
@@ -324,7 +329,7 @@ jobs:
           if-no-files-found: error
 
   owner-sensitivity:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.owner_sensitivity_only }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.owner_sensitivity_only && !inputs.contract_workflow_only }}
     strategy:
       fail-fast: false
       matrix:
@@ -361,11 +366,50 @@ jobs:
           path: ${{ env.FSM_NATIVE_CACHE }}/native-evidence
           if-no-files-found: error
 
+  contract-workflow:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.contract_workflow_only }}
+    strategy:
+      fail-fast: false
+      matrix:
+        rust: [stable, "1.89.0"]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CARGO_BUILD_JOBS: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - name: Reject conflicting scoped acceptance modes
+        run: test '${{ inputs.native_only || inputs.owner_sensitivity_only || inputs.completion_owner_only || inputs.scheduling_owner_only || inputs.contract_admission_only }}' != 'true'
+      - run: rustup toolchain install ${{ matrix.rust }} --profile minimal
+      - name: Prepare native contract workflow cache
+        run: |
+          native_cache="$HOME/.cache/fsm-native-contract-workflow-${{ matrix.rust }}"
+          mkdir -p "$native_cache"
+          printf 'FSM_NATIVE_CACHE=%s\nTMPDIR=%s\nCARGO_TARGET_DIR=%s\n' "$native_cache" "$native_cache" "$native_cache/target" >> "$GITHUB_ENV"
+      - name: Focused workflow producer checks
+        working-directory: crates/fsm-execute/tests/lifecycle_platform
+        run: python3 -m unittest test_workflow_producer test_cli_artifact
+      - name: Native draft repair and exact staged workflow acceptance
+        run: |
+          for workflow_case in native_draft_repair_execution native_staged_fixture_refusal_recovery native_staged_standalone_refusal_recovery; do
+            python3 crates/fsm-execute/tests/lifecycle_platform/workflow_probe.py \
+              --toolchain '${{ matrix.rust }}' --case "$workflow_case" \
+              --report "$FSM_NATIVE_CACHE/contract-workflow-evidence/$workflow_case/workflow.json"
+          done
+      - name: Retain native contract workflow evidence, including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-contract-workflow-${{ matrix.rust }}
+          path: ${{ env.FSM_NATIVE_CACHE }}/contract-workflow-evidence
+          if-no-files-found: error
+
   # The zero-dependency guarantee and the core-only embed boundary are
   # properties of the resolved graph, so keep explicit cheap checks that do
   # not depend on the test matrix merely happening to compile the crates.
   zero-deps:
-    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.owner_sensitivity_only && !inputs.completion_owner_only && !inputs.scheduling_owner_only && !inputs.contract_admission_only) }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.owner_sensitivity_only && !inputs.completion_owner_only && !inputs.scheduling_owner_only && !inputs.contract_admission_only && !inputs.contract_workflow_only) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

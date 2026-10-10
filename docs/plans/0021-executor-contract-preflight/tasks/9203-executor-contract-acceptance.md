@@ -9,6 +9,7 @@ depends_on:
   - executor-contract-mcp
 gated: false
 touches:
+  - .github/workflows/ci.yml
   - crates/fsm-cli/tests/executor_contract_acceptance.rs
   - crates/fsm-cli/tests/fixtures/contract/
   - crates/fsm-cli/tests/mcp_execute_workflow.rs
