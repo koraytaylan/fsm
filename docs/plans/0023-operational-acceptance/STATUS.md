@@ -121,7 +121,21 @@ MCP wrapper's `matches`. Filtered proof remains release-ineligible, with
 frozen author review digest
 `c3785f99d144e9fb32f80a8e0f728e1c3f8ef30853056f4d4f44d92287533485`.
 
-Task 9502 remains in progress: slow/retired stdio observers, active drain,
+Frozen active-drain acceptance at `9c359b614a2e9bcdbce3fe59d1537872828c0c94`
+establishes six stdio/HTTP/standalone process/MCP cells with 218 passing assertions:
+[disposable installed evidence](https://github.com/koraytaylan/fsm/actions/runs/38047364906)
+confirms original draining and closed admission while the original handler waits,
+then original success without successor entry, followed by quiet fresh-owner
+completion and restoration; all six original advances were delivered before restart.
+Replay revalidates 1,282 source blobs and retained binary/helper bytes,
+24 original domain closures, 120 journal records and 72 unmodified trace records,
+with six original drains and four explicit HTTP/standalone successor drains.
+Ninety focused observer tests pass; removing either the original-identity or
+single-owner guard makes its named fault test fail and restoration re-passes.
+Filtered proof remains release-ineligible, with frozen author review digest
+`2b0c68fa8efa6e2201c05399c6619071b1006b39e887c4bad2c48aa79056db6a`.
+
+Task 9502 remains in progress: slow/retired stdio observers,
 remaining crash cuts and the pre-existing
 portable acceptance inventory are outstanding.
 Sustained native operation, nine human-reviewed uncoached
