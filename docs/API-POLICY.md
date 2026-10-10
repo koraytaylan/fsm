@@ -1815,6 +1815,11 @@ the original preparation for cleanup without consuming an attempt. This executio
 policy has a pre-1.0 minor consequence; no public signatures, persisted formats,
 hash domains, error codes or version numbers change.
 
+Prepared-handler equality uses the existing validated full immutable contract,
+including its normalized retry-class set; raw retry-list ordering does not
+refuse an unchanged handler. This is a correction to that admission policy,
+with no public signature, fingerprint domain, persisted format or version change.
+
 Shared service bound-native entry rechecks the current pending contract and
 original claimed handler fingerprint before requesting execution. Refusal
 retains original ownership and entry permission using existing contract errors;

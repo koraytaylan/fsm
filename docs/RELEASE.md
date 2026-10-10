@@ -35,6 +35,12 @@ retains the original domain for cleanup without consuming an attempt or
 changing persisted formats. Final entry, caching and recovery acceptance for
 plan 0021 admission remain incomplete.
 
+Prepared native admission now compares the existing full immutable contracts
+rather than raw handler structs, so canonical recovery of an unordered retry
+set no longer refuses an unchanged loaded table; private command and policy
+changes still refuse before claim publication, with unchanged fingerprints and
+persisted formats.
+
 Hosted HTTP ordinary tool calls no longer wait behind an unanswered question
 in the same session; they reach the existing count/byte admission directly,
 preserving cancellation and the question waiter's exclusive reverse mailbox.

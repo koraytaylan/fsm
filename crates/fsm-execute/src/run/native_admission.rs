@@ -371,7 +371,19 @@ impl NativeAdmissions {
         // Keep the original prepared domain for authenticated cleanup on refusal.
         let admission = crate::contract::check_pending_cached(store, &pending.effect, table, cache)
             .and_then(|()| {
-                if table.handlers.get(&pending.effect.effect_name) == Some(&pending.handler) {
+                // SPEC prepared admission matches immutable contract material;
+                // recovery sorts retry classes, while parsed lists retain order.
+                if table
+                    .handlers
+                    .get(&pending.effect.effect_name)
+                    .map(|handler| {
+                        handler
+                            .checked_contract()
+                            .map(|(fingerprint, _)| fingerprint)
+                    })
+                    .transpose()?
+                    == Some(pending.handler.checked_contract()?.0)
+                {
                     Ok(())
                 } else {
                     Err(ExecError::new(
@@ -729,6 +741,46 @@ mod tests {
             Phase::ClaimUncertain(_)
         ));
         assert_eq!(store.records, records);
+    }
+
+    #[test]
+    fn prepared_claim_accepts_canonical_default_and_reordered_retry_classes() {
+        for kind in [
+            r#""kind":"process""#,
+            r#""kind":"mcp","tool":"run","arguments":{"fixed":"private literal"}"#,
+        ] {
+            for retry in ["", r#", "retry":{"on":["timeout","spawn"]}"#] {
+                let (_directory, store, mut admissions, mut table) = prepared_contract();
+                let source = format!(
+                    r#"{{"format":"fsm.handlers/1","handlers":[{{"effect":"notify",{kind},"argv":["/bin/false"],"timeout_ms":100{retry}}}]}}"#
+                );
+                let loaded = HandlerTable::parse(&source)
+                    .unwrap()
+                    .handlers
+                    .remove("notify")
+                    .unwrap();
+                let pending = admissions.pending.values_mut().next().unwrap();
+                pending.handler =
+                    HandlerSpec::from_contract(&loaded.contract_value(), &loaded.fingerprint())
+                        .unwrap();
+                assert_ne!(pending.handler.retry.on, loaded.retry.on);
+                table.handlers.insert("notify".into(), loaded.clone());
+                let records = store.records.clone();
+                let state = store.state.clone();
+                let request = admissions
+                    .take_ready(&store, &table, None)
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(request.handler.fingerprint(), loaded.fingerprint());
+                assert_eq!(request.handler.contract_value(), loaded.contract_value());
+                assert_eq!(store.records, records);
+                assert!(fsm_store::snapshot::store_states_eq(&state, &store.state));
+                assert!(matches!(
+                    admissions.pending.values().next().unwrap().phase,
+                    Phase::ClaimUncertain(_)
+                ));
+            }
+        }
     }
 
     #[test]

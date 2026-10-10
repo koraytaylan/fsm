@@ -1435,7 +1435,9 @@ candidate becomes eligible on the next observation without a persisted denial.
 
 Prepared native admission MUST repeat the pending-contract check against the
 healthy durable writer before entering uncertain claim publication, and MUST
-require the prepared handler to equal its current loaded-table entry. Refusal
+require the prepared handler's validated full immutable contract to equal its
+current loaded-table entry's validated full immutable contract; retry-class
+ordering MUST NOT distinguish contracts with the same normalized retry set. Refusal
 MUST cancel that preparation while retaining its original domain for authenticated
 cleanup; it MUST NOT publish a claim or consume an attempt. This pre-claim check
 does not replace final bound-entry validation or acknowledged-outcome recovery.

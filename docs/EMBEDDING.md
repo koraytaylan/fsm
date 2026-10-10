@@ -1481,7 +1481,9 @@ behavior until shared contract admission is integrated.
 
 Native preparation already checks the observed pending contract before queuing;
 the prepared-to-claim boundary repeats that check against the current writer
-and requires the original handler to match the loaded table. Refusal leaves the
+and requires the original handler's full immutable contract to match the loaded
+table's validated contract, treating retry-class order as the existing normalized
+set. Refusal leaves the
 effect pending and retains the prepared domain for cleanup without publishing a
 claim. Bound-owner service entry repeats pending-contract validation and matches
 the loaded handler fingerprint to its original claim before requesting execution;
