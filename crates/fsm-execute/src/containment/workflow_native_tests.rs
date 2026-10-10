@@ -13,6 +13,9 @@ pub(super) fn archive_failure(fixture: &Fixture, staging: &Path) {
 #[path = "failed_stop_native_tests.rs"]
 mod failed_stop;
 
+#[path = "workflow_contract_mcp.rs"]
+mod contract_mcp_workflow;
+
 fn workflow_broker(directory: &Path, store: &Path) -> super::broker_cases::Daemon {
     super::broker_cases::disconnect_cases::permit_operator_store(store);
     super::super::super::broker_endpoint::provision(directory, 65534).unwrap();
@@ -256,7 +259,7 @@ fn staged_native_table_preserves_independent_report() {
 fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
     use fsm_core::record::{RecordKind, execution::Claim};
     use fsm_store::store::VerifiedClosure;
-    let expected = if matches!(failure, "contract-staged" | "contract-staged-standalone") {
+    let expected = if failure.starts_with("contract-staged") {
         3
     } else if failure == "contract-draft" {
         4
@@ -568,6 +571,7 @@ pub(super) fn run() {
         );
         Some(artifact)
     };
+    let workflow_handler = (!upgrade).then(|| contract_mcp_workflow::stage(&staging));
     let original_cli = if upgrade {
         let original = staging.join("original-fsm");
         stage_artifact(
@@ -588,6 +592,14 @@ pub(super) fn run() {
         (
             "native_staged_standalone_refusal_recovery",
             vec!["contract-staged-standalone"],
+        ),
+        (
+            "native_staged_mcp_refusal_recovery",
+            vec!["contract-staged-mcp"],
+        ),
+        (
+            "native_staged_standalone_mcp_refusal_recovery",
+            vec!["contract-staged-mcp-standalone"],
         ),
         (
             "workflow_http::native_http_delete_preserves_an_active_handler_and_completes_once",
@@ -763,6 +775,7 @@ pub(super) fn run() {
             for (name, bytes) in [
                 ("phase", b"active".as_slice()),
                 ("calls", b"".as_slice()),
+                ("starts", b"".as_slice()),
                 (".work-template", b"".as_slice()),
             ] {
                 let path = resource.join(name);
@@ -782,12 +795,18 @@ pub(super) fn run() {
                     .len()
                     <= 107
             );
-            let catalogue = table(&helper, &resource, failure);
+            let catalogue = if failure.starts_with("contract-staged-mcp") {
+                contract_mcp_workflow::table(workflow_handler.as_ref().unwrap(), &resource)
+            } else {
+                table(&helper, &resource, failure)
+            };
             let operator_table = (matches!(
                 case,
                 "native_draft_repair_execution"
                     | "native_staged_fixture_refusal_recovery"
                     | "native_staged_standalone_refusal_recovery"
+                    | "native_staged_mcp_refusal_recovery"
+                    | "native_staged_standalone_mcp_refusal_recovery"
             ))
             .then(|| catalogue.clone());
             let fixture = if failure.starts_with("full-disk") {
@@ -846,7 +865,7 @@ pub(super) fn run() {
             .unwrap();
         let mut child = Command::new("/usr/bin/python3")
             .args(["-c", "import os,sys;os.setgroups([]);os.setgid(65534);os.setuid(65534);os.execv(sys.argv[1],sys.argv[1:])"])
-            .arg(if matches!(case, "native_draft_repair_execution" | "native_staged_fixture_refusal_recovery" | "native_staged_standalone_refusal_recovery") { contract_mcp.as_ref().unwrap() } else { &helper }).args(["--exact", case, "--ignored", "--nocapture", "--color", "never"])
+            .arg(if matches!(case, "native_draft_repair_execution" | "native_staged_fixture_refusal_recovery" | "native_staged_standalone_refusal_recovery" | "native_staged_mcp_refusal_recovery" | "native_staged_standalone_mcp_refusal_recovery") { contract_mcp.as_ref().unwrap() } else { &helper }).args(["--exact", case, "--ignored", "--nocapture", "--color", "never"])
             .env("FSM_NATIVE_WORKFLOW_MANIFEST", &manifest_path)
             .env("TMPDIR", &fixtures[0].store)
             .stdin(Stdio::null()).stdout(log.try_clone().unwrap()).stderr(log)

@@ -38,11 +38,19 @@ fn check_cli(entry: &Value, selector: &str, reference: &str, report: &Value) {
 }
 
 pub(crate) fn run() {
-    run_with(Execution::Embedded);
+    run_with(Execution::Embedded, Handler::Process);
 }
 
 pub(crate) fn run_standalone() {
-    run_with(Execution::Standalone);
+    run_with(Execution::Standalone, Handler::Process);
+}
+
+pub(crate) fn run_mcp() {
+    run_with(Execution::Embedded, Handler::Mcp);
+}
+
+pub(crate) fn run_mcp_standalone() {
+    run_with(Execution::Standalone, Handler::Mcp);
 }
 
 enum Execution {
@@ -50,11 +58,32 @@ enum Execution {
     Standalone,
 }
 
-fn run_with(execution: Execution) {
+enum Handler {
+    Process,
+    Mcp,
+}
+
+fn run_with(execution: Execution, handler: Handler) {
     let entry = manifest();
     let store = path(&entry, "store");
     let resource = path(&entry, "resource");
     let original = entry.get("handlers").unwrap();
+    let mcp = matches!(handler, Handler::Mcp);
+    assert!(
+        original
+            .get("handlers")
+            .unwrap()
+            .as_arr()
+            .unwrap()
+            .iter()
+            .all(|handler| {
+                let kind = handler
+                    .get("kind")
+                    .and_then(Value::as_str)
+                    .unwrap_or("process");
+                kind == if mcp { "mcp" } else { "process" }
+            })
+    );
     let mut invalid = original.clone();
     let Value::Obj(fields) = &mut invalid else {
         unreachable!()
@@ -77,12 +106,16 @@ fn run_with(execution: Execution) {
     fs::write(&table_path, canon_bytes(&invalid)).unwrap();
     let machine_path = store.join("contract-machine.json");
     fs::write(&machine_path, MACHINE).unwrap();
-    let invalid_report = expected(include_str!(
-        "../../fixtures/contract/workflow-invalid.report.json"
-    ));
-    let good_report = expected(include_str!(
-        "../../fixtures/contract/workflow-repaired.report.json"
-    ));
+    let invalid_report = expected(if mcp {
+        include_str!("../../fixtures/contract/workflow-mcp-invalid.report.json")
+    } else {
+        include_str!("../../fixtures/contract/workflow-invalid.report.json")
+    });
+    let good_report = expected(if mcp {
+        include_str!("../../fixtures/contract/workflow-mcp-repaired.report.json")
+    } else {
+        include_str!("../../fixtures/contract/workflow-repaired.report.json")
+    });
     let records = Store::open_read_only(&store).unwrap().records.clone();
     check_cli(
         &entry,
@@ -141,6 +174,7 @@ fn run_with(execution: Execution) {
         assert_eq!(current.records, records);
         assert!(fsm_store::snapshot::store_states_eq(&state, &current.state));
         assert_eq!(fs::read_to_string(resource.join("calls")).unwrap(), "");
+        assert_eq!(fs::read_to_string(resource.join("starts")).unwrap(), "");
         assert!(!resource.join("work").exists());
         assert_eq!(
             fs::read_to_string(resource.join("phase")).unwrap(),
@@ -167,6 +201,7 @@ fn run_with(execution: Execution) {
             assert_eq!(current.records, records);
             assert!(fsm_store::snapshot::store_states_eq(&state, &current.state));
             assert_eq!(fs::read_to_string(resource.join("calls")).unwrap(), "");
+            assert_eq!(fs::read_to_string(resource.join("starts")).unwrap(), "");
             assert!(!resource.join("work").exists());
             std::thread::sleep(Duration::from_millis(5));
         }
@@ -234,6 +269,15 @@ fn run_with(execution: Execution) {
         "inspect\nwork\nrecover\n"
     );
     assert_eq!(fs::read_to_string(resource.join("work")).unwrap(), "first");
+    if mcp {
+        assert_eq!(
+            fs::read_to_string(resource.join("starts"))
+                .unwrap()
+                .lines()
+                .count(),
+            3
+        );
+    }
     assert_eq!(
         fs::read_to_string(resource.join("phase")).unwrap(),
         "active"

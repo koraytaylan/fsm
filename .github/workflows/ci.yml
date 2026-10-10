@@ -392,7 +392,7 @@ jobs:
         run: python3 -m unittest test_workflow_producer test_cli_artifact
       - name: Native draft repair and exact staged workflow acceptance
         run: |
-          for workflow_case in native_draft_repair_execution native_staged_fixture_refusal_recovery native_staged_standalone_refusal_recovery; do
+          for workflow_case in native_draft_repair_execution native_staged_fixture_refusal_recovery native_staged_standalone_refusal_recovery native_staged_mcp_refusal_recovery native_staged_standalone_mcp_refusal_recovery; do
             python3 crates/fsm-execute/tests/lifecycle_platform/workflow_probe.py \
               --toolchain '${{ matrix.rust }}' --case "$workflow_case" \
               --report "$FSM_NATIVE_CACHE/contract-workflow-evidence/$workflow_case/workflow.json"

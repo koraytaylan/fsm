@@ -1,0 +1,85 @@
+{
+  "format": "fsm.executor-check/1",
+  "status": "invalid",
+  "machine_id": "$MACHINE_ID",
+  "contract_id": "ed1ec110ab70247186207349acc25c3039163b9edb73fe1c4f072e954ca347df",
+  "definitions": [
+    "$MACHINE_ID"
+  ],
+  "scope": {
+    "effects_checked": true,
+    "outcomes_checked": true,
+    "dynamic_signals": false
+  },
+  "findings": [
+    {
+      "code": "exec/contract_outcome_event",
+      "severity": "error",
+      "machine_id": "$MACHINE_ID",
+      "path": "/states/2/entry/emit/0",
+      "effect": "recover",
+      "outcome": "on_ok",
+      "message": "configured outcome is not a valid externally sendable event",
+      "hint": "fix the outcome event, payload or stamped field type using the underlying cause",
+      "cause": {
+        "code": "req/event_unknown",
+        "message": "req/event_unknown: undeclared",
+        "hint": "undeclared"
+      }
+    }
+  ],
+  "effects": [
+    {
+      "machine_id": "$MACHINE_ID",
+      "path": "/states/0/entry/emit/0",
+      "effect": "inspect",
+      "arguments": {
+        "resource": "str"
+      },
+      "disposition": "automatic",
+      "required_args": [
+        "resource"
+      ],
+      "outcomes": {
+        "on_ok": "compatible",
+        "on_failed": "compatible"
+      }
+    },
+    {
+      "machine_id": "$MACHINE_ID",
+      "path": "/states/1/entry/emit/0",
+      "effect": "work",
+      "arguments": {
+        "resource": "str"
+      },
+      "disposition": "automatic",
+      "required_args": [
+        "resource"
+      ],
+      "outcomes": {
+        "on_ok": "compatible",
+        "on_failed": "compatible"
+      }
+    },
+    {
+      "machine_id": "$MACHINE_ID",
+      "path": "/states/2/entry/emit/0",
+      "effect": "recover",
+      "arguments": {
+        "resource": "str"
+      },
+      "disposition": "automatic",
+      "required_args": [
+        "resource"
+      ],
+      "outcomes": {
+        "on_ok": "invalid",
+        "on_failed": "compatible"
+      }
+    }
+  ],
+  "progress": [
+    "no-transition",
+    "runtime-dependent"
+  ]
+}

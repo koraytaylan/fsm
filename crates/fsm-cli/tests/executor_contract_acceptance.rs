@@ -22,7 +22,7 @@ struct Case<'a> {
     report: &'a str,
     exit: i32,
 }
-fn cases() -> [Case<'static>; 5] {
+fn cases() -> [Case<'static>; 7] {
     [
         Case {
             source: MACHINE,
@@ -34,6 +34,18 @@ fn cases() -> [Case<'static>; 5] {
             source: MACHINE,
             table: include_str!("fixtures/contract/workflow-invalid.handlers.json"),
             report: include_str!("fixtures/contract/workflow-invalid.report.json"),
+            exit: 1,
+        },
+        Case {
+            source: MACHINE,
+            table: include_str!("fixtures/contract/workflow-mcp-repaired.handlers.json"),
+            report: include_str!("fixtures/contract/workflow-mcp-repaired.report.json"),
+            exit: 0,
+        },
+        Case {
+            source: MACHINE,
+            table: include_str!("fixtures/contract/workflow-mcp-invalid.handlers.json"),
+            report: include_str!("fixtures/contract/workflow-mcp-invalid.report.json"),
             exit: 1,
         },
         Case {
@@ -459,3 +471,7 @@ mod embedded {
         }
     }
 }
+
+#[cfg(feature = "lifecycle-test-fixture")]
+#[path = "contract_workflow_mcp.rs"]
+mod workflow_mcp;

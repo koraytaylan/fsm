@@ -55,6 +55,7 @@ class Retirement(unittest.TestCase):
             patch.object(probe.authority, 'build_authority', return_value=artifact),
             patch.object(probe, 'build_cli', return_value=artifact),
             patch.object(probe, 'build_contract_mcp_test', return_value=artifact),
+            patch.object(probe, 'build_workflow_handler', return_value=artifact),
             patch.object(probe.authority, 'authority_state_is_clear', side_effect=state),
             patch.object(probe, 'staging_paths', side_effect=[set(), {Path('/mock/retained-stage')} if stages else set()]),
             patch.object(probe.workflow_failure_export, 'export', return_value=[],
@@ -102,6 +103,9 @@ class Retirement(unittest.TestCase):
             command = run.call_args_list[0].args[0]
             self.assertIn('FSM_NATIVE_CONTRACT_MCP_TEST_ARTIFACT=' + str(artifact), command)
             self.assertIn('FSM_NATIVE_CONTRACT_MCP_TEST_SHA256=' + probe.digest(artifact), command)
+            self.assertEqual(evidence['workflow_handler_sha256'], probe.digest(artifact))
+            self.assertIn('FSM_NATIVE_WORKFLOW_HANDLER_ARTIFACT=' + str(artifact), command)
+            self.assertIn('FSM_NATIVE_WORKFLOW_HANDLER_SHA256=' + probe.digest(artifact), command)
             self.assertEqual(evidence['passed'], clear and not stages and not timeout and not missing and not launch_error and not removal_error)
             self.assertEqual(evidence['exit_code'], None if timeout or launch_error else 0)
             self.assertEqual(evidence['command'], run.call_args_list[0].args[0])
@@ -149,6 +153,12 @@ class Retirement(unittest.TestCase):
 
     def test_unresolved_namespace_retains_authority(self):
         self.exercise('namespace-retained', clear=False)
+
+    def test_mcp_staged_cases_require_their_exact_original_markers(self):
+        for case in ['native_staged_mcp_refusal_recovery', 'native_staged_standalone_mcp_refusal_recovery']:
+            with self.subTest(case=case):
+                self.exercise(case, selected=case)
+                self.exercise(case + '-missing', selected=case, missing=True)
 
     def test_staged_fixture_retains_authority_even_with_clear_namespace(self):
         self.exercise('stage-retained', stages=True)

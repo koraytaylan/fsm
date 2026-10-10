@@ -31,6 +31,28 @@ def build_contract_mcp_test(repo, toolchain):
                                  'executor_contract_mcp', ['test'])
 
 
+def build_workflow_handler(repo, toolchain):
+    """Require the exact feature-gated protocol marker binary, without running it."""
+    command = ['cargo', '+' + toolchain, 'build', '-p', 'fsm-cli', '--bin',
+               'fsm-lifecycle-fixture', '--features', 'lifecycle-test-fixture',
+               '--message-format=json']
+    result = subprocess.run(command, cwd=repo, capture_output=True, timeout=180,
+                            env=dict(os.environ, CARGO_BUILD_JOBS='1', CARGO_PROFILE_DEV_STRIP='debuginfo'))
+    messages = [json.loads(line) for line in result.stdout.splitlines()]
+    if result.returncode:
+        rendered = [row['message'].get('rendered', '') for row in messages
+                    if row.get('reason') == 'compiler-message']
+        raise RuntimeError('Workflow marker build failed: ' + ''.join(rendered)
+                           + result.stderr.decode(errors='replace'))
+    matches = [row['executable'] for row in messages
+               if row.get('reason') == 'compiler-artifact'
+               and row['target']['name'] == 'fsm-lifecycle-fixture'
+               and row['target']['kind'] == ['bin']
+               and row['profile']['test'] is False and row.get('executable')]
+    assert len(matches) == 1, ('fsm-lifecycle-fixture', matches)
+    return Path(matches[0]).resolve()
+
+
 def build_completion_test(repo, toolchain, package, selection, target, kind):
     """Require exactly one successful compiler-produced completion observer."""
     command = ['cargo', '+' + toolchain, 'test', '-p', package, *selection,

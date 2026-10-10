@@ -1,0 +1,68 @@
+{
+  "format": "fsm.executor-check/1",
+  "status": "compatible",
+  "machine_id": "$MACHINE_ID",
+  "contract_id": "db163df592c730ac2a79eb65376f61388731fef48606dc8c04b106eb45f2edea",
+  "definitions": [
+    "$MACHINE_ID"
+  ],
+  "scope": {
+    "effects_checked": true,
+    "outcomes_checked": true,
+    "dynamic_signals": false
+  },
+  "findings": [],
+  "effects": [
+    {
+      "machine_id": "$MACHINE_ID",
+      "path": "/states/0/entry/emit/0",
+      "effect": "inspect",
+      "arguments": {
+        "resource": "str"
+      },
+      "disposition": "automatic",
+      "required_args": [
+        "resource"
+      ],
+      "outcomes": {
+        "on_ok": "compatible",
+        "on_failed": "compatible"
+      }
+    },
+    {
+      "machine_id": "$MACHINE_ID",
+      "path": "/states/1/entry/emit/0",
+      "effect": "work",
+      "arguments": {
+        "resource": "str"
+      },
+      "disposition": "automatic",
+      "required_args": [
+        "resource"
+      ],
+      "outcomes": {
+        "on_ok": "compatible",
+        "on_failed": "compatible"
+      }
+    },
+    {
+      "machine_id": "$MACHINE_ID",
+      "path": "/states/2/entry/emit/0",
+      "effect": "recover",
+      "arguments": {
+        "resource": "str"
+      },
+      "disposition": "automatic",
+      "required_args": [
+        "resource"
+      ],
+      "outcomes": {
+        "on_ok": "compatible",
+        "on_failed": "compatible"
+      }
+    }
+  ],
+  "progress": [
+    "runtime-dependent"
+  ]
+}

@@ -1,0 +1,115 @@
+{
+  "format": "fsm.handlers/1",
+  "max_inflight": 1,
+  "max_inflight_per_instance": 1,
+  "handlers": [
+    {
+      "effect": "inspect",
+      "argv": [
+        "/PRIVATE_WORKFLOW_EXECUTABLE",
+        "workflow-mcp",
+        "/PRIVATE_WORKFLOW_DIRECTORY",
+        "compensate"
+      ],
+      "timeout_ms": 1000,
+      "retry": {
+        "attempts": 1,
+        "backoff_ms": 1000,
+        "max_backoff_ms": 60000,
+        "on": [
+          "timeout"
+        ]
+      },
+      "on_ok": {
+        "event": "ready",
+        "payload": {},
+        "stamps": []
+      },
+      "on_failed": {
+        "event": "failed",
+        "payload": {},
+        "stamps": []
+      },
+      "kind": "mcp",
+      "tool": "inspect",
+      "arguments": {
+        "target": {
+          "resource": "{resource}"
+        },
+        "literal": "PRIVATE_WORKFLOW_LITERAL"
+      }
+    },
+    {
+      "effect": "work",
+      "argv": [
+        "/PRIVATE_WORKFLOW_EXECUTABLE",
+        "workflow-mcp",
+        "/PRIVATE_WORKFLOW_DIRECTORY",
+        "compensate"
+      ],
+      "timeout_ms": 1000,
+      "retry": {
+        "attempts": 1,
+        "backoff_ms": 1000,
+        "max_backoff_ms": 60000,
+        "on": [
+          "timeout"
+        ]
+      },
+      "on_ok": {
+        "event": "done",
+        "payload": {},
+        "stamps": []
+      },
+      "on_failed": {
+        "event": "failed",
+        "payload": {},
+        "stamps": []
+      },
+      "kind": "mcp",
+      "tool": "work",
+      "arguments": {
+        "target": {
+          "resource": "{resource}"
+        },
+        "literal": "PRIVATE_WORKFLOW_LITERAL"
+      }
+    },
+    {
+      "effect": "recover",
+      "argv": [
+        "/PRIVATE_WORKFLOW_EXECUTABLE",
+        "workflow-mcp",
+        "/PRIVATE_WORKFLOW_DIRECTORY",
+        "compensate"
+      ],
+      "timeout_ms": 1000,
+      "retry": {
+        "attempts": 1,
+        "backoff_ms": 1000,
+        "max_backoff_ms": 60000,
+        "on": [
+          "timeout"
+        ]
+      },
+      "on_ok": {
+        "event": "restored",
+        "payload": {},
+        "stamps": []
+      },
+      "on_failed": {
+        "event": "failed",
+        "payload": {},
+        "stamps": []
+      },
+      "kind": "mcp",
+      "tool": "recover",
+      "arguments": {
+        "target": {
+          "resource": "{resource}"
+        },
+        "literal": "PRIVATE_WORKFLOW_LITERAL"
+      }
+    }
+  ]
+}

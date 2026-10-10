@@ -12,6 +12,9 @@ use std::{
 
 use fsm_core::json::{JsonLimits, Value, parse};
 
+#[path = "workflow.rs"]
+mod workflow;
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let arguments: Vec<_> = std::env::args().skip(1).collect();
     let [mode, directory, behavior] = arguments.as_slice() else {
@@ -24,6 +27,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     match mode.as_str() {
         "descendant" => descendant(&directory, behavior)?,
         "process" | "mcp" => handler(&directory, mode, behavior)?,
+        "workflow-mcp" => workflow::serve(&directory, behavior)?,
         _ => return Err("unknown fixture mode".into()),
     }
     Ok(())

@@ -137,5 +137,37 @@ class ContractMcpArtifact(unittest.TestCase):
             self.select([artifact(name='executor_contract_mcp', kind=['test'])], 101)
 
 
+class WorkflowMarkerArtifact(unittest.TestCase):
+    def select(self, rows, exit_code=0):
+        encoded = b'\n'.join(json.dumps(row).encode() for row in rows)
+        result = subprocess.CompletedProcess([], exit_code, encoded, b'')
+        with patch.object(cli_artifact.subprocess, 'run', return_value=result) as run:
+            selected = cli_artifact.build_workflow_handler(Path('/fixture/repo'), 'stable')
+        command = run.call_args.args[0]
+        self.assertEqual(command[command.index('--bin') + 1], 'fsm-lifecycle-fixture')
+        self.assertEqual(command[command.index('--features') + 1], 'lifecycle-test-fixture')
+        self.assertEqual(run.call_args.kwargs['env']['CARGO_BUILD_JOBS'], '1')
+        self.assertEqual(run.call_args.kwargs['timeout'], 180)
+        return selected
+
+    def test_selects_only_the_exact_production_profile_marker_binary(self):
+        self.assertEqual(self.select([artifact(),
+                                      artifact(name='fsm-lifecycle-fixture', kind=['bin'], test=False)]),
+                         Path('/fixture/host-test'))
+
+    def test_refuses_missing_duplicate_wrong_target_kind_or_profile(self):
+        candidate = artifact(name='fsm-lifecycle-fixture', kind=['bin'], test=False)
+        for rows in [[], [artifact()], [candidate, candidate],
+                     [artifact(name='fsm-lifecycle-fixture', test=False)],
+                     [artifact(name='fsm-lifecycle-fixture', kind=['bin'])],
+                     [artifact(name='fsm-lifecycle-fixture', kind=['bin'], test=False, executable=None)]]:
+            with self.subTest(rows=rows), self.assertRaises(AssertionError):
+                self.select(rows)
+
+    def test_failed_build_cannot_promote_an_earlier_marker_binary(self):
+        with self.assertRaisesRegex(RuntimeError, 'Workflow marker build failed'):
+            self.select([artifact(name='fsm-lifecycle-fixture', kind=['bin'], test=False)], 101)
+
+
 if __name__ == '__main__':
     unittest.main()

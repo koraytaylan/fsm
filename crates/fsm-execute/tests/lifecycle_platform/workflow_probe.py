@@ -8,13 +8,15 @@ import subprocess
 import sys
 
 import authority_probe as authority
-from cli_artifact import build_cli, build_contract_mcp_test
+from cli_artifact import build_cli, build_contract_mcp_test, build_workflow_handler
 import workflow_failure_export
 
 CASES = (
     ('native_draft_repair_execution', 1),
     ('native_staged_fixture_refusal_recovery', 1),
     ('native_staged_standalone_refusal_recovery', 1),
+    ('native_staged_mcp_refusal_recovery', 1),
+    ('native_staged_standalone_mcp_refusal_recovery', 1),
     ('workflow_http::native_http_delete_preserves_an_active_handler_and_completes_once', 1),
     ('workflow_http::native_http_success_retry_and_compensation_with_zero_sessions', 3),
     ('workflow_race::stdio_eof::broken_output_stops_live_tree_with_open_input_and_recovers', 1),
@@ -84,6 +86,7 @@ def main():
     workflow = build_cli(repo, args.toolchain, True)
     cli = build_cli(repo, args.toolchain, False)
     contract_mcp = None if args.upgrade_source else build_contract_mcp_test(repo, args.toolchain)
+    workflow_handler = None if args.upgrade_source else build_workflow_handler(repo, args.toolchain)
     cases = tuple((case, count) for case, count in CASES
                   if args.case is None or case == args.case)
     original = None
@@ -133,6 +136,7 @@ def main():
         report['upgrade_original'] = original
     if contract_mcp:
         report['contract_mcp_sha256'] = digest(contract_mcp)
+        report['workflow_handler_sha256'] = digest(workflow_handler)
     timeout_error = None
     failure_error = None
     report.update(exit_code=None, timed_out=False,
@@ -157,7 +161,9 @@ def main():
                             'FSM_NATIVE_WORKFLOW_ORIGINAL_BROKER_SHA256=' + original['broker_sha256']]
         if contract_mcp:
             command[3:3] = ['FSM_NATIVE_CONTRACT_MCP_TEST_ARTIFACT=' + str(contract_mcp),
-                            'FSM_NATIVE_CONTRACT_MCP_TEST_SHA256=' + report['contract_mcp_sha256']]
+                            'FSM_NATIVE_CONTRACT_MCP_TEST_SHA256=' + report['contract_mcp_sha256'],
+                            'FSM_NATIVE_WORKFLOW_HANDLER_ARTIFACT=' + str(workflow_handler),
+                            'FSM_NATIVE_WORKFLOW_HANDLER_SHA256=' + report['workflow_handler_sha256']]
         if args.case:
             command[3:3] = ['FSM_NATIVE_WORKFLOW_FILTER=' + args.case]
         report['command'] = command

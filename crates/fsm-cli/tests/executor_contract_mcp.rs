@@ -25,6 +25,20 @@ fn native_staged_standalone_refusal_recovery() {
     native::staged::run_standalone();
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "requires disposable native CI and exact protected MCP marker bindings"]
+fn native_staged_mcp_refusal_recovery() {
+    native::staged::run_mcp();
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "requires disposable native CI and exact protected standalone MCP marker bindings"]
+fn native_staged_standalone_mcp_refusal_recovery() {
+    native::staged::run_mcp_standalone();
+}
+
 #[cfg(all(
     target_os = "linux",
     any(target_arch = "x86_64", target_arch = "aarch64")
