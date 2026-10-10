@@ -93,7 +93,7 @@ def main():
     original_hash = hashlib.sha256(binary.read_bytes()).hexdigest()
     for command in ('set pagination off', 'set confirm off', 'set non-stop off',
                     'set language c', 'set breakpoint pending off',
-                    'set follow-fork-mode parent', 'set detach-on-fork on'):
+                    'set follow-fork-mode parent', 'set detach-on-fork on', 'target native'):
         gdb.execute(command, to_string=True)
     symbol = resolve_symbol(binary)
     breakpoint = gdb.Breakpoint("*'" + symbol['raw_symbol'] + "'", type=gdb.BP_HARDWARE_BREAKPOINT)
