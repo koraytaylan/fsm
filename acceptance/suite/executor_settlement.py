@@ -1,4 +1,4 @@
-"""Installed stopped/acknowledged cuts retain the original successful result.
+"""Installed stopped, acknowledged and event cuts retain original success.
 
 The external hardware observer stops unchanged consumer bytes; independent
 journal, protected closure and mutation ledgers establish the actual phase.
@@ -21,7 +21,7 @@ SUPPORTED_CUTS = (*CUTS, 'event-after-advance')
 
 
 def completed_prefix(records: list[dict], instance: str, cut: str) -> dict:
-    """One original successful result, with no advance or replacement claim."""
+    """One original successful result at its precisely declared durable phase."""
     if cut not in SUPPORTED_CUTS or not records or len(records) > 128:
         raise ValueError('unknown or empty original completion boundary')
     claims = [row for row in records if row['kind'] == 'execution_claimed']

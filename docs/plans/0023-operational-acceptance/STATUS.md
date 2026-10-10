@@ -267,6 +267,20 @@ controls and syntax/size checks pass; filtered proof remains release-ineligible.
 Frozen implementing-author review digest:
 `5d5b50e6b3cc71ced5cd94a1c468aa84cf8b742c8a6698f5cd91d53d50572155`.
 
+Frozen post-event acceptance for `639d5d70..e675d9ec` establishes two installed
+standalone process/MCP x86-64 cuts using the original call's hardware entry
+and stack-derived hardware return, with unchanged instructions and the same
+original thread before any successor domain allocation:
+[disposable installed evidence](https://github.com/koraytaylan/fsm/actions/runs/38063596794)
+retains 76 passing assertions, eight original domain closures, forty journal
+records, 24 raw trace records and two explicit successor-owner drains.
+Replay revalidates 1,300 source blobs and retained executable/helper bytes;
+the accepted durable event survives forced retirement and quiet recovery
+without another acknowledgement, advance or validation invocation.
+149 disposable observer checks, 22 focused checks and three named guard controls
+pass; filtered proof remains release-ineligible, with frozen author review digest:
+`78192b97e2ba2414de12ed3d781cc4be367eb9e8359a0922e6e01c9c0f9143d0`.
+
 Task 9502 remains in progress: remaining installed crash cuts are outstanding.
 Sustained native operation, nine human-reviewed uncoached
 live-model sessions, Desktop compatibility and independent final review remain
