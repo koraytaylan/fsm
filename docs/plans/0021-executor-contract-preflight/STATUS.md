@@ -90,9 +90,9 @@ and format/size/range-diff checks pass, including restored exact queue-byte
 boundaries; review digest
 `4538b02dda6d1a1fd01290fd9dd51f57702762f9817c3563b90373e152f60dde`
 indexes the prior preparation reviews with their original scopes. Task 9202
-remains planned behind admission acceptance; genuine embedded draft-to-execution,
-complete mode/bypass inventory and plan-end gates remain
-outstanding, with no task-completion or native-handler acceptance claim.
+remains planned behind admission acceptance; the physical draft/repair verdict
+is recorded below, while the complete mode/bypass inventory and plan-end gates
+remain outstanding.
 Real HTTP draft/stored checks now prove shared-session loaded-table authority,
 distinct-host isolation after on-disk table replacement, autonomous discovery,
 private-literal non-disclosure and read-only writer fallback without attributable
@@ -100,54 +100,39 @@ writes; the focused MCP target passes six cases with one native case ignored,
 with CLI all-target clippy and format/size checks passing; focused review digest
 `633aec7aeab2104aa0d2aa2dbe5c2f22af27364af04805831b00affdc2bc8536`.
 
-Native MCP preparation extends the existing protected original-host case through
-prerequisite, suspension, work and restore, with exact ordered calls, published
-work, restored phase and four original closures required. An unchecked draft
-missing a late restore argument must preserve its pending work, entire store
-and absent side effects across successful host retirement, writer reacquisition
-and restart, then migrate the same instance to a checked repair without replacing
-its historical pending operation. A subsequently loaded incompatible late
-outcome must defeat the saved good report without side effects, until restoring
-the original table lets that same work proceed. The executed Store fixture
-also completes all four corrected outcome transitions. Eight focused Rust cases
-and 29 mocked artifact/producer cases pass, with
-feature-enabled CLI/executor all-target clippy and format/size/diff checks;
-the genuine native case remains ignored locally and unexecuted. Scoped review
-`cf1fda5d8bc40bee707a11760def30fd1ff3fb407c56f83ab0f9a8db2abac467`
-indexes the preceding MCP verdict and producer failure review: coordinator launch
-errors persist failed/unobserved evidence and their original diagnostic, while
-matched removal failure retains authority identity and cannot leave a passing
-report; tasks 9202/9203 and plan-end acceptance remain open.
+Native contract workflow checkpoint `cd4bb88a` passes the real stdio MCP
+client's draft/repair workflow and the independently specified staged embedded
+and standalone refusal/recovery workflows, each on stable and MSRV with real
+contained process handlers. Draft repair preserves historical pending work
+through refusal, retirement, restart and migration; a changed loaded table
+invalidates a saved good report. Staged invalid admission leaves the store and
+side effects unchanged; repair completes ordered inspect/work/recover operations.
+Root authenticates four original closures for draft repair and three for each
+staged execution, with exact claim/stop/settlement counts, no unresolved claims,
+verified memory limits and matched cleanup. Six downloaded reports/logs are
+independently replayed against the frozen source; executable bytes remain
+producer-attested. Frozen review:
+`d183ff71e19e2a1ea5ec39c5ae112d2e0b01df078e8404f7ebbbcef9053f70bc`.
 
-Cross-surface acceptance preparation adds independently specified staged
-precondition/work/recovery fixtures and full reports. Five focused tests pass
-29 real offline/stored CLI and original embedded MCP report checks, including
-canonical CLI bytes, manual/no-outcome distinctions, unknown stamp evidence,
-complete-catalogue resolution, unchanged stores and successful host shutdown.
-CLI all-target clippy and format/size checks pass; focused review digest
-`1eaf9c6a2ac933a37eef799d2f716e36b3308db18990fe196dd0eaf605fcb738`
-indexes that parity verdict and the exact staged fixture's protected native
-process-handler wiring. The added original embedded-host case requires byte-exact
-offline/stored CLI and MCP reports, unchanged refusal state and zero operations,
-then quiet inspect/work/recover ordering and three original closures after repair.
-The executed protected-binding report test passes; eight focused MCP tests and
-29 mocked producer/artifact tests pass with feature-enabled CLI/executor clippy.
-Standalone preparation now reuses that exact fixture and original protected
-CLI: initialized invalid execution must preserve the entire Store and absent
-operations, drain successfully and preserve historical pending work on writer
-reacquisition; repair requires ordered work and three original closures.
-Eight focused MCP cases, the protected-binding case and 31 mocked producer/artifact
-cases pass, with feature-enabled CLI/executor all-target clippy and format/size/diff
-checks; review `8764b7dc135d4d148f94803d10458b23cc828408b9b458a3611e109187c2cf33`.
-All three native MCP-target cases remain ignored locally; physical standalone
-and embedded acceptance, exact-fixture MCP-handler integration and native
-sensitivity remain outstanding.
+Physical acceptance exposed and fixed raw-versus-canonical retry comparison:
+prepared handlers now compare validated full immutable contract fingerprints,
+including private bindings, rather than retry-vector ordering. Twelve focused
+admission tests pass; restoring only the old comparison fails the named regression
+at exit 101. The draft fixture now preserves literal context values, with the
+independent external-handler assertion unchanged; its named literal regression
+fails before correction. Eight runnable MCP tests, 31 producer/artifact tests,
+focused CLI/executor clippy and format/size/diff checks pass. Earlier preparation
+reviews retain their scoped diagnostic parity and fixture verdicts in the cache;
+tasks 9103/9201 remain in progress and tasks 9202/9203 remain planned pending their
+written inventory and plan-end gates. Generic staged real MCP-handler acceptance
+remains outstanding; these physical cases use process handlers.
+
 The README and operator example now document machine checking, repair,
 manual policy and current-state admission; eight executable example tests pass,
 including the documented offline order check without creating a store.
 The supplier execution path remains unexecuted locally.
-Task 9203 stays planned behind its dependencies; native side-effect acceptance,
-ordered completion, stale-report bypass and plan-end gates remain outstanding.
+Task 9203 stays planned behind its dependencies; real MCP-handler side-effect
+acceptance, the complete written bypass inventory and plan-end gates remain open.
 
 Manual Phase R binds the six-task bundle to validation base `15172d8298f271abfd0bd1d5b47617d1108ceefc` after plans 0022 and 0020 complete: closed frontmatter, repository-relative footprints and the acyclic local dependency graph pass, with uncreated deliverables explicitly inventoried; task-cache validation digest `4298d27510c4726206598590ca50efd51e0aeca49c5605aae9f004697820f1f7`. Task 9101 completes its focused inventory at `efcb4f9e`, with 67 stable effect/configuration/public-surface cases and focused lint/format/diff checks passing; self-review verdict `dfd37ee9a1867119e4c63a048ad58b1030b7db590fe118b95dcee1edff82f9a1`; task 9102 completes at `ed811ab6` with eleven focused outcome tests and self-review verdict `b9a671329f5a8177a34529118e6925015757c21b9a064f5d5371820bd71ac271`; task 9103 is in progress; prior independent preparation remains subject to current task acceptance, and admission/MCP/final acceptance remain incomplete. Full gates run at plan completion.
 
@@ -182,8 +167,8 @@ Bound entry now reuses its freshly reconstructed effect from the same immutable
 writer, removing its duplicate prefix replay while retaining concrete admission
 and claim fingerprint checks. Twenty-four focused tests and feature-enabled
 executor all-target clippy pass; format/size/diff checks pass. Supplied pending
-evidence still requires independent reconstruction, and native acceptance and
-plan-end gates remain open; scoped review
+evidence still requires independent reconstruction; subsequent native checkpoints
+are recorded above and plan-end gates remain open; scoped review
 `64fc47a86bcaf7563264da163bf2afe04073fe12153ac273f53a5cef7800a738`.
 
 Historical STATUS evidence is retained outside the repository in the task-cache
