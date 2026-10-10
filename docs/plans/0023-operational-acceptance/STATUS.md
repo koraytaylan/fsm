@@ -30,9 +30,24 @@ The consumer's effective limits are 1 GiB memory and zero swap; filtered reports
 are valid but ineligible for full release proof. Frozen author review:
 `a9fec0b99f35caf8ee1f49a897db9f7fcc8e3ea2c29078300bdc49409513685b`.
 
-Independent fixtures and writer-only stdio/HTTP observations are preparation
-for task 9502; autonomous installed execution and its complete lifecycle matrix
-remain unexecuted. Sustained native operation, nine human-reviewed uncoached
+Frozen installed acceptance at `eeb88ed58b46df109a60687980a73dc6cdfd85f8`
+establishes one actual stdio/process/success path: consumer `cargo install`,
+24 passing assertions, barrier-confirmed control responsiveness, quiet-client
+completion, external mutation order without overlap, exact native settlement
+and advance, journal verification/replay, EOF retirement and four original
+domain closures followed by owned fixture/helper removal.
+[Disposable native evidence](https://github.com/koraytaylan/fsm/actions/runs/38037206190)
+independently revalidates all 1,275 source blobs and retained executable bytes;
+the filtered report remains ineligible for full release proof.
+Frozen author replay digest:
+`85aceee9d378e91f032556a098489bf97db0b8ee1f34624db326b7802d42e094`.
+The preceding catalogue-provisioning failure remains failed; compact canonical
+table serialization fixes its cause, and shared observation slots preserve
+ownership across DynamicUser retirement rather than losing fixture evidence.
+
+Task 9502 remains in progress: its other transport/handler/outcome cells and
+complete lifecycle inventory are outstanding.
+Sustained native operation, nine human-reviewed uncoached
 live-model sessions, Desktop compatibility and independent final review remain
 mandatory and incomplete; no passing skip or synthetic control replaces them.
 Expensive integration gates run at the end of the plan against a frozen candidate.
