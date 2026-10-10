@@ -56,6 +56,23 @@ class CompletionTests(unittest.TestCase):
         state.complete(dict(index=100, case='success'))
         self.assertEqual(state.verdict(), 'passed')
 
+    def test_report_writes_cannot_pad_the_last_actual_completion_timestamp(self):
+        clock=Clock();state=RunState(self.profile(),clock)
+        for entry in schedule(123,100):
+            clock.value=entry['index']+20;state.complete(entry)
+        clock.value=120
+        state.complete(dict(index=100,case='success'),119*NANOSECONDS)
+        self.assertEqual(state.verdict(),'running')
+        state.complete(dict(index=101,case='success'),120*NANOSECONDS)
+        self.assertEqual(state.verdict(),'passed')
+        for timestamp in (True,-1,121*NANOSECONDS):
+            clock=Clock();state=RunState(self.profile(),clock);clock.value=120
+            # Keep the watchdog satisfied before testing a malformed finish.
+            clock.value=20;state.complete(dict(index=0,case='success'))
+            clock.value=21
+            with self.assertRaises(ValueError):state.complete(dict(index=1,case='success'),timestamp)
+            self.assertEqual(state.verdict(),'incomplete')
+
     def test_no_progress_maximum_time_and_clock_regression_are_incomplete(self):
         for time, reason in ((90, 'no_progress'), (1800, 'maximum_duration'), (-1, None)):
             clock = Clock(); state = RunState(self.profile(), clock); clock.value = time

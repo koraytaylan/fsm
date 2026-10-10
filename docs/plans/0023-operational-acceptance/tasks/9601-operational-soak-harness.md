@@ -16,6 +16,7 @@ touches:
   - acceptance/suite/soak_installed.py
   - acceptance/suite/soak_journal.py
   - acceptance/suite/soak_native_metrics.py
+  - acceptance/suite/executor_control.py
   - acceptance/suite/soak_run.py
   - acceptance/run-operational.py
   - .github/workflows/operational-smoke.yml

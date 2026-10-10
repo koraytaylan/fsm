@@ -98,13 +98,17 @@ class RunState:
             return 'incomplete'
         return 'running'
 
-    def complete(self, entry):
+    def complete(self, entry, completed_ns=None):
         if self.verdict() != 'running':
             raise ValueError('a terminal operational run cannot accept another cycle')
         if (not isinstance(entry, dict) or type(entry.get('index')) is not int
             or entry['index'] != self.completed or entry.get('case') not in CASES):
             self.reason = 'missing_or_duplicate_cycle'
             raise ValueError('completed operational cycles must follow their exact schedule')
+        completion=self.previous if completed_ns is None else completed_ns
+        if type(completion) is not int or not self.last_progress<=completion<=self.previous:
+            self.reason='invalid_completion_clock'
+            raise ValueError('actual completion must use a non-regressed observed clock')
         self.completed += 1
         self.coverage[entry['case']] += 1
-        self.last_progress = self.previous
+        self.last_progress = completion

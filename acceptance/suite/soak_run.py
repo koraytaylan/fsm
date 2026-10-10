@@ -112,7 +112,7 @@ def main():
             validate_sample(active,calibration);validate_sample(quiet,calibration,warmed)
         artifact=root/f'cycle-{index:08}.json'
         artifact.write_text(json.dumps(dict(observation=observation,samples=[active,quiet],warmed=warmed),sort_keys=True))
-        state.complete(observation['schedule'])
+        state.complete(observation['schedule'],observation['completed_ns'])
         manifest['cycles'].append(dict(index=index,case=observation['schedule']['case'],
             path=artifact.name,sha256=hashlib.sha256(artifact.read_bytes()).hexdigest()))
         manifest['completed']=state.completed

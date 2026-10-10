@@ -11,7 +11,8 @@ from acceptance.suite.metrics import METRICS, GROWTH, validate_sample
 from acceptance.suite.soak_run import observed_sample, disk_size, workload_digest
 from acceptance.suite.soak_native_metrics import queue_bytes, ROOT_SAMPLE, sample_native
 from acceptance.suite.soak import schedule
-from acceptance.suite.soak_installed import run_block
+from acceptance.suite.soak_installed import run_block,InstalledBlock
+from acceptance.suite.executor_control import OwnerUnavailable
 
 
 def census():
@@ -103,6 +104,25 @@ class AccountingTests(unittest.TestCase):
             self.assertEqual(block.run.call_count,3)
             self.assertTrue(block.stop.called)
             self.assertTrue((Path(scratch.path)/'block-00000000-verification.json').exists())
+
+    def test_startup_waits_for_original_publication_but_never_accepts_ambiguous_ownership(self):
+        block=InstalledBlock(MagicMock(),Path('/owned-store'),MagicMock(),Path('/owned-table'),'standalone','process',0)
+        context=MagicMock();host=MagicMock();host.poll.return_value=None
+        context.__enter__.return_value=(None,host)
+        def run_wait(predicate,process,seconds):
+            self.assertFalse(predicate());self.assertFalse(predicate());self.assertTrue(predicate())
+        with patch('acceptance.suite.soak_installed._restart_host',return_value=context), \
+             patch('acceptance.suite.soak_installed.birth',return_value={'pid':123,'pid_starttime':'456'}), \
+             patch('acceptance.suite.soak_installed.observe_owner',side_effect=[FileNotFoundError(),OwnerUnavailable(),{'phase':'running'}]), \
+             patch('acceptance.suite.soak_installed._wait_for_files',side_effect=run_wait), \
+             patch.object(block,'quiescent',return_value=census()):
+            block.start()
+        self.assertEqual(block.warmed,census())
+        with patch('acceptance.suite.soak_installed._restart_host',return_value=context), \
+             patch('acceptance.suite.soak_installed.birth',return_value={'pid':123,'pid_starttime':'456'}), \
+             patch('acceptance.suite.soak_installed.observe_owner',side_effect=ValueError('ambiguous owner')), \
+             patch('acceptance.suite.soak_installed._wait_for_files',side_effect=lambda predicate,*args:predicate()):
+            with self.assertRaisesRegex(ValueError,'ambiguous'):block.start()
 
 
 if __name__=='__main__':unittest.main()

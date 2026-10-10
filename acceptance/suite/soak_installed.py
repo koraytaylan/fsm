@@ -11,7 +11,7 @@ from pathlib import Path
 import time
 
 from . import fsm
-from .executor_control import observe_owner
+from .executor_control import observe_owner, OwnerUnavailable
 from .executor_lifecycle import _restart_host, process_observation
 from .executor_scenarios import _fixture_rows, _wait_for_files, _retire_execution_owner, read_journal_prefix
 from .mcp import StdioClient
@@ -41,7 +41,10 @@ class InstalledBlock:
         self.client,self.host=self.stack.enter_context(_restart_host(self.store,self.table,self.transport))
         if self.client is not None:self.client.initialize()
         self.identity=birth(self.host)
-        _wait_for_files(lambda:observe_owner(self.store)['phase']=='running',self.host,10)
+        def ready():
+            try:return observe_owner(self.store)['phase']=='running'
+            except (FileNotFoundError,OwnerUnavailable):return False
+        _wait_for_files(ready,self.host,10)
         self.warmed=self.quiescent()
 
     def stop(self):

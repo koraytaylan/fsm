@@ -15,6 +15,10 @@ PHASES = {"queued", "preparing", "prepared", "cleaning", "unknown_allocation",
 REPORT_CAP = 131_072
 
 
+class OwnerUnavailable(ValueError):
+    """No original owner is connected yet; this does not establish cleanup."""
+
+
 def validate_observation(value: dict, identity: dict) -> dict:
     """Validate the published closed observation schema and exact original owner."""
     fields = {"format", "incarnation", "store_device", "store_inode", "phase", "admission_closed",
@@ -104,6 +108,8 @@ def observe_owner(store: Path, root: Path | None = None) -> dict:
                 connection.close()
                 raise
             connections.append((connection, identity))
+        if not connections:
+            raise OwnerUnavailable("control observation has no connected original owner")
         if len(connections) != 1:
             raise ValueError("control observation has no unique connected original owner")
         connection, identity = connections[0]
