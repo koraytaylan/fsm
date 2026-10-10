@@ -10,7 +10,8 @@ from unittest.mock import patch
 
 from acceptance.suite.executor_crash import CUT_SYMBOLS, validate_cut
 from acceptance.suite.executor_helper_cut import closed_prefix
-from acceptance.suite.native_debugger import CUT, validate_restart, helper_digest
+from acceptance.suite.native_debugger import CUT, validate_restart, helper_digest, retain_original_file
+from acceptance.suite.fsm import Scratch
 
 
 class HelperCutTests(unittest.TestCase):
@@ -122,6 +123,21 @@ class HelperCutTests(unittest.TestCase):
         for encoded in ('b'*64+'  /another/helper\n', 'unknown  /usr/libexec/fsm-containment-authority\n'):
             with patch('acceptance.suite.native_debugger.privileged', return_value=encoded), self.assertRaises(ValueError):
                 helper_digest()
+
+    def test_repeated_capture_preserves_read_only_original_bytes_and_rejects_changes(self):
+        with Scratch('labelled-helper-original-retention') as scratch:
+            source=Path(scratch.write('original.json', '{"label":"original observer stub"}'))
+            source.chmod(0o444)
+            destination=Path(scratch.path)/'retained.json'
+            retain_original_file(source,destination)
+            original=destination.stat()
+            retain_original_file(source,destination)
+            self.assertEqual((destination.stat().st_dev,destination.stat().st_ino),(original.st_dev,original.st_ino))
+            self.assertEqual(destination.read_bytes(),source.read_bytes())
+            self.assertEqual(destination.stat().st_mode & 0o777,0o444)
+            source.chmod(0o644);source.write_text('{"label":"changed observer stub"}');source.chmod(0o444)
+            with self.assertRaises(ValueError): retain_original_file(source,destination)
+            self.assertEqual(destination.read_text(),'{"label":"original observer stub"}')
 
 
 if __name__ == '__main__':

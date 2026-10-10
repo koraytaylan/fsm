@@ -9,6 +9,7 @@ import stat
 import subprocess
 
 from . import fsm
+from .evidence import digest
 from .executor_crash import validate_cut
 from .executor_lifecycle import process_observation
 from .executor_scenarios import _wait_for_files
@@ -23,6 +24,19 @@ def helper_digest():
     if len(fields) != 2 or not re.fullmatch('[a-f0-9]{64}', fields[0]) or fields[1] != str(AUTHORITY):
         raise ValueError('the protected original helper digest differs')
     return fields[0]
+
+
+def retain_original_file(source, destination):
+    metadata = source.lstat()
+    if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > 1_048_576:
+        raise ValueError('original debugger artifact is not a bounded regular file')
+    if destination.exists():
+        retained = destination.lstat()
+        if (not stat.S_ISREG(retained.st_mode) or retained.st_uid != os.geteuid()
+            or retained.st_size > 1_048_576 or digest(destination) != digest(source)):
+            raise ValueError('previously retained original debugger bytes changed')
+    else:
+        shutil.copy2(source, destination)
 
 
 def protected_observation(path: Path) -> dict:
@@ -142,7 +156,7 @@ class DebuggedAuthority(DisposableAuthority):
         for name in ('ready.json', 'retired.json', 'debugger.log'):
             path = self.debugger_directory / name
             if path.exists():
-                shutil.copy2(path, retained / name)
+                retain_original_file(path, retained / name)
         if hasattr(self, 'debugger_hash') and helper_digest() != self.debugger_hash:
             raise ValueError('the original installed helper bytes changed')
 
