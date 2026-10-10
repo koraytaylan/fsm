@@ -1,5 +1,7 @@
 """Labelled hardware/journal fault controls, never installed native proof."""
 import copy
+import json
+import os
 from pathlib import Path
 import runpy
 from types import SimpleNamespace
@@ -11,6 +13,39 @@ from acceptance.suite.fsm import Scratch
 
 
 class ExactClaimCutTests(unittest.TestCase):
+    def test_empty_debugger_argument_parameter_cannot_erase_the_original_stdio_command(self):
+        commands = []
+        def execute(command, **_kwargs):
+            commands.append(command)
+            if command == 'quit 1':
+                raise SystemExit(1)
+            if command == 'run':
+                raise RuntimeError('labelled inferior would have launched')
+            return ''
+        breakpoint = SimpleNamespace(pending=True, type=2, locations=[SimpleNamespace(address=4096)])
+        debugger = SimpleNamespace(execute=execute, parameter=lambda _name: '',
+            BP_HARDWARE_BREAKPOINT=2, Breakpoint=lambda *_args, **_kwargs: breakpoint,
+            selected_inferior=lambda: SimpleNamespace(pid=0))
+        script = Path(__file__).resolve().parents[1] / 'fixtures/installed_debugger.py'
+        with Scratch('labelled-empty-debugger-args') as scratch:
+            binary = Path(scratch.write('binary', 'labelled executable stub'))
+            for name in ('stdin', 'stdout', 'stderr'):
+                os.mkfifo(Path(scratch.path) / (name + '.fifo'), 0o600)
+            arguments = ['serve', '--execute', '--handlers=/labelled handlers', '--data-dir=/labelled store']
+            symbols = [SimpleNamespace(stdout='00001000 T ' + SYMBOL + '\n'),
+                SimpleNamespace(stdout='00001000 T _RNlabelled_symbol\n')]
+            with patch.dict('sys.modules', {'gdb': debugger}), patch.dict('os.environ',
+                dict(GITHUB_ACTIONS='true', FSM_ACCEPTANCE_DISPOSABLE_NATIVE='1',
+                    FSM_BIN=str(binary), FSM_DEBUGGER_DIRECTORY=scratch.path,
+                    FSM_DEBUGGER_TRANSPORT='stdio', FSM_DEBUGGER_ARGUMENTS=json.dumps(arguments))), \
+                patch('subprocess.run', side_effect=symbols):
+                with self.assertRaises(SystemExit):
+                    runpy.run_path(str(script), run_name='__main__')
+            launches = [command for command in commands if command.startswith('set args ')]
+            self.assertEqual(len(launches), 1)
+            self.assertTrue(launches[0].startswith("set args serve --execute '--handlers=/labelled handlers' '--data-dir=/labelled store' <"))
+            self.assertNotIn('run', commands)
+
     def cut(self):
         return dict(schema='fsm.installed-hardware-cut/1', cut='claimed-before-binding',
             symbol=SYMBOL, breakpoint_type='hardware', breakpoint_hits=1,

@@ -124,6 +124,10 @@ def debugger(store: Path, table: Path, directory: Path, namespace: str,
     unit = 'fsm-acceptance-cut-' + namespace
     if not re.fullmatch('fsm-acceptance-cut-[a-f0-9]{32}', unit):
         raise ValueError('debugger needs its task-owned unit identity')
+    arguments = [*(['execute'] if transport == 'standalone' else ['serve', '--execute']),
+        *(['--http=' + str(port)] if transport == 'http' else []),
+        '--handlers=' + str(table), '--data-dir=' + str(store),
+        *(['--poll-interval-ms=50'] if transport != 'http' else [])]
     command = ['sudo', '-n', 'systemd-run', '--quiet', '--wait', '--pipe', '--collect',
         '--unit=' + unit, '--uid=' + str(os.geteuid()), '--property=RuntimeMaxSec=45s',
         '--property=TimeoutStopSec=5s', '--property=KillMode=control-group',
@@ -132,14 +136,12 @@ def debugger(store: Path, table: Path, directory: Path, namespace: str,
         'PYTHONDONTWRITEBYTECODE=1', 'TMPDIR=' + fsm.task_cache(),
         'FSM_DEBUGGER_DIRECTORY=' + str(directory), 'FSM_DEBUGGER_CUT=' + cut,
         'FSM_DEBUGGER_TRANSPORT=' + transport,
+        'FSM_DEBUGGER_ARGUMENTS=' + json.dumps(arguments),
         'FSM_BIN=' + str(Path(fsm.FSM).resolve()),
         'gdb', '--batch', '--nx', '--quiet', '-iex', 'set auto-load off',
         '-iex', 'set startup-with-shell off', '-iex', 'set disable-randomization off',
         '-iex', 'set debuginfod enabled off', '-x', str(commands), '--args', fsm.FSM,
-        *(['execute'] if transport == 'standalone' else ['serve', '--execute']),
-        *(['--http=' + str(port)] if transport == 'http' else []),
-        '--handlers=' + str(table), '--data-dir=' + str(store),
-        *(['--poll-interval-ms=50'] if transport != 'http' else [])]
+        *arguments]
     with (directory / 'debugger.log').open('wb') as log:
         process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
         try:

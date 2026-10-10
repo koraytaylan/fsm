@@ -12,7 +12,7 @@ on:
         required: true
         type: choice
         default: executor
-        options: [executor, seal, full]
+        options: [executor, seal, full, executor_stdio_hardware_cuts_recover_original_claims_results_and_events]
 
 permissions:
   contents: read
@@ -52,7 +52,7 @@ jobs:
           elif [[ "$FSM_CONSUMER_SCENARIO" == seal ]]; then
             FSM_ACCEPTANCE_DISPOSABLE_NATIVE=0 timeout 1800s acceptance/acceptance.sh seal
           else
-            timeout 1800s acceptance/acceptance.sh executor
+            timeout 1800s acceptance/acceptance.sh "$FSM_CONSUMER_SCENARIO"
           fi
       - name: Retain original consumer evidence including failures
         if: ${{ always() }}

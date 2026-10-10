@@ -976,6 +976,9 @@ Installed supervisor and execution-owner recovery observe original and replaceme
 identities through the persistent shared entry log, so DynamicUser cleanup of
 an old ready marker cannot abort observation while native recovery is running;
 live process identities and original claim-bound closure remain required.
+The stdio hardware observer redirects the launcher's explicit original argument
+list, retaining it with the debugger's reported arguments instead of relying on
+older debugger parameter access to preserve the command during redirection.
 
 The installed timeout matrix observes the original deadline predicate's
 hardware entry, then its stack-derived same-thread return with a true boolean

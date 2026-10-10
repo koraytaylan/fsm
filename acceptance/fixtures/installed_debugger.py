@@ -193,12 +193,19 @@ def main():
             if not stat.S_ISFIFO(metadata.st_mode) or metadata.st_uid != os.geteuid() or metadata.st_mode & 0o077:
                 raise ValueError('stdio cut requires separate private task-owned FIFOs')
             redirects.append(('<' if number == 0 else '>' if number == 1 else '2>') + shlex.quote(str(path)))
-        arguments = gdb.parameter('args')
-        if not isinstance(arguments, str) or len(arguments.encode()) > 16_384:
+        arguments = json.loads(os.environ['FSM_DEBUGGER_ARGUMENTS'])
+        if (not isinstance(arguments, list) or not arguments
+            or any(not isinstance(argument, str) or not argument or '\x00' in argument for argument in arguments)
+            or arguments[:2] != ['serve', '--execute']
+            or len(json.dumps(arguments).encode()) > 16_384):
             raise ValueError('original stdio launch arguments exceed their bound')
         gdb.execute('set environment SHELL /bin/sh', to_string=True)
         gdb.execute('set startup-with-shell on', to_string=True)
-        gdb.execute('set args ' + arguments + ' ' + ' '.join(redirects), to_string=True)
+        parameter_arguments = gdb.parameter('args')
+        original_debugger_arguments = gdb.execute('show args', to_string=True)
+        # Redirect the exact list supplied once by the owning launcher,
+        # independently of debugger-version-specific parameter state.
+        gdb.execute('set args ' + shlex.join(arguments) + ' ' + ' '.join(redirects), to_string=True)
     elif transport not in ('standalone', 'http'):
         raise ValueError('unknown installed hardware-observer transport')
     initial_cut = 'deadline-predicate-entry' if CUT == 'timeout-before-fence' else CUT
@@ -216,7 +223,10 @@ def main():
     gdb.events.stop.connect(stop)
     try:
         if transport == 'stdio':
-            publish(directory, 'stdio-launch', dict(binary_sha256=original_hash, transport=transport))
+            publish(directory, 'stdio-launch', dict(binary_sha256=original_hash, transport=transport,
+                argv=arguments, parameter_arguments=parameter_arguments,
+                original_debugger_arguments=original_debugger_arguments,
+                debugger_arguments=gdb.execute('show args', to_string=True)))
         startup = gdb.execute('run', to_string=True)
         inferior = gdb.selected_inferior()
         first_cut = 'acked-before-event' if CUT == 'event-after-advance' else initial_cut
