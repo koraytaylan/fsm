@@ -7,12 +7,20 @@ on:
         description: Immutable develop candidate SHA
         required: true
         type: string
+      scenario:
+        description: Focused installed stdio inventory
+        required: true
+        type: choice
+        default: executor_stdio_outcome_matrix_progresses_with_quiet_clients
+        options:
+          - executor_stdio_process_success_progresses_with_a_quiet_client
+          - executor_stdio_outcome_matrix_progresses_with_quiet_clients
 
 permissions:
   contents: read
 
 jobs:
-  stdio-process-success:
+  installed-stdio:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -34,14 +42,15 @@ jobs:
       - run: rustup toolchain install stable --profile minimal
       - name: Focused independent observer checks
         run: python3 -m unittest discover -s acceptance/tests -p test_executor_observer.py
-      - name: Consumer install and actual contained stdio success
+      - name: Consumer install and actual contained stdio workflows
         env:
           FSM_INSTALLED_CANDIDATE: ${{ inputs.candidate }}
-        run: timeout 900s python3 acceptance/run-installed-executor.py --candidate "$FSM_INSTALLED_CANDIDATE"
+          FSM_INSTALLED_SCENARIO: ${{ inputs.scenario }}
+        run: timeout 900s python3 acceptance/run-installed-executor.py --candidate "$FSM_INSTALLED_CANDIDATE" --scenario "$FSM_INSTALLED_SCENARIO"
       - name: Retain focused installed evidence including failures
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: installed-stdio-process-success
+          name: installed-stdio-evidence
           path: ${{ env.TMPDIR }}/installed-executor-check/evidence
           if-no-files-found: error

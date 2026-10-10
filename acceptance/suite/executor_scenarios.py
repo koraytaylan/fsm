@@ -87,9 +87,24 @@ def observe_success_journal(records: list[dict], instance: str,
     ownership or out-of-order advances cannot satisfy this observation.
     A passing ledger is neither a containment proof nor hash-chain verification.
     """
+    if not isinstance(events, tuple):
+        raise ValueError("success ledger needs a bounded instance and event sequence")
+    return observe_workflow_journal(records, instance, events, ("ok",) * (len(events) - 1))
+
+
+def observe_workflow_journal(records: list[dict], instance: str, events: tuple[str, ...],
+                             stopped_statuses: tuple[str, ...]) -> tuple[str, ...]:
+    """SPEC settlement ledger for finite one-attempt handwritten workflows.
+
+    Stopped failure classes are distinct from the acknowledgement's failed
+    outcome; both must agree with the independently declared fixture path.
+    """
     if (not _name(instance) or not isinstance(events, tuple) or not 2 <= len(events) <= 16
         or any(not _name(event) for event in events)):
         raise ValueError("success ledger needs a bounded instance and event sequence")
+    if (not isinstance(stopped_statuses, tuple) or len(stopped_statuses) != len(events) - 1
+        or any(status not in {"ok", "nonzero_exit", "mcp_error"} for status in stopped_statuses)):
+        raise ValueError("workflow ledger needs one explicit stopped status per effect")
     if not isinstance(records, list) or len(records) > MAX_TRACE_EVENTS:
         raise ValueError("success ledger requires a bounded record list")
     owned = []
@@ -113,7 +128,7 @@ def observe_success_journal(records: list[dict], instance: str,
         if sum(record["kind"] == kind for record in owned) != len(events) - 1:
             violations.append("journal/ownership_inventory")
     runs = set()
-    for emitted, advanced in zip(advances, advances[1:]):
+    for emitted, advanced, expected_status in zip(advances, advances[1:], stopped_statuses):
         effect = f"{instance}/{emitted['seq']}/0"
         phases = [[record for record in owned if record["kind"] == kind
                    and record["body"].get("effect_id") == effect]
@@ -134,7 +149,11 @@ def observe_success_journal(records: list[dict], instance: str,
             runs.add(run)
         if not emitted["seq"] < claim["seq"] < stopped["seq"] < settled["seq"] < advanced["seq"]:
             violations.append("journal/settlement_order")
-        if settled["body"].get("disposition") != "acked" or settled["body"].get("outcome") != "ok":
+        outcome = stopped["body"].get("outcome", {})
+        if not isinstance(outcome, dict) or outcome.get("status") != expected_status:
+            violations.append("journal/stopped_outcome")
+        expected_ack = "ok" if expected_status == "ok" else "failed"
+        if settled["body"].get("disposition") != "acked" or settled["body"].get("outcome") != expected_ack:
             violations.append("journal/acknowledgement_outcome")
     return tuple(dict.fromkeys(violations))
 
@@ -247,13 +266,40 @@ def _wait_for_files(predicate, process, seconds: float):
 
 def executor_stdio_process_success_progresses_with_a_quiet_client(report) -> None:
     """One actual contained installed path; other matrix cells remain separate."""
+    _installed_stdio_workflow(report, "process", "success")
+
+
+def executor_stdio_outcome_matrix_progresses_with_quiet_clients(report) -> None:
+    """Both handler kinds and all handwritten outcome rows over stdio."""
+    for kind in ("process", "mcp"):
+        for outcome in ("success", "prerequisite-failed", "partial-work", "restore-failed"):
+            report.note(f"Installed stdio cell: {kind}/{outcome}")
+            _installed_stdio_workflow(report, kind, outcome)
+
+
+def _installed_stdio_workflow(report, kind: str, outcome: str) -> None:
     fixture = Path(fsm.REPO) / "acceptance/fixtures/executor_handler.py"
     machine = Path(fsm.REPO) / "acceptance/fixtures/executor_workflow.json"
-    events = ("start", "validated", "suspended", "processed", "restored")
+    expected = {
+        "success": (("start", "validated", "suspended", "processed", "restored"),
+                    [0, 0, 0, 0], ["suspend", "process:0", "process:1", "restore"],
+                    {"suspended": False, "items": [0, 1]}, "completed"),
+        "prerequisite-failed": (("start", "failed"), [3], [],
+                               {"suspended": False, "items": []}, "prerequisite_failed"),
+        "partial-work": (("start", "validated", "suspended", "failed", "restored"),
+                         [0, 0, 3, 0], ["suspend", "process:0", "restore"],
+                         {"suspended": False, "items": [0]}, "compensated"),
+        "restore-failed": (("start", "validated", "suspended", "failed", "failed"),
+                           [0, 0, 3, 3], ["suspend", "process:0"],
+                           {"suspended": True, "items": [0]}, "restoration_failed"),
+    }
+    events, exit_codes, mutations, expected_state, terminal = expected[outcome]
+    failure_class = "nonzero_exit" if kind == "process" else "mcp_error"
+    stopped_statuses = tuple("ok" if code == 0 else failure_class for code in exit_codes)
     with fsm.Scratch("quiet-installed") as scratch, DisposableAuthority(fixture) as native:
         store = Path(scratch.dir("store"))
         fsm.run("machine", "add", str(machine), data_dir=str(store)).ok()
-        table = workflow_table(native.resource, native.handler, kind="process", outcome="success",
+        table = workflow_table(native.resource, native.handler, kind=kind, outcome=outcome,
                                release=native.release)
         table_path = native.approve(store, table)
         with StdioClient([fsm.FSM, "serve", f"--data-dir={store}", "--execute",
@@ -284,23 +330,23 @@ def executor_stdio_process_success_progresses_with_a_quiet_client(report) -> Non
             previous_notifications = len(client.notifications)
             quiet_id = client._next_id
             native.release.write_text("release", encoding="utf-8")
-            _wait_for_files(lambda: len(_fixture_rows(native.resource / "results.jsonl")) == 4,
+            _wait_for_files(lambda: len(_fixture_rows(native.resource / "results.jsonl")) == len(exit_codes),
                             client.process, 30)
-            _wait_for_files(lambda: not observe_success_journal(read_journal_prefix(store), instance, events),
+            _wait_for_files(lambda: not observe_workflow_journal(read_journal_prefix(store), instance, events, stopped_statuses),
                             client.process, 10)
             records = read_journal_prefix(store)
             trace = _fixture_rows(native.resource / "trace.jsonl")
             results = _fixture_rows(native.resource / "results.jsonl")
             state = json.loads((native.resource / (hashlib.sha256(b"supplier").hexdigest() + ".json")).read_text())
             report.note("FSM_INSTALLED_WORKFLOW_EVIDENCE " + json.dumps(dict(
-                transport="stdio", handler_kind="process", outcome="success", instance=instance,
+                transport="stdio", handler_kind=kind, outcome=outcome, instance=instance,
                 namespace=native.namespace, trace=trace, results=results, state=state, journal=records), sort_keys=True))
-            observed = observe_trace(trace, {"supplier": ["suspend", "process:0", "process:1", "restore"]}, complete=True)
+            observed = observe_trace(trace, {"supplier": mutations}, complete=True)
             report.equal(observed.violations, (), "independent mutations are ordered with no missing work or overlap")
             report.equal(observed.peak_concurrency, {"supplier": 1}, "independent mutation concurrency never exceeds one")
-            report.equal([row["exit_code"] for row in results], [0, 0, 0, 0], "all four external operations succeeded")
-            report.equal(state, {"suspended": False, "items": [0, 1]}, "the external resource is restored after both items")
-            report.equal(observe_success_journal(records, instance, events), (), "each native owner settles and advances exactly once")
+            report.equal([row["exit_code"] for row in results], exit_codes, "external outcomes match the handwritten path")
+            report.equal(state, expected_state, "the external resource matches the declared restoration outcome")
+            report.equal(observe_workflow_journal(records, instance, events, stopped_statuses), (), "each native owner settles and advances exactly once")
             client.drain(timeout=0.2)
             report.true(any(frame.get("method") == "notifications/resources/updated"
                             and frame.get("params", {}).get("uri") == uri
@@ -308,7 +354,7 @@ def executor_stdio_process_success_progresses_with_a_quiet_client(report) -> Non
                         "the quiet subscribed client receives an autonomous update")
             report.equal(client._next_id, quiet_id, "external work and native settlements complete without another client request")
             final = client.structured("instance_get", {"instance_id": instance})
-            report.equal(final["leaf"], "completed", "one final read observes the expected terminal leaf")
+            report.equal(final["leaf"], terminal, "one final read observes the expected terminal leaf")
             report.equal(final["status"], "completed", "the installed workflow is complete")
             report.equal(final["effects_pending"], [], "no handled effect remains pending")
             report.equal(client.structured("journal_verify")["health"], "Ok", "the installed verifier checks the journal chain")
@@ -318,7 +364,8 @@ def executor_stdio_process_success_progresses_with_a_quiet_client(report) -> Non
 
 
 SCENARIOS = (executor_contract_fixtures_are_checked_without_external_work,
-             executor_stdio_process_success_progresses_with_a_quiet_client)
+             executor_stdio_process_success_progresses_with_a_quiet_client,
+             executor_stdio_outcome_matrix_progresses_with_quiet_clients)
 
 
 def _name(value) -> bool:

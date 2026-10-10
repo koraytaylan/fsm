@@ -19,13 +19,17 @@ from acceptance.suite.evidence import (snapshot, build, digest, verify_source,
 from acceptance.suite.native_fixture import require_disposable_runner, privileged, AUTHORITY, BASE
 from acceptance.suite.fsm import task_cache
 
-SCENARIO = "executor_stdio_process_success_progresses_with_a_quiet_client"
+SCENARIOS = ("executor_stdio_process_success_progresses_with_a_quiet_client",
+             "executor_stdio_outcome_matrix_progresses_with_quiet_clients")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--candidate", required=True)
+    parser.add_argument("--scenario", choices=SCENARIOS, default=SCENARIOS[0])
     arguments = parser.parse_args()
+    scenario = arguments.scenario
+    cells = 1 if scenario == SCENARIOS[0] else 8
     require_disposable_runner()
     if not re.fullmatch(r"[a-f0-9]{40}", arguments.candidate):
         parser.error("an immutable candidate commit is required")
@@ -38,7 +42,7 @@ def main() -> int:
     evidence = cache / "evidence"
     evidence.mkdir()
     control = dict(schema="fsm.installed-native-check/1", source_commit=arguments.candidate,
-                   scenario=SCENARIO, scope="focused-stdio-process-success",
+                   scenario=scenario, scope="focused-stdio-workflows", cells=cells,
                    passed=False, complete_matrix=False, native_handler_execution=False)
     control_path = evidence / "producer.json"
     control_path.write_text(json.dumps(control, indent=2))
@@ -72,9 +76,9 @@ def main() -> int:
                        "FSM_BUILD_RECEIPT": str(receipt), "FSM_CANDIDATE_REVISION": arguments.candidate,
                        "FSM_CANDIDATE_SHA256": digest(binary), "FSM_EVIDENCE_DIR": str(evidence / "reports")}
         with (evidence / "consumer.log").open("wb") as log:
-            result = subprocess.run([sys.executable, "-m", "acceptance.suite.run", SCENARIO],
+            result = subprocess.run([sys.executable, "-m", "acceptance.suite.run", scenario],
                                     cwd=source, env=environment, stdout=log, stderr=subprocess.STDOUT,
-                                    timeout=180)
+                                    timeout=360)
         control.update(consumer_invoked=True, consumer_exit=result.returncode,
                        binary_sha256=digest(binary), authority_sha256=authority_digest,
                        build_receipt_sha256=digest(receipt))
@@ -93,11 +97,11 @@ def main() -> int:
             or report["candidate"]["binary_sha256"] != digest(binary)
             or report["candidate"]["identity_matches"] is not True
             or report["candidate"]["build_provenance_verified"] is not True
-            or report["selected_scenarios"] != [SCENARIO]
+            or report["selected_scenarios"] != [scenario]
             or len(report["scenarios"]) != 1 or not report["scenarios"][0]["assertions"]):
             raise RuntimeError("installed scenario evidence is incomplete or inconsistent: " + str(problems))
         retirement = list(evidence.glob("installed-native-*/retirement.json"))
-        if len(retirement) != 1 or json.loads(retirement[0].read_text())["cleaned"] is not True:
+        if len(retirement) != cells or any(json.loads(path.read_text())["cleaned"] is not True for path in retirement):
             raise RuntimeError("original native fixture cleanup was not verified")
         verify_source(source, source_manifest)
         privileged(sys.executable, str(installer), "remove", "--device", str(installed["device"]),

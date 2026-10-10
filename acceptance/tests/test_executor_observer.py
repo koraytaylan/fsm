@@ -19,7 +19,8 @@ from pathlib import Path
 
 from acceptance.suite.evidence import source_files
 from acceptance.suite.executor_scenarios import (observe_trace, workflow_table,
-                                               read_journal_prefix, observe_success_journal)
+                                               read_journal_prefix, observe_success_journal,
+                                               observe_workflow_journal)
 from acceptance.suite.fsm import task_cache, Scratch
 from acceptance.suite.mcp import (StdioClient, HttpClient, FrameReader, McpError,
                                  MAX_FRAME, MAX_QUEUED_FRAMES)
@@ -609,7 +610,7 @@ class QuietJournalObserverTests(unittest.TestCase):
         for run, event in enumerate(self.EVENTS[1:], 1):
             effect = f"fixture/{emitted}/0"
             add("execution_claimed", run_id=run, effect_id=effect, attempt=1)
-            add("execution_stopped", run_id=run, effect_id=effect)
+            add("execution_stopped", run_id=run, effect_id=effect, outcome={"status": "ok"})
             add("execution_settled", run_id=run, effect_id=effect,
                 disposition="acked", outcome="ok")
             emitted = add("event_applied", event=event)
@@ -617,6 +618,27 @@ class QuietJournalObserverTests(unittest.TestCase):
 
     def test_native_settlement_sequence_satisfies_success_ledger(self):
         self.assertEqual(observe_success_journal(self.good_records(), "fixture", self.EVENTS), ())
+
+    def test_failure_class_requires_failed_ack_before_compensation(self):
+        events = ("start", "validated", "suspended", "failed", "restored")
+        for failure in ("nonzero_exit", "mcp_error"):
+            rows = self.good_records()
+            rows[11]["body"]["outcome"] = {"status": failure}
+            rows[12]["body"]["outcome"] = "failed"
+            rows[13]["body"]["event"] = "failed"
+            statuses = ("ok", "ok", failure, "ok")
+            self.assertEqual(observe_workflow_journal(rows, "fixture", events, statuses), ())
+            rows[12]["body"]["outcome"] = "ok"
+            self.assertIn("journal/acknowledgement_outcome",
+                          observe_workflow_journal(rows, "fixture", events, statuses))
+
+    def test_stopped_status_cannot_be_inferred_from_candidate_ack(self):
+        rows = self.good_records()
+        rows[3]["body"]["outcome"] = {"status": "nonzero_exit"}
+        self.assertIn("journal/stopped_outcome", observe_success_journal(rows, "fixture", self.EVENTS))
+        for statuses in (("ok",), ("ok", "ok", "ok", "unknown")):
+            with self.assertRaises(ValueError):
+                observe_workflow_journal(rows, "fixture", self.EVENTS, statuses)
 
     def test_missing_duplicate_and_unmatched_owners_fail(self):
         for mutate in (lambda rows: rows.pop(3),
