@@ -33,8 +33,8 @@ touches:
   - docs/EMBEDDING.md
   - docs/API-POLICY.md
   - docs/RELEASE.md
-status: planned
-merged_as: ""
+status: done
+merged_as: "09f816694f4291f725b4cb32d56fc8e24c44a656"
 ---
 # Executor Contract Acceptance
 

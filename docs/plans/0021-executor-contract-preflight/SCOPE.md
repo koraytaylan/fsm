@@ -1,7 +1,7 @@
 ---
 id: 0021
 title: "Executor Contract Preflight"
-status: planned
+status: done
 ---
 # Scope — Plan 0021
 
@@ -34,4 +34,7 @@ Autonomous scheduling belongs to plan 0020; process containment and shutdown bel
 
 A client can check an unregistered draft against the active executor, receive the same structural result as the CLI, repair an invalid contract, and execute it through either supported driver; an incompatible pending workflow cannot start even its first external handler, while explicitly manual effects and intentionally absent outcome events remain supported and visible; unavailable evidence is never reported as a pass.
 
-This is a proposed implementation bundle, not evidence that the gap is closed; the six tasks and their independent fixtures establish completion only after implementation and the required gates.
+All six task inventories are complete through `09f81669`; the frozen integration
+review in STATUS records the executed portable and provisioned native gates,
+historical failure dispositions and remaining release environments owned by
+plan 0023.
