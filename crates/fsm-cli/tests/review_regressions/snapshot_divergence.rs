@@ -182,7 +182,9 @@ fn execution_admission_divergence(sealed: bool) {
         .create_instance("case_review", "i1", "c1", None)
         .unwrap();
     if sealed {
-        store.seal_and_archive(&dir.join("archive"), None).unwrap();
+        let archive = dir.join("archive");
+        std::fs::create_dir(&archive).unwrap();
+        store.seal_and_archive(&archive, None).unwrap();
         store.annotate("i1", "above-seal", "live suffix").unwrap();
     }
     store.shutdown_snapshot().unwrap();
