@@ -46,6 +46,8 @@ touches:
   - crates/fsm-execute/tests/lifecycle_platform/contract_sensitivity.py
   - crates/fsm-execute/tests/lifecycle_platform/test_contract_sensitivity.py
   - crates/fsm-execute/tests/lifecycle_platform/test_crash_producer.py
+  - crates/fsm-execute/tests/lifecycle_platform/verify_crash_evidence.py
+  - crates/fsm-execute/tests/lifecycle_platform/test_crash_diagnostic_evidence.py
   - crates/fsm-execute/tests/lifecycle_platform/verify_contract_admission_evidence.py
   - crates/fsm-execute/tests/lifecycle_platform/test_contract_admission_evidence.py
   - .github/workflows/ci.yml

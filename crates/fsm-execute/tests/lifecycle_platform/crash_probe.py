@@ -12,6 +12,16 @@ from cli_artifact import build_crash_artifacts, build_host_test, build_boundary_
 from workflow_probe import digest
 import workflow_failure_export
 
+DIAGNOSTIC_REPETITIONS = 20
+
+
+def diagnostic_cases(output):
+    lines = output.splitlines()
+    return [dict(attempt=attempt, host='standalone', kind='process',
+                 behavior='collected-timeout', passed=lines.count(
+                     f'FSM_NATIVE_CRASH_DIAGNOSTIC collected-timeout {attempt}'.encode()) == 1)
+            for attempt in range(DIAGNOSTIC_REPETITIONS)]
+
 PRIVATE_OWNER_CASES = (('private', 'process', 'private-held'),
                        ('private', 'mcp', 'private-held'),
                        ('boundary', 'process', 'boundary-held'),
@@ -91,6 +101,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--toolchain', choices=('stable', '1.89.0'), required=True)
     parser.add_argument('--report', type=Path, required=True)
+    parser.add_argument('--repeat-collected-timeout', action='store_true',
+                        help='diagnose twenty fresh original timeout cases; never full acceptance')
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument('--private-owner', action='store_true',
                         help='exercise the public and private held-handler cases')
@@ -103,6 +115,8 @@ def main():
     scheduling = getattr(args, 'private_scheduling', False)
     contract = getattr(args, 'contract_admission', False)
     observer = private or scheduling or contract
+    repeat = getattr(args, 'repeat_collected_timeout', False)
+    assert not repeat or not observer, 'timeout diagnostics cannot select an owner acceptance profile'
     assert __debug__ and os.environ.get('GITHUB_ACTIONS') == 'true'
     assert os.environ.get('RUNNER_OS') == 'Linux'
     repo = Path(__file__).resolve().parents[4]
@@ -139,6 +153,11 @@ def main():
     if scheduling:
         report.update(schema='fsm.native-scheduling-owner/1',
                       scope='private-owner-scheduling', task_complete=False)
+    if repeat:
+        report.update(schema='fsm.native-collected-timeout-diagnostic/1',
+                      scope='repeated-standalone-process-collected-timeout',
+                      repetitions=DIAGNOSTIC_REPETITIONS, task_complete=False,
+                      cases=diagnostic_cases(b''))
     installed = json.loads(subprocess.check_output(
         [*installer, 'install', '--source', str(executable), '--sha256', expected], timeout=10))
     if contract:
@@ -156,13 +175,15 @@ def main():
                             'FSM_CRASH_' + name + '_SHA256=' + report['artifacts'][name]['sha256']])
         if observer:
             command.append('GITHUB_ACTIONS=true')
+        if repeat:
+            command.append('FSM_NATIVE_CRASH_REPEAT_COLLECTED_TIMEOUT=1')
         command.extend([str(fixture), '--exact',
                         ('authority::allocator::native_tests::crash_matrix::provisioned_contract_admission_matrix'
                          if contract else 'authority::allocator::native_tests::crash_matrix::provisioned_private_scheduling_owner_matrix'
                          if scheduling else 'authority::allocator::native_tests::crash_matrix::provisioned_private_completion_owner_matrix'
                          if private else 'authority::allocator::native_tests::crash_matrix::provisioned_lifecycle_candidate_matrix'),
                         '--ignored', '--nocapture', '--color', 'never'])
-        timeout = 900 if contract else 1400 if scheduling else 1200 if private else 3900
+        timeout = 900 if repeat or contract else 1400 if scheduling else 1200 if private else 3900
         report.update(command=command, exit_code=None, timed_out=False)
         try:
             result = subprocess.run(command, cwd=repo, capture_output=True, timeout=timeout)
@@ -184,6 +205,8 @@ def main():
                                      passed=result.stdout.splitlines().count(
                                          f'FSM_NATIVE_CRASH_CASE candidate-result {host} {kind} {behavior}'.encode()) == 1)
                                  for host, kind, behavior in PRIVATE_OWNER_CASES])
+        if repeat:
+            report.update(cases=diagnostic_cases(result.stdout))
         if scheduling:
             report.update(cases=[dict(host=host, kind=kind, behavior=behavior,
                                      passed=result.stdout.splitlines().count(

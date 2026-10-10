@@ -37,6 +37,10 @@ on:
         description: Repeat only the lifecycle crash matrix and its independent evidence verifier
         type: boolean
         default: false
+      repeat_collected_timeout:
+        description: Diagnose the original standalone process timeout with twenty fresh repetitions
+        type: boolean
+        default: false
       completion_owner_only:
         description: Verify the private host held-handler slice without repeating full gates
         type: boolean
@@ -95,7 +99,7 @@ on:
 # Focused crash reruns retain a separate queue so they cannot evict a pending
 # integration checkpoint and never claim the omitted acceptance inventories.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}${{ inputs.native_crash_only && '-native-crash' || '' }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}${{ (inputs.native_crash_only || inputs.repeat_collected_timeout) && '-native-crash' || '' }}
   cancel-in-progress: ${{ github.ref_type != 'tag' && github.ref != 'refs/heads/develop' }}
 
 env:
@@ -105,7 +109,7 @@ env:
 
 jobs:
   gate:
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.portable_only || (!inputs.native_only && !inputs.owner_sensitivity_only && !inputs.completion_owner_only && !inputs.scheduling_owner_only && !inputs.contract_admission_only && !inputs.contract_workflow_only && !inputs.native_crash_only) }}
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.portable_only || (!inputs.native_only && !inputs.owner_sensitivity_only && !inputs.completion_owner_only && !inputs.scheduling_owner_only && !inputs.contract_admission_only && !inputs.contract_workflow_only && !inputs.native_crash_only && !inputs.repeat_collected_timeout) }}
     strategy:
       fail-fast: false
       matrix:
@@ -123,7 +127,7 @@ jobs:
     steps:
       - name: Reject conflicting portable acceptance modes
         if: ${{ inputs.portable_only }}
-        run: test '${{ inputs.native_only || inputs.owner_sensitivity_only || inputs.completion_owner_only || inputs.scheduling_owner_only || inputs.contract_admission_only || inputs.contract_workflow_only || inputs.native_crash_only }}' != 'true'
+        run: test '${{ inputs.native_only || inputs.owner_sensitivity_only || inputs.completion_owner_only || inputs.scheduling_owner_only || inputs.contract_admission_only || inputs.contract_workflow_only || inputs.native_crash_only || inputs.repeat_collected_timeout }}' != 'true'
       - uses: actions/checkout@v7
       - name: Prepare task cache
         shell: bash
@@ -192,7 +196,7 @@ jobs:
   # runtime. These are real administrative fault probes, separate from the
   # portable six-leg Rust gate; missing facilities fail rather than skip.
   native-containment:
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.native_crash_only || (!inputs.portable_only && !inputs.owner_sensitivity_only && !inputs.contract_workflow_only) }}
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.native_crash_only || inputs.repeat_collected_timeout || (!inputs.portable_only && !inputs.owner_sensitivity_only && !inputs.contract_workflow_only) }}
     strategy:
       fail-fast: false
       matrix:
@@ -214,6 +218,7 @@ jobs:
       - run: rustup toolchain install ${{ matrix.rust }} --profile minimal
       - name: Reject conflicting scoped acceptance modes
         run: |
+          test '${{ inputs.repeat_collected_timeout && !inputs.native_crash_only }}' != 'true'
           test '${{ inputs.native_crash_only && (inputs.portable_only || inputs.native_only || inputs.completion_owner_only || inputs.scheduling_owner_only || inputs.owner_sensitivity_only || inputs.contract_admission_only || inputs.contract_workflow_only) }}' != 'true'
           test '${{ inputs.completion_owner_only && inputs.scheduling_owner_only }}' != 'true'
           test '${{ inputs.contract_admission_only && (inputs.completion_owner_only || inputs.scheduling_owner_only || inputs.owner_sensitivity_only) }}' != 'true'
@@ -279,12 +284,14 @@ jobs:
         id: crash_matrix
         run: >-
           python3 crates/fsm-execute/tests/lifecycle_platform/crash_probe.py
+          ${{ inputs.repeat_collected_timeout && '--repeat-collected-timeout' || '' }}
           --toolchain '${{ matrix.rust }}'
           --report '${{ env.FSM_NATIVE_CACHE }}/crash-evidence/crash.json'
       - name: Verify frozen lifecycle crash evidence
         if: ${{ !inputs.completion_owner_only && !inputs.scheduling_owner_only && !inputs.contract_admission_only }}
         run: |
           python3 crates/fsm-execute/tests/lifecycle_platform/verify_crash_evidence.py \
+            ${{ inputs.repeat_collected_timeout && '--repeat-collected-timeout' || '' }} \
             --source-commit "$GITHUB_SHA" \
             --rustc "$(rustc +${{ matrix.rust }} --version)" \
             --report-dir "$FSM_NATIVE_CACHE/crash-evidence"
@@ -345,7 +352,7 @@ jobs:
           if-no-files-found: error
 
   owner-sensitivity:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.owner_sensitivity_only && !inputs.contract_workflow_only && !inputs.portable_only && !inputs.native_crash_only }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.owner_sensitivity_only && !inputs.contract_workflow_only && !inputs.portable_only && !inputs.native_crash_only && !inputs.repeat_collected_timeout }}
     strategy:
       fail-fast: false
       matrix:
@@ -383,7 +390,7 @@ jobs:
           if-no-files-found: error
 
   contract-workflow:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.contract_workflow_only && !inputs.portable_only && !inputs.native_crash_only }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.contract_workflow_only && !inputs.portable_only && !inputs.native_crash_only && !inputs.repeat_collected_timeout }}
     strategy:
       fail-fast: false
       matrix:
@@ -425,7 +432,7 @@ jobs:
   # properties of the resolved graph, so keep explicit cheap checks that do
   # not depend on the test matrix merely happening to compile the crates.
   zero-deps:
-    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.owner_sensitivity_only && !inputs.completion_owner_only && !inputs.scheduling_owner_only && !inputs.contract_admission_only && !inputs.contract_workflow_only && !inputs.native_crash_only) }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.owner_sensitivity_only && !inputs.completion_owner_only && !inputs.scheduling_owner_only && !inputs.contract_admission_only && !inputs.contract_workflow_only && !inputs.native_crash_only && !inputs.repeat_collected_timeout) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

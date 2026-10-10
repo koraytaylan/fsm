@@ -40,6 +40,27 @@ fn provisioned_lifecycle_candidate_matrix() {
             &format!("FSM_CRASH_{variable}_SHA256"),
         );
     }
+    if let Some(request) = std::env::var_os("FSM_NATIVE_CRASH_REPEAT_COLLECTED_TIMEOUT") {
+        assert_eq!(request.to_str(), Some("1"));
+        for attempt in 0..20 {
+            assert!(scenario(
+                &staging,
+                &format!("{}-{attempt}", &nonce[..24]),
+                Scenario {
+                    host: "standalone",
+                    kind: "process",
+                    behavior: "collected-timeout",
+                },
+            ));
+            writeln!(
+                std::io::stdout().lock(),
+                "FSM_NATIVE_CRASH_DIAGNOSTIC collected-timeout {attempt}"
+            )
+            .unwrap();
+        }
+        fs::remove_dir_all(staging).unwrap();
+        return;
+    }
     for host in ["standalone", "embedded"] {
         for kind in ["process", "mcp"] {
             for behavior in [

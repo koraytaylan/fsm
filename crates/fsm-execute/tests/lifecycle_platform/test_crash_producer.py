@@ -42,7 +42,7 @@ class Retirement(unittest.TestCase):
 
     def exercise(self, *, initial=True, clear=True, stages=False, timeout=False,
                  missing=False, changed=False, export_error=False, private=False, scheduling=False, contract=False,
-                 launch_error=False):
+                 launch_error=False, repeat=False):
         with tempfile.TemporaryDirectory(dir=os.environ['TMPDIR']) as scratch:
             directory = Path(scratch)
             artifact = directory / 'never-executed'
@@ -60,6 +60,10 @@ class Retirement(unittest.TestCase):
             if contract:
                 markers = [f'FSM_NATIVE_CRASH_CASE candidate-result {host} {kind} {behavior}'.encode()
                            for host, kind, behavior in probe.CONTRACT_ADMISSION_CASES]
+            if repeat:
+                markers = [marker for attempt in range(20) for marker in (
+                    b'FSM_NATIVE_CRASH_CASE candidate-result standalone process collected-timeout',
+                    f'FSM_NATIVE_CRASH_DIAGNOSTIC collected-timeout {attempt}'.encode())]
             if missing:
                 markers.pop()
             output = b'\n'.join(markers) + b'\n1 passed; 0 failed; 0 ignored;\n'
@@ -78,7 +82,7 @@ class Retirement(unittest.TestCase):
                       if timeout else subprocess.CompletedProcess([], 0, output, b''))
             with (
                 patch.dict(os.environ, GITHUB_ACTIONS='true', RUNNER_OS='Linux'),
-                patch.object(probe.argparse.ArgumentParser, 'parse_args', return_value=SimpleNamespace(toolchain='stable', report=report, private_owner=private, private_scheduling=scheduling, contract_admission=contract)),
+                patch.object(probe.argparse.ArgumentParser, 'parse_args', return_value=SimpleNamespace(toolchain='stable', report=report, private_owner=private, private_scheduling=scheduling, contract_admission=contract, repeat_collected_timeout=repeat)),
                 patch.object(probe.authority, 'build_authority', return_value=artifact),
                 patch.object(probe, 'build_crash_artifacts', return_value={name: artifact for name in ('TEST', 'FIXTURE', 'CLI')}),
                 patch.object(probe, 'build_host_test', return_value=artifact) as host_build,
@@ -112,10 +116,17 @@ class Retirement(unittest.TestCase):
                 else:
                     self.assertEqual(probe.main(), 1 if timeout or missing else 0)
                 evidence = json.loads(report.read_text())
-                self.assertEqual(evidence['scope'], 'native-contract-refusal-repair' if contract else 'private-owner-scheduling' if scheduling else 'public-and-private-held-handlers' if private else 'pre-publication-collected-candidates-supervisor-death-domain-close-journal-cuts-host-claim-enrolled-authorization-and-repeated-noisy-hosts')
+                self.assertEqual(evidence['scope'], 'repeated-standalone-process-collected-timeout' if repeat else 'native-contract-refusal-repair' if contract else 'private-owner-scheduling' if scheduling else 'public-and-private-held-handlers' if private else 'pre-publication-collected-candidates-supervisor-death-domain-close-journal-cuts-host-claim-enrolled-authorization-and-repeated-noisy-hosts')
                 self.assertEqual(evidence['passed'], clear and not stages and not timeout and not missing and not changed and not launch_error)
                 self.assertFalse(evidence['gate_released'])
-                self.assertEqual(run.call_args_list[0].kwargs['timeout'], 900 if contract else 1400 if scheduling else 1200 if private else 3900)
+                self.assertEqual(run.call_args_list[0].kwargs['timeout'], 900 if repeat or contract else 1400 if scheduling else 1200 if private else 3900)
+                if repeat:
+                    self.assertEqual(evidence['schema'], 'fsm.native-collected-timeout-diagnostic/1')
+                    self.assertEqual(evidence['repetitions'], 20)
+                    self.assertEqual(len(evidence['cases']), 20)
+                    self.assertEqual([row['attempt'] for row in evidence['cases']], list(range(20)))
+                    self.assertFalse(evidence['task_complete'])
+                    self.assertEqual(evidence['command'].count('FSM_NATIVE_CRASH_REPEAT_COLLECTED_TIMEOUT=1'), 1)
                 if private:
                     host_build.assert_called_once()
                     boundary_build.assert_called_once()
@@ -179,6 +190,31 @@ class Retirement(unittest.TestCase):
 
     def test_success_retires_only_the_installed_identity(self):
         self.exercise()
+
+    def test_timeout_diagnostic_has_distinct_scope_and_twenty_completed_repetitions(self):
+        self.exercise(repeat=True)
+
+    def test_missing_timeout_repetition_cannot_pass(self):
+        self.exercise(repeat=True, missing=True)
+
+    def test_timeout_diagnostic_preserves_partial_failure(self):
+        self.exercise(repeat=True, timeout=True)
+
+    def test_timeout_diagnostic_launch_error_keeps_incomplete_inventory(self):
+        self.exercise(repeat=True, launch_error=True)
+
+    def test_timeout_diagnostic_retains_unknown_authority_and_error_export(self):
+        self.exercise(repeat=True, clear=False)
+
+    def test_timeout_diagnostic_conflicting_profile_refuses_before_build(self):
+        with (
+            patch.object(probe.argparse.ArgumentParser, 'parse_args', return_value=SimpleNamespace(
+                toolchain='stable', repeat_collected_timeout=True, private_owner=True)),
+            patch.object(probe.authority, 'build_authority') as build,
+        ):
+            with self.assertRaisesRegex(AssertionError, 'owner acceptance'):
+                probe.main()
+            build.assert_not_called()
 
     def test_private_owner_uses_exact_library_artifact_and_separate_scope(self):
         self.exercise(private=True)
