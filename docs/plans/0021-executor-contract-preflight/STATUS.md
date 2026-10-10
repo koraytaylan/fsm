@@ -30,6 +30,13 @@ remain producer-attested. Frozen integration verdict:
 The 83-item source audit remains applicable; final current-candidate integration
 and remaining task promotion are pending.
 
+The `7e7a3011` checkpoint passes both Linux portable and both native jobs, but
+macOS stable fails two MCP tests that shared a timestamp-derived scratch store.
+Fix `725fb78e` claims distinct directories exclusively; the focused MCP target,
+identical-clock guard sensitivity and CLI all-target clippy pass. Native macOS
+revalidation remains required before integration and task promotion. Frozen
+focused review: `aca77f3e59c178e45a28eb6213cd6f55c22731e3f8654331345ed94cea3709e0`.
+
 **Historical failure disposition:** source `a6a1f815` failed the
 standalone/process/collected-timeout case in CI 38014300746; that run remains
 failed and its lost cleanup error leaves the cause unknown. Its retained closing
