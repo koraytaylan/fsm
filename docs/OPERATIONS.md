@@ -130,6 +130,9 @@ The existing six-leg Rust gate retains every required step and adds installed
 baseline proof after those steps; this opt-in smoke workflow does not run or
 replace that expensive gate. Podman's consumer installation remains a separately
 invoked `installed-consumer-check` run for the same candidate.
+The consumer image explicitly sets `RUSTUP_TOOLCHAIN` from its `RUST_VERSION`
+build argument: the pinned toolchain file remains a receipt input without
+silently changing the compiler requested for that consumer installation.
 
 `acceptance/run-native.py` checks a clean immutable checkout, explicitly selected
 toolchain, native OS and the original consumer build receipt; Linux installation

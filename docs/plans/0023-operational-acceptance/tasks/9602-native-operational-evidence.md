@@ -10,6 +10,7 @@ touches:
   - .github/workflows/ci.yml
   - .github/workflows/operational-acceptance.yml
   - acceptance/run-native.py
+  - acceptance/Containerfile
   - acceptance/suite/evidence.py
   - acceptance/tests/test_native.py
   - acceptance/profiles/operational.json

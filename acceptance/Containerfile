@@ -7,11 +7,13 @@
 
 ARG RUST_VERSION=1.89.0
 FROM docker.io/library/rust:${RUST_VERSION}-bookworm AS build
+ARG RUST_VERSION
 
 ENV TMPDIR=/root/.cache/fsm-acceptance-build/temporary \
     CARGO_TARGET_DIR=/root/.cache/fsm-acceptance-build/target \
     CARGO_BUILD_JOBS=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    RUSTUP_TOOLCHAIN=${RUST_VERSION}
 WORKDIR /src
 RUN mkdir -p "$TMPDIR" \
     && apt-get update \
@@ -21,8 +23,9 @@ RUN mkdir -p "$TMPDIR" \
 # metadata, credentials and unrelated host files never enter the build.
 COPY . ./
 
-# No `rust-toolchain.toml` is copied: the base image already carries the pinned
-# version, and the file would make cargo fetch a second copy of it.
+# The receipt includes rust-toolchain.toml as a compile-time documentation
+# input; explicitly select the image's requested compiler so that input cannot
+# override a consumer's RUST_VERSION selection.
 RUN python3 acceptance/suite/evidence.py build /src /usr/local
 RUN cargo build --release --locked -p fsm-execute --bin fsm-containment-authority \
     && install -m 0444 "$CARGO_TARGET_DIR/release/fsm-containment-authority" /usr/local/share/fsm-containment-authority-built \
