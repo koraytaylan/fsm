@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 
 SOURCE_ROOTS = ("Cargo.toml", "Cargo.lock", "crates", "docs", "examples", "tools",
                 "acceptance/suite", "acceptance/tests", "acceptance/fixtures", "acceptance/Containerfile",
-                "acceptance/acceptance.sh", "acceptance/run-installed-executor.py")
+                "acceptance/acceptance.sh", "acceptance/run-installed-executor.py", "acceptance/profiles")
 IGNORED_DIRECTORIES = {"target", "__pycache__", ".git"}
 
 

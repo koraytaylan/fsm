@@ -9,11 +9,12 @@ gated: false
 touches:
   - acceptance/suite/soak.py
   - acceptance/suite/metrics.py
+  - acceptance/suite/evidence.py
   - acceptance/tests/test_soak.py
   - acceptance/profiles/operational.json
   - acceptance/fixtures/executor_handler.py
   - docs/OPERATIONS.md
-status: planned
+status: in_progress
 merged_as: ""
 ---
 # Operational Soak Harness

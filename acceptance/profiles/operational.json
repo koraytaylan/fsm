@@ -1,0 +1,21 @@
+{
+  "profiles": {
+    "smoke": {
+      "name": "smoke",
+      "minimum_seconds": 120,
+      "minimum_cycles": 100,
+      "maximum_seconds": 1800,
+      "watchdog_seconds": 90,
+      "maximum_cycles": 10000
+    },
+    "sustained": {
+      "name": "sustained",
+      "minimum_seconds": 28800,
+      "minimum_cycles": 10000,
+      "maximum_seconds": 36000,
+      "watchdog_seconds": 90,
+      "maximum_cycles": 1000000
+    }
+  },
+  "calibrations": {}
+}
