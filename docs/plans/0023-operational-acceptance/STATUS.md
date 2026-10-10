@@ -5,14 +5,14 @@ Task frontmatter is authoritative; the coordinator owns registration and complet
 | Task | Status | Landing OID |
 |---|---|---|
 | [acceptance-evidence-reports](tasks/9501-acceptance-evidence-reports.md) | done | 83de6523169394fa5bc329034a9b857d489c73ad |
-| [installed-executor-acceptance](tasks/9502-installed-executor-acceptance.md) | in_progress | — |
+| [installed-executor-acceptance](tasks/9502-installed-executor-acceptance.md) | done | 0308a1a9e4a777a690e3aa170aae3baf522ff047 |
 | [operational-soak-harness](tasks/9601-operational-soak-harness.md) | planned | — |
 | [native-operational-evidence](tasks/9602-native-operational-evidence.md) | planned | — |
 | [live-model-acceptance-protocol](tasks/9701-live-model-acceptance-protocol.md) | planned | — |
 | [candidate-evidence-gate](tasks/9702-candidate-evidence-gate.md) | planned | — |
 | [operational-review-closure](tasks/9703-operational-review-closure.md) | planned | — |
 
-Progress: 1/7 tasks completed.
+Progress: 2/7 tasks completed.
 
 Manual Phase R binds the seven-task bundle to clean validation base
 `106c833cfc1b9aee18947164f752ee7f244476e0` after plans 0022, 0020 and 0021
@@ -371,9 +371,34 @@ syntax/size checks pass; filtered proof remains release-ineligible.
 Frozen implementing-author review digest:
 `6b26d1d8bb49becc28e72383031033abfda8294aed406ecba0289a22c696a95d`.
 
-Task 9502 remains in progress: installed timeout/stop-boundary acceptance and
-remaining supported lifecycle inventory, plus the complete current native and
-consumer suites, are outstanding.
+Frozen task-9502 verdict for `980c2e1d..0308a1a9` closes its unchanged written
+installed inventory:
+[complete native suite](https://github.com/koraytaylan/fsm/actions/runs/38074882727)
+passes 37 scenarios and 149 fixtures with 5,659 assertions, 621 native closures,
+3,019 journal records, 1,680 raw trace records and 104 explicit owner drains;
+[optimized MSRV consumer](https://github.com/koraytaylan/fsm/actions/runs/38075826626)
+passes all 25 executor-filtered scenarios and the same 149 native fixtures,
+with 5,568 assertions, all original closure/trace obligations, enforced 1 GiB
+and zero swap, and confirmed container removal.
+[Original platform baselines](https://github.com/koraytaylan/fsm/actions/runs/38073716059)
+pass all fifteen scenarios on Linux, macOS and Windows; the latter two prove
+actual unsupported-containment refusal before entry.
+Strict replay revalidates original source blobs, build receipts, executable
+bytes, exact hardware cuts, protected bindings and cleanup; every report retains
+its original source/toolchain identity, and the consumer filter remains
+release-ineligible.
+Timeout proof observes the original predicate's actual true return and normal
+runner fence call while parent and descendant remain alive; original native
+closure kills both before replacement release without inventing an end/result.
+The optimized helper retains that private predicate boundary.
+Persistent entry logs remove DynamicUser marker-retirement races from supervisor
+and owner recovery, and explicit original stdio arguments fix the consumer
+debugger's empty argument-parameter defect; focused real runs and separately
+labelled observer guard controls pass, and failed/cancelled attempts stay failed
+or cancelled in the task cache.
+Frozen implementing-author review digest:
+`28d77431eff9359fab9f77b3e676836cfc44705aad65fed6dcaa69a8563f836b`.
+
 Sustained native operation, nine human-reviewed uncoached
 live-model sessions, Desktop compatibility and independent final review remain
 mandatory and incomplete; no passing skip or synthetic control replaces them.

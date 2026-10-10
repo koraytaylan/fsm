@@ -73,8 +73,8 @@ touches:
   - acceptance/fixtures/executor_handler.py
   - acceptance/fixtures/executor_workflow.json
   - acceptance/Containerfile
-status: in_progress
-merged_as: ""
+status: done
+merged_as: "0308a1a9e4a777a690e3aa170aae3baf522ff047"
 ---
 # Installed Executor Acceptance
 
