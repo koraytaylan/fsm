@@ -24,17 +24,27 @@ COPY . ./
 # No `rust-toolchain.toml` is copied: the base image already carries the pinned
 # version, and the file would make cargo fetch a second copy of it.
 RUN python3 acceptance/suite/evidence.py build /src /usr/local
+RUN cargo build --release --locked -p fsm-execute --bin fsm-containment-authority \
+    && install -m 0444 "$CARGO_TARGET_DIR/release/fsm-containment-authority" /usr/local/share/fsm-containment-authority-built \
+    && python3 -c 'import json; from pathlib import Path; from acceptance.suite.evidence import verify_source; verify_source(Path("/src"), json.loads(Path("/src/source.json").read_text()))'
 
 FROM docker.io/library/debian:bookworm-slim
 
 ENV TMPDIR=/root/.cache/fsm-acceptance-run/temporary
 RUN mkdir -p "$TMPDIR" \
     && apt-get update \
-    && apt-get install -y --no-install-recommends python3 ca-certificates git \
+    && apt-get install -y --no-install-recommends python3 ca-certificates git sudo systemd-sysv dbus mount \
+    && useradd --create-home --uid 1000 --shell /bin/bash fsm \
+    && printf 'fsm ALL=(ALL) NOPASSWD: ALL\n' > /etc/sudoers.d/fsm-acceptance \
+    && chmod 0440 /etc/sudoers.d/fsm-acceptance \
+    && install -d -m 0755 /usr/libexec /var/lib/fsm-containment \
+    && install -d -o fsm -g fsm -m 0700 /home/fsm/.cache /home/fsm/.cache/fsm-acceptance-run /home/fsm/.cache/fsm-acceptance-run/temporary \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /usr/local/bin/fsm /usr/local/bin/fsm
 COPY --from=build /usr/local/share/fsm-build.json /usr/local/share/fsm-build.json
+COPY --from=build /usr/local/share/fsm-containment-authority-built /usr/local/share/fsm-containment-authority-built
+RUN install -m 0711 /usr/local/share/fsm-containment-authority-built /usr/libexec/fsm-containment-authority
 
 # The repository's own data — example machines, fixture machines, the case
 # files, the decimal generator. Read-only inputs to the scenarios.
@@ -45,6 +55,9 @@ ENV FSM_BIN=/usr/local/bin/fsm \
     FSM_REPO=/src \
     FSM_BUILD_RECEIPT=/usr/local/share/fsm-build.json \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    HOME=/home/fsm \
+    TMPDIR=/home/fsm/.cache/fsm-acceptance-run/temporary
 
-ENTRYPOINT ["python3", "-m", "acceptance.suite.run"]
+USER fsm
+ENTRYPOINT ["python3", "-m", "acceptance.suite.container"]

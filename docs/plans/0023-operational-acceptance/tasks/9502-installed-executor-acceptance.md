@@ -20,7 +20,11 @@ touches:
   - docs/RELEASE.md
   - .github/workflows/installed-executor-check.yml
   - .github/workflows/installed-baseline-check.yml
+  - .github/workflows/installed-consumer-check.yml
+  - acceptance/acceptance.sh
   - acceptance/run-installed-executor.py
+  - acceptance/suite/installed.py
+  - acceptance/suite/container.py
   - acceptance/suite/native_fixture.py
   - acceptance/suite/scenarios.py
   - acceptance/suite/executor_scenarios.py
@@ -44,6 +48,8 @@ touches:
   - acceptance/tests/test_installed_inventory_observer.py
   - acceptance/tests/test_notification_observer.py
   - acceptance/tests/test_native_failure_observer.py
+  - acceptance/tests/test_container_observer.py
+  - acceptance/fixtures/container_init.sh
   - acceptance/fixtures/executor_handler.py
   - acceptance/fixtures/executor_workflow.json
   - acceptance/Containerfile

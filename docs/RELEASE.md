@@ -906,6 +906,18 @@ $ acceptance/acceptance.sh              # every scenario
 $ acceptance/acceptance.sh seal         # only scenarios whose name matches
 ```
 
+Native executor scenarios require `FSM_ACCEPTANCE_DISPOSABLE_NATIVE=1` on an
+explicitly opted-in disposable Linux GitHub runner; `installed-consumer-check`
+dispatches `acceptance/acceptance.sh executor` or the unfiltered recipe for an
+immutable candidate. The consumer image installs the CLI through `cargo install`
+and its protected authority from the same controlled source snapshot, then runs
+the independent client as a nonroot operator under the container's own systemd
+manager and private cgroup namespace, with finite memory and zero swap.
+The wrapper retains original reports, binaries, native observations and container
+retirement before removing its owned container; filtered evidence stays
+ineligible for the complete acceptance inventory, and native proof requires an
+actual passing run. Offline filters such as `seal` retain the ordinary Podman path.
+
 `acceptance/` builds an image with `cargo install --path crates/fsm-cli
 --locked`, the same command a consumer runs, and drives that binary from a
 client that shares no code with it: a standard-library MCP implementation
@@ -918,8 +930,9 @@ This replaces a list that was ticked by hand. The list was honest about why —
 each item wanted a live host, a human reader, or a real filesystem — but an
 honour-system list is run differently by different people, differently by the
 same person twice, and not at all under time pressure. What it was really
-asking is now fifteen scenarios and ~100 assertions that run identically every
-time and fail loudly:
+asking is recorded in the original fifteen-scenario baseline below; the complete
+installed suite adds the independently observed native executor scenarios and
+requires its entire current inventory to pass:
 
 | scenario | the item it replaces |
 |---|---|

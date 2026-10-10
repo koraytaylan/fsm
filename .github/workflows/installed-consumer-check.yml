@@ -1,0 +1,61 @@
+name: installed-consumer-check
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate:
+        description: Immutable develop candidate SHA
+        required: true
+        type: string
+      scenario:
+        description: Installed Podman consumer inventory
+        required: true
+        type: choice
+        default: executor
+        options: [executor, full]
+
+permissions:
+  contents: read
+
+jobs:
+  installed-consumer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      FSM_ACCEPTANCE_DISPOSABLE_NATIVE: "1"
+      FSM_ACCEPTANCE_MEMORY: 1g
+      NO_COLOR: "1"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.candidate }}
+      - name: Prepare explicit task cache
+        run: |
+          consumer_cache="$HOME/.cache/fsm-consumer-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -p "$consumer_cache/evidence"
+          printf 'TMPDIR=%s\nFSM_EVIDENCE_DIR=%s\nFSM_ACCEPTANCE_IMAGE=%s\n' "$consumer_cache" "$consumer_cache/evidence" "fsm-consumer-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
+          free -h
+          swapon --show
+      - name: Focused independent observer checks
+        run: timeout 90s python3 -m unittest discover -s acceptance/tests -p 'test*observer.py'
+      - name: Install disposable consumer tool
+        run: |
+          sudo -n env "TMPDIR=$TMPDIR" apt-get update
+          sudo -n env "TMPDIR=$TMPDIR" apt-get install -y --no-install-recommends podman
+      - name: Execute consumer recipe with enforced limits
+        env:
+          FSM_CONSUMER_SCENARIO: ${{ inputs.scenario }}
+        run: |
+          if [[ "$FSM_CONSUMER_SCENARIO" == full ]]; then
+            timeout 1800s acceptance/acceptance.sh
+          else
+            timeout 1800s acceptance/acceptance.sh executor
+          fi
+      - name: Retain original consumer evidence including failures
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: installed-consumer-evidence
+          path: ${{ env.FSM_EVIDENCE_DIR }}
+          if-no-files-found: error
