@@ -11,6 +11,13 @@ from .executor_lifecycle import (_restart_host, process_observation,
 from .executor_scenarios import (_fixture_rows, _retire_execution_owner,
     _wait_for_files, _unique_object, _invalid_constant, read_journal_prefix, workflow_table)
 from .native_fixture import DisposableAuthority, privileged
+from .executor_helper_cut import fixture_entries
+
+
+def validation_entries(root, original_run=None):
+    """Read the shared entry slot which survives DynamicUser retirement."""
+    return [row for row in fixture_entries(root)
+            if row['operation'] == 'validate' and row['run'] != original_run]
 
 
 def supervisor_observation(record: dict, namespace: str, phase: str, prior: dict | None = None) -> dict:
@@ -100,9 +107,9 @@ def installed_supervisor_restart(report, kind: str, transport: str) -> None:
                     "request_id": "supervisor-create"})["instance_id"]
                 client.structured("instance_send", {"instance_id": instance,
                     "event": {"name": "start"}, "request_id": "supervisor-start"})
-            ready = _wait_for_files(lambda: list(native.resource.glob("*.ready")), host, 10)
+            ready = _wait_for_files(lambda: validation_entries(native.resource), host, 10)
             report.equal(len(ready), 1, "one original fixture is in flight before independent supervisor death")
-            original = json.loads(ready[0].read_text())
+            original = ready[0]
             before = process_observation(original)
             prefix = read_journal_prefix(store)
             claims = [row for row in prefix if row["kind"] == "execution_claimed"]
@@ -142,8 +149,7 @@ def installed_supervisor_restart(report, kind: str, transport: str) -> None:
             if replacement is not None:
                 replacement.initialize()
             quiet_id = replacement._next_id if replacement is not None else 0
-            ready = _wait_for_files(lambda: [path for path in native.resource.glob("*.ready")
-                if json.loads(path.read_text())["run"] != original["run"]], successor, 35)
+            ready = _wait_for_files(lambda: validation_entries(native.resource, original['run']), successor, 35)
             report.equal(len(ready), 1, "one quiet successor begins only after original native recovery")
             after = process_observation(original)
             witness = dict(before=before, after=after)

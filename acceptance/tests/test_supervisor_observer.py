@@ -8,7 +8,7 @@ import sys
 import time
 import unittest
 
-from acceptance.suite.executor_supervisor import supervisor_observation
+from acceptance.suite.executor_supervisor import supervisor_observation, validation_entries
 from acceptance.suite.executor_lifecycle import original_interrupted_completion, original_completion
 from acceptance.suite.fsm import Scratch
 from acceptance.suite.native_fixture import BROKER_OWNER
@@ -173,6 +173,29 @@ class OwnedBrokerStubTests(unittest.TestCase):
 
 
 class SupervisorFixtureBoundTests(unittest.TestCase):
+    def test_retired_ready_markers_cannot_hide_persistent_original_or_successor_entries(self):
+        with Scratch('supervisor-entry-observer') as scratch:
+            root = Path(scratch.dir('resource'))
+            original = dict(run='original', resource='supplier', operation='validate',
+                pid=123, pid_starttime='100')
+            successor = dict(run='successor', resource='supplier', operation='validate',
+                pid=456, pid_starttime='200')
+            later = dict(run='suspend', resource='supplier', operation='suspend',
+                pid=789, pid_starttime='300')
+            marker = root / 'retiring.ready'
+            marker.write_text(json.dumps(original))
+            marker.unlink()
+            slot = root / 'entries.jsonl'
+            slot.write_text(json.dumps(original) + '\n')
+            self.assertEqual(validation_entries(root), [original])
+            self.assertEqual(validation_entries(root, 'original'), [])
+            slot.write_text(''.join(json.dumps(row) + '\n' for row in (original, successor, later)))
+            self.assertEqual(validation_entries(root, 'original'), [successor])
+            successor['pid'] = True
+            slot.write_text(json.dumps(successor) + '\n')
+            with self.assertRaises(ValueError):
+                validation_entries(root, 'original')
+
     def test_release_wait_exact_sixty_seconds_is_bounded_and_plus_one_refuses_before_entry(self):
         fixture = Path(__file__).resolve().parents[1] / "fixtures/executor_handler.py"
         for bound, expected in ((60, 0), (61, 2)):

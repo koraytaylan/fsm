@@ -972,6 +972,11 @@ original descendant before releasing fresh validation on all three hosts.
 Original/final descendant and output-write logs retain their bytes separately
 from native closure records, and every observed descendant must be dead before
 the successor owner confirms its final drain.
+Installed supervisor recovery observes original and replacement invocation
+identities through the persistent shared entry log, so DynamicUser cleanup of
+an old ready marker cannot abort observation while native recovery is running;
+live process identities and original claim-bound closure remain required.
+
 The installed timeout matrix observes the original deadline predicate's
 hardware entry, then its stack-derived same-thread return with a true boolean
 and the runner's exact pre-fence call; original ELF call bytes must target those
