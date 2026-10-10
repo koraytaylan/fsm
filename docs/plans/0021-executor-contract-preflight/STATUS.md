@@ -57,7 +57,14 @@ Cargo test target; its exact bytes now live under the parent test directory.
 Cargo metadata, seven acceptance cases and feature-enabled CLI all-target lint
 pass; frozen repair review
 `92a9d0b7d7041f256dbc28730757a270578be087bdc7a343ac2ddf1b0d959a4a`.
-Affected portable gates and independent native integration remain outstanding.
+Integration repairs land at `ad3661f4`: shared contract-cache validation now
+compiles on every platform, and the older fresh-handoff fixture supplies its
+original handler table before bound entry, preserving writer and recovery
+assertions. The exact canonical boundary, six cache cases, focused lint,
+format and size checks pass; frozen review
+`34b5c9201da3c0b62828cdc03b67a22dd9d66adf86e5f14435ee6cacc75606d8`.
+All forty native admission cases independently replay on both toolchains at
+`02471b86`; the corrected full integration checkpoint remains outstanding.
 Tasks 9103/9201 remain in progress and 9202/9203 remain planned pending their
 written acceptance inventories and plan-end gates; live-model acceptance belongs
 to plan 0023 and is not claimed by these protocol clients.

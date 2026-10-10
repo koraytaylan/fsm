@@ -7,6 +7,8 @@ depends_on:
   - executor-contract-outcomes
 gated: false
 touches:
+  - crates/fsm-execute/src/config.rs
+  - crates/fsm-execute/src/config/identity.rs
   - crates/fsm-execute/src/contract/mod.rs
   - crates/fsm-execute/src/contract/admission.rs
   - crates/fsm-execute/src/contract/outcomes.rs
@@ -34,6 +36,8 @@ touches:
   - crates/fsm-execute/tests/contract_admission/provisioned/settlement.rs
   - crates/fsm-execute/src/containment/crash_matrix_native_tests.rs
   - crates/fsm-execute/src/containment/crash_matrix_contracts.rs
+  - crates/fsm-execute/src/containment/broker_disconnect_native_tests.rs
+  - crates/fsm-execute/src/containment/supervisor_fresh_native_probe.rs
   - crates/fsm-execute/tests/lifecycle_platform/crash_probe.py
   - crates/fsm-execute/tests/lifecycle_platform/owner_sensitivity.py
   - crates/fsm-execute/tests/lifecycle_platform/contract_sensitivity.py
