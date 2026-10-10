@@ -3268,3 +3268,10 @@ verified read-only snapshot even while another writer holds the store. The
 original owner and capacity remain retained until authenticated closure and
 interrupted settlement with the healthy writer; this neither launches work nor
 replaces a retained completion or the separate foreign-owner refusal policy.
+
+A locally cancelled native run keeps its scheduler slot and durable claim
+until the original authenticated completion is settled. After observing the
+original helper retire, the shared owner may read its protected completed
+publication once; this never binds or launches another handler. Repeated
+cancellation leaves that collector intact, and missing or invalid original
+evidence continues to defer ownership retirement.

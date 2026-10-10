@@ -46,6 +46,7 @@ jobs:
           free -h
           swapon --show
       - run: rustup toolchain install stable --profile minimal
+      - run: rustup component add clippy --toolchain stable
       - name: Focused operational controls
         run: timeout 90s python3 -m unittest discover -s acceptance/tests -p 'test_soak*.py'
       - name: Installed operational smoke

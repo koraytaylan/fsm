@@ -26,6 +26,10 @@ limits={name:(group/name).read_text().strip() for name in ('memory.max','memory.
 if limits!={'memory.max':'1073741824','memory.swap.max':'0'}: raise ValueError('controlled build limits differ')
 (evidence/'build-limits.json').write_text(json.dumps(dict(cgroup=groups[0],limits=limits)))
 build(source,install)
+subprocess.run(['cargo','test','--locked','-p','fsm-execute','--lib','run::native_owners'],
+               cwd=source,check=True,timeout=180)
+subprocess.run(['cargo','clippy','--locked','-p','fsm-execute','--all-targets','--','-D','warnings'],
+               cwd=source,check=True,timeout=180)
 subprocess.run(['cargo','build','--locked','-p','fsm-execute','--bin','fsm-containment-authority'],
                cwd=source,check=True,timeout=300)
 verify_source(source,json.loads((source/'source.json').read_text()))

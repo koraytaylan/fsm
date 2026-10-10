@@ -2077,3 +2077,11 @@ closure after its local binding helper retires, independently of writer access;
 authenticated interrupted settlement still requires the original healthy writer.
 This corrects cleanup of bound, unlaunched local claims without changing public
 signatures, errors, persisted formats, hash domains or versions.
+
+Operational cancellation acceptance now covers an entered native handler whose
+instance is independently cancelled: the original helper retires, the owner
+collects its protected completed result once, and interrupted settlement
+consumes ownership without acknowledgement, outcome advance or recreated
+pending work. Original claim/physical-store/closure checks and bounded refusal
+remain required; authored focused controls are auxiliary until the installed
+operational run passes.

@@ -7,6 +7,12 @@ depends_on:
   - installed-executor-acceptance
 gated: false
 touches:
+  - crates/fsm-execute/src/run/native_owners.rs
+  - crates/fsm-execute/src/run/native_owners/cancellation.rs
+  - docs/SPEC.md
+  - docs/API-POLICY.md
+  - docs/EMBEDDING.md
+  - docs/RELEASE.md
   - acceptance/suite/soak.py
   - acceptance/suite/metrics.py
   - acceptance/suite/soak_workload.py
@@ -17,6 +23,7 @@ touches:
   - acceptance/suite/soak_journal.py
   - acceptance/suite/soak_native_metrics.py
   - acceptance/suite/executor_control.py
+  - acceptance/suite/executor_lifecycle.py
   - acceptance/suite/soak_run.py
   - acceptance/run-operational.py
   - .github/workflows/operational-smoke.yml

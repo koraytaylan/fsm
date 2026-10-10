@@ -2485,6 +2485,13 @@ ownership without recreating pending state. Stale run completions cannot
 settle a successor. Existing acknowledgement/advance request-ID derivations
 and the ack-before-outcome-event recovery order MUST remain unchanged.
 
+Cancellation of a locally owned helper MUST NOT cancel a later read-only
+collection of that same run's protected completed publication. After actual
+helper retirement, a local owner MAY collect that publication once without
+binding or launching again; settlement still requires the original claim,
+physical store identity, authenticated result and verified native closure.
+Absent or invalid publication MUST retain unresolved ownership.
+
 The execution state block contains admission/quarantine state, the run
 high-water mark, unresolved claims including stopped results, and retained
 retry ledgers. Current state MUST be authenticated by `fsm.state-root/5` with hash domain

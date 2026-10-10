@@ -166,6 +166,7 @@ class InstalledBlock:
                 observe_completed_cycle(completed_ledger('contention','soak-contention-right'),
                     self.resource_observations('soak-contention-right'),started,completed)
         terminal='cancelled' if case in ('cancel','manual') else 'prerequisite_failed' if case=='deadline' else 'compensated' if case=='compensate' else 'completed'
+        right=None;reopened=None
         final=self.call('instance_get',dict(instance_id=instance))
         self.report.equal(final['status'],'cancelled' if case in ('cancel','manual') else 'completed','the installed instance reaches its authored disposition')
         if case not in ('cancel','manual'):self.report.equal(final['leaf'],terminal,'the installed instance reaches its authored leaf')
@@ -193,6 +194,7 @@ class InstalledBlock:
             physical=observations,active=active,quiescent=quiet,warmed=self.warmed,
             started_ns=started,completed_ns=time.monotonic_ns(),physical_completed_ns=completed,
             scheduler_lag_ns=dispatched-started,control_latency_ns=control_latency,
+            control=control,final=final,extra_final=right,reopened=reopened,
             original_host=before_restart,host=self.identity)
 
     def _interrupted(self,case,observed,records,instance):
@@ -278,5 +280,11 @@ def run_block(report,store,entries,consume):
             report.true(replay['agreement'] is True,'the installed replay reproduces the completed host block')
             (store.parent/f'block-{entries[0]["index"]//12:08}-verification.json').write_text(
                 json.dumps(dict(verification=verification,replay=replay),sort_keys=True))
-        finally:block.stop()
+        finally:
+            if block.host is not None:
+                for name in ('stdout','stderr'):
+                    value=getattr(block.host,'acceptance_'+name,None)
+                    if value is not None:
+                        (native.cache/('owner-'+name+'.log')).write_bytes(bytes(value)[-65536:])
+            block.stop()
     report.true(native.cleaned,'every original domain closes before owned block fixture cleanup')

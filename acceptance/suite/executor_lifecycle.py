@@ -181,6 +181,7 @@ def _restart_host(store: Path, table: Path, transport: str, diagnostic_format: s
         for pipe in (owner.process.stdout, owner.process.stderr):
             captures.append(fsm.BoundedCapture(pipe))
         owner.process.acceptance_stderr = captures[1].data
+        owner.process.acceptance_stdout = captures[0].data
         yield None, owner.process
     finally:
         owner.stop()

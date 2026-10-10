@@ -21,6 +21,9 @@ use std::{
 const MAX_OWNERS: usize = 4096;
 const RECOVERY_TIMEOUT: Duration = Duration::from_secs(3);
 
+#[path = "native_owners/cancellation.rs"]
+mod cancellation;
+
 #[cfg(test)]
 #[path = "native_owners/contract_tests.rs"]
 mod contract_tests;
@@ -37,6 +40,8 @@ struct Owner {
     requested: bool,
     entry_requested: bool,
     cancelled_before_entry: bool,
+    cancellation_requested: bool,
+    cancelled_completion_requested: bool,
     parked_at: Option<u64>,
     _preparation_owner: Option<super::native_client::NativePreparedOwner>,
 }
@@ -233,7 +238,11 @@ impl NativeOwners {
                     .is_some_and(|_| !owner.reconciliation_retired)
         });
         if !busy {
-            for owner in self.owners.values_mut().filter(|owner| !owner.requested) {
+            for owner in self
+                .owners
+                .values_mut()
+                .filter(|owner| !owner.requested || owner.can_collect_cancelled_completion())
+            {
                 let (instance, effect) = owner.claim.effect();
                 if snapshot.state.execution.claim_for(instance, effect) != Some(&owner.claim) {
                     continue;
@@ -269,6 +278,7 @@ impl NativeOwners {
                     owner.reconciliation = None;
                 }
                 owner.requested = true;
+                owner.cancelled_completion_requested |= owner.cancellation_requested;
                 if let Ok(execution) =
                     NativeExecution::recover(snapshot, &owner.claim, RECOVERY_TIMEOUT)
                 {
@@ -358,6 +368,8 @@ impl NativeOwners {
                 requested: false,
                 entry_requested: true,
                 cancelled_before_entry: false,
+                cancellation_requested: false,
+                cancelled_completion_requested: false,
                 parked_at: None,
                 _preparation_owner: None,
             },
@@ -398,24 +410,6 @@ impl NativeOwners {
             return Err(deferred());
         }
         owner.execution.start_retained(store, timeout)
-    }
-
-    pub(super) fn cancel(&mut self, effect: &str) -> Option<Result<(), ExecError>> {
-        if let Some(result) = self.admissions.cancel(effect) {
-            return Some(result);
-        }
-        let owner = self.owners.values_mut().find(|owner| {
-            owner.claim.effect().1 == effect && owner.execution.progress().retained
-        })?;
-        if !owner.locally_admitted {
-            return Some(Err(deferred()));
-        }
-        owner.cancelled_before_entry |= !owner.entry_requested;
-        owner.entry_requested = true;
-        Some(owner.execution.cancel().map_err(|error| {
-            ExecError::new("exec/inflight_deferred", error)
-                .hint("retain original native ownership until authenticated reconciliation")
-        }))
     }
 
     pub(super) fn ready(&self) -> bool {

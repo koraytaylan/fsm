@@ -132,6 +132,8 @@ def main():
         manifest['failures'].append(str(error));manifest['verdict']='incomplete'
         raise
     finally:
+        manifest['assertion_records']=report.checks
+        manifest['notes']=report.notes
         path.write_text(json.dumps(manifest,indent=2,sort_keys=True))
 
 

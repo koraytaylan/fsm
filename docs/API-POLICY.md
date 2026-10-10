@@ -1990,3 +1990,10 @@ closure after its local binding helper retires, independently of writer access;
 authenticated interrupted settlement still requires the original healthy writer.
 This corrects cleanup of bound, unlaunched local claims without changing public
 signatures, errors, persisted formats, hash domains or versions.
+
+Native local cancellation now cancels its original helper once and permits one
+read-only collection after that helper actually retires and its original
+protected completed publication is present; repeated scheduler cancellation
+cannot kill the collection helper. This repairs interrupted settlement while
+preserving original claim/physical-store/closure checks, bounded recovery,
+public signatures, error codes, journal formats and hash domains.
