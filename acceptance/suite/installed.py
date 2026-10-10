@@ -62,4 +62,3 @@ def retain_failed_stores(temporary: Path, evidence: Path, cells: int) -> None:
         if directory.is_symlink() or not directory.is_dir():
             raise RuntimeError("retained original store is not a task directory")
         shutil.copytree(directory, evidence / ("failed-" + directory.name), symlinks=True)
-
