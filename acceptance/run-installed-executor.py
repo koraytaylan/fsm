@@ -1,7 +1,7 @@
-"""Run selected installed workflows on an opted-in disposable CI VM.
+"""Run focused or complete installed inventories on an opted-in CI VM.
 
-This focused milestone does not replace the complete installed/platform/soak
-inventory or release gate; its actual scenario report remains filtered.
+Full installed-suite evidence is distinct from platform, sustained, live-model
+and release-gate evidence; focused inventories remain explicitly filtered.
 """
 import argparse
 import json
@@ -31,7 +31,40 @@ SCENARIOS = ("executor_stdio_process_success_progresses_with_a_quiet_client",
              "executor_active_drain_preserves_original_success_and_pending_work",
              "executor_stdio_paused_and_retired_output_preserves_native_work",
              "executor_supervisor_death_refuses_until_a_new_epoch_recovers_original_work",
-             "baseline")
+             "baseline", "full")
+CELLS = (1, 8, 16, 4, 8, 4, 10, 8, 8, 6, 4, 6, 2, 85)
+
+
+def selection(scenario: str) -> tuple[list[str], list[str], int]:
+    from acceptance.suite.run import discover
+    if scenario not in SCENARIOS:
+        raise ValueError("unknown installed inventory")
+    if scenario == "full":
+        arguments, names = [], [name for name, _ in discover(None)]
+    elif scenario == "baseline":
+        arguments, names = ["--inventory=baseline"], [name for name, _ in discover(None, "baseline")]
+    else:
+        arguments, names = [scenario], [scenario]
+    return arguments, names, CELLS[SCENARIOS.index(scenario)]
+
+
+def validate_installed_report(report: dict, scenario: str, candidate: str, binary_digest: str) -> None:
+    _, names, _ = selection(scenario)
+    full = scenario == "full"
+    expected_filter = None if full else "inventory:baseline" if scenario == "baseline" else scenario
+    if (report["verdict"] != "passed" or report["release_eligible"] is not full
+        or report["filter"] != expected_filter
+        or report["candidate"]["source_commit"] != candidate
+        or report["candidate"]["binary_sha256"] != binary_digest
+        or report["candidate"]["identity_matches"] is not True
+        or report["candidate"]["build_provenance_verified"] is not True
+        or report["selected_scenarios"] != names
+        or (full and report["required_scenarios"] != names)
+        or [row["name"] for row in report["scenarios"]] != names
+        or any(row["verdict"] != "passed" or not row["assertions"]
+               or any(check["passed"] is not True for check in row["assertions"])
+               for row in report["scenarios"])):
+        raise ValueError("installed scenario evidence is incomplete or inconsistent")
 
 
 def main() -> int:
@@ -40,7 +73,7 @@ def main() -> int:
     parser.add_argument("--scenario", choices=SCENARIOS, default=SCENARIOS[0])
     arguments = parser.parse_args()
     scenario = arguments.scenario
-    cells = (1, 8, 16, 4, 8, 4, 10, 8, 8, 6, 4, 6, 2)[SCENARIOS.index(scenario)]
+    consumer_arguments, expected_scenarios, cells = selection(scenario)
     native = sys.platform == "linux"
     if native or scenario != "baseline":
         require_disposable_runner()
@@ -59,7 +92,7 @@ def main() -> int:
     evidence = cache / "evidence"
     evidence.mkdir()
     control = dict(schema="fsm.installed-native-check/1", source_commit=arguments.candidate,
-                   scenario=scenario, scope="installed-baseline" if scenario == "baseline" else "focused-installed-workflows", cells=cells,
+                   scenario=scenario, scope="complete-installed-suite" if scenario == "full" else "installed-baseline" if scenario == "baseline" else "focused-installed-workflows", cells=cells,
                    platform=sys.platform, unsupported_containment=not native,
                    passed=False, complete_matrix=False, native_handler_execution=False)
     control_path = evidence / "producer.json"
@@ -97,10 +130,9 @@ def main() -> int:
                        "FSM_BUILD_RECEIPT": str(receipt), "FSM_CANDIDATE_REVISION": arguments.candidate,
                        "FSM_CANDIDATE_SHA256": digest(binary), "FSM_EVIDENCE_DIR": str(evidence / "reports")}
         with (evidence / "consumer.log").open("wb") as log:
-            selection = ["--inventory=baseline"] if scenario == "baseline" else [scenario]
-            result = subprocess.run([sys.executable, "-m", "acceptance.suite.run", *selection],
+            result = subprocess.run([sys.executable, "-m", "acceptance.suite.run", *consumer_arguments],
                                     cwd=source, env=environment, stdout=log, stderr=subprocess.STDOUT,
-                                    timeout=360)
+                                    timeout=600 if scenario == "full" else 360)
         control.update(consumer_invoked=True, consumer_exit=result.returncode,
                        binary_sha256=digest(binary), authority_sha256=authority_digest,
                        build_receipt_sha256=digest(receipt))
@@ -110,7 +142,7 @@ def main() -> int:
         shutil.copy2(receipt, evidence / "build-receipt.json")
         for directory in temporary.glob("installed-native-*"):
             shutil.copytree(directory, evidence / directory.name)
-        if scenario == "baseline":
+        if scenario in {"baseline", "full"}:
             retained_stores = [directory for pattern in ("fsm-acceptance-executor-*", "fsm-acceptance-policy-*")
                                for directory in temporary.glob(pattern)]
             if len(retained_stores) > 2:
@@ -122,17 +154,9 @@ def main() -> int:
             raise RuntimeError("installed autonomous scenario failed or its report is missing")
         problems = validate_bundle(reports[0])
         report = json.loads(reports[0].read_text())
-        from acceptance.suite.run import discover
-        expected_scenarios = [name for name, _ in discover(None, "baseline")] if scenario == "baseline" else [scenario]
-        if (problems or report["verdict"] != "passed" or report["release_eligible"] is not False
-            or report["candidate"]["source_commit"] != arguments.candidate
-            or report["candidate"]["binary_sha256"] != digest(binary)
-            or report["candidate"]["identity_matches"] is not True
-            or report["candidate"]["build_provenance_verified"] is not True
-            or report["selected_scenarios"] != expected_scenarios
-            or len(report["scenarios"]) != len(expected_scenarios)
-            or any(not row["assertions"] for row in report["scenarios"])):
-            raise RuntimeError("installed scenario evidence is incomplete or inconsistent: " + str(problems))
+        if problems:
+            raise RuntimeError("installed scenario artifact validation failed: " + str(problems))
+        validate_installed_report(report, scenario, arguments.candidate, digest(binary))
         retirement = list(evidence.glob("installed-native-*/retirement.json"))
         if len(retirement) != cells or any(json.loads(path.read_text())["cleaned"] is not True for path in retirement):
             raise RuntimeError("original native fixture cleanup was not verified")
@@ -142,7 +166,8 @@ def main() -> int:
                        "--inode", str(installed["inode"]), "--sha256", authority_digest)
             privileged("rmdir", str(BASE))
         success = True
-        control.update(passed=True, native_handler_execution=native and scenario != SCENARIOS[4], report_sha256=digest(reports[0]),
+        control.update(passed=True, complete_matrix=scenario == "full",
+                       native_handler_execution=native and scenario != SCENARIOS[4], report_sha256=digest(reports[0]),
                        assertions=sum(len(row["assertions"]) for row in report["scenarios"]), authority_removed=True if native else None,
                        selected_scenarios=expected_scenarios)
         return 0
