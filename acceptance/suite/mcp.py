@@ -274,6 +274,7 @@ class HttpClient:
         self._stream_connection: http.client.HTTPConnection | None = None
         self._stream_reader = None
         self._stream_socket = None
+        self._notifications: list[dict] = []
 
     def __enter__(self) -> "HttpClient":
         return self
@@ -281,8 +282,8 @@ class HttpClient:
     def __exit__(self, *_exc) -> None:
         self.close()
 
-    def _connection(self) -> http.client.HTTPConnection:
-        return http.client.HTTPConnection(self.host, self.port, timeout=30)
+    def _connection(self, timeout: float = 30) -> http.client.HTTPConnection:
+        return http.client.HTTPConnection(self.host, self.port, timeout=timeout)
 
     def _headers(self, streaming: bool = False) -> dict[str, str]:
         headers = {
@@ -296,8 +297,8 @@ class HttpClient:
             headers["Mcp-Session-Id"] = self.session
         return headers
 
-    def post(self, message: dict) -> tuple[int, dict[str, str], str]:
-        connection = self._connection()
+    def post(self, message: dict, *, timeout: float = 30) -> tuple[int, dict[str, str], str]:
+        connection = self._connection(timeout)
         try:
             connection.request(
                 "POST", self.path, json.dumps(message), self._headers()
@@ -314,12 +315,12 @@ class HttpClient:
         finally:
             connection.close()
 
-    def request(self, method: str, params: dict | None = None) -> dict:
+    def request(self, method: str, params: dict | None = None, *, timeout: float = 30) -> dict:
         self._next_id += 1
         message = {"jsonrpc": "2.0", "id": self._next_id, "method": method}
         if params is not None:
             message["params"] = params
-        status, _headers, body = self.post(message)
+        status, _headers, body = self.post(message, timeout=timeout)
         if status >= 400:
             raise McpError(f"{method}: HTTP {status}: {body}")
         frame = _first_json_frame(body)
@@ -422,6 +423,29 @@ class HttpClient:
             return self._stream_reader.receive(timeout)
         except queue.Empty:
             raise McpError(f"no server-sent event arrived within {timeout}s") from None
+
+    @property
+    def notifications(self) -> list[dict]:
+        return list(self._notifications)
+
+    def drain(self, timeout: float = 0.5) -> list[dict]:
+        """Observe pushed events without a protocol request or workflow poll."""
+        if self._stream_reader is None:
+            raise McpError("no stream is open")
+        collected = []
+        deadline = time.monotonic() + timeout
+        try:
+            while True:
+                frame = self._stream_reader.receive(deadline - time.monotonic())
+                if "id" in frame:
+                    raise McpError("an unsolicited response arrived while draining notifications")
+                if len(self._notifications) + len(collected) >= MAX_QUEUED_FRAMES:
+                    raise McpError("the retained notification bound was exceeded")
+                collected.append(frame)
+        except queue.Empty:
+            pass
+        self._notifications.extend(collected)
+        return collected
 
     def delete_session(self) -> int:
         connection = self._connection()

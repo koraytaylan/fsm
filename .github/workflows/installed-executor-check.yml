@@ -8,19 +8,20 @@ on:
         required: true
         type: string
       scenario:
-        description: Focused installed stdio inventory
+        description: Focused installed workflow inventory
         required: true
         type: choice
-        default: executor_stdio_outcome_matrix_progresses_with_quiet_clients
+        default: executor_transport_outcome_matrix_progresses_with_quiet_clients
         options:
           - executor_stdio_process_success_progresses_with_a_quiet_client
           - executor_stdio_outcome_matrix_progresses_with_quiet_clients
+          - executor_transport_outcome_matrix_progresses_with_quiet_clients
 
 permissions:
   contents: read
 
 jobs:
-  installed-stdio:
+  installed-workflows:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -42,7 +43,7 @@ jobs:
       - run: rustup toolchain install stable --profile minimal
       - name: Focused independent observer checks
         run: python3 -m unittest discover -s acceptance/tests -p test_executor_observer.py
-      - name: Consumer install and actual contained stdio workflows
+      - name: Consumer install and actual contained workflows
         env:
           FSM_INSTALLED_CANDIDATE: ${{ inputs.candidate }}
           FSM_INSTALLED_SCENARIO: ${{ inputs.scenario }}
@@ -51,6 +52,6 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: installed-stdio-evidence
+          name: installed-workflow-evidence
           path: ${{ env.TMPDIR }}/installed-executor-check/evidence
           if-no-files-found: error

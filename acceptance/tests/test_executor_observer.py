@@ -573,6 +573,13 @@ for _ in range(50):
                     client.request("large")
                 client.open_stream()
                 reader = client._stream_reader.worker
+                self.assertEqual(client.drain(timeout=0.02), [])
+                quiet_id = client._next_id
+                events.put(b'data: {"method":"notifications/resources/updated","params":{"uri":"fsm://instance/stub"}}\n\n')
+                self.assertEqual(client.drain(timeout=0.2), [{
+                    "method": "notifications/resources/updated", "params": {"uri": "fsm://instance/stub"}}])
+                self.assertEqual(client.notifications[-1]["params"]["uri"], "fsm://instance/stub")
+                self.assertEqual(client._next_id, quiet_id)
                 for ordinal in range(3):
                     with self.assertRaisesRegex(McpError, "no server-sent event"):
                         client.await_event(timeout=0.02)
@@ -581,6 +588,9 @@ for _ in range(50):
                     self.assertIs(client._stream_reader.worker, reader)
                 with self.assertRaisesRegex(McpError, "already open"):
                     client.open_stream()
+                events.put(b'data: {"id":999,"result":{}}\n\n')
+                with self.assertRaisesRegex(McpError, "unsolicited response"):
+                    client.drain(timeout=2)
                 events.put(b'data: ' + b'x' * (MAX_FRAME + 1) + b'\n\n')
                 with self.assertRaisesRegex(McpError, "bound"):
                     client.await_event(timeout=2)

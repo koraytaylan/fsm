@@ -13,12 +13,13 @@ from pathlib import Path
 import sys
 import json
 from itertools import islice
+from contextlib import contextmanager
 import re
 import time
 import hashlib
 
 from . import fsm
-from .mcp import StdioClient
+from .mcp import StdioClient, HttpClient
 from .native_fixture import DisposableAuthority
 
 MAX_TRACE_EVENTS = 100_000
@@ -266,7 +267,7 @@ def _wait_for_files(predicate, process, seconds: float):
 
 def executor_stdio_process_success_progresses_with_a_quiet_client(report) -> None:
     """One actual contained installed path; other matrix cells remain separate."""
-    _installed_stdio_workflow(report, "process", "success")
+    _installed_workflow(report, "stdio", "process", "success")
 
 
 def executor_stdio_outcome_matrix_progresses_with_quiet_clients(report) -> None:
@@ -274,10 +275,38 @@ def executor_stdio_outcome_matrix_progresses_with_quiet_clients(report) -> None:
     for kind in ("process", "mcp"):
         for outcome in ("success", "prerequisite-failed", "partial-work", "restore-failed"):
             report.note(f"Installed stdio cell: {kind}/{outcome}")
-            _installed_stdio_workflow(report, kind, outcome)
+            _installed_workflow(report, "stdio", kind, outcome)
 
 
-def _installed_stdio_workflow(report, kind: str, outcome: str) -> None:
+def executor_transport_outcome_matrix_progresses_with_quiet_clients(report) -> None:
+    """Both transports, both handler kinds and all four handwritten outcomes."""
+    for transport in ("stdio", "http"):
+        for kind in ("process", "mcp"):
+            for outcome in ("success", "prerequisite-failed", "partial-work", "restore-failed"):
+                report.note(f"Installed cell: {transport}/{kind}/{outcome}")
+                _installed_workflow(report, transport, kind, outcome)
+
+
+@contextmanager
+def _installed_client(store: Path, table: Path, transport: str):
+    options = ["--execute", f"--handlers={table}", "--poll-interval-ms=25"]
+    if transport == "stdio":
+        with StdioClient([fsm.FSM, "serve", f"--data-dir={store}", *options]) as client:
+            yield client, client.process
+    else:
+        port = fsm.free_port()
+        host = fsm.Serving(str(store), port, *options)
+        try:
+            with host, HttpClient("127.0.0.1", port) as client:
+                yield client, host.process
+        finally:
+            if host.process.poll() is None:
+                host.__exit__()
+            for pipe in (host.process.stdout, host.process.stderr):
+                pipe.close()
+
+
+def _installed_workflow(report, transport: str, kind: str, outcome: str) -> None:
     fixture = Path(fsm.REPO) / "acceptance/fixtures/executor_handler.py"
     machine = Path(fsm.REPO) / "acceptance/fixtures/executor_workflow.json"
     expected = {
@@ -302,8 +331,7 @@ def _installed_stdio_workflow(report, kind: str, outcome: str) -> None:
         table = workflow_table(native.resource, native.handler, kind=kind, outcome=outcome,
                                release=native.release)
         table_path = native.approve(store, table)
-        with StdioClient([fsm.FSM, "serve", f"--data-dir={store}", "--execute",
-                          f"--handlers={table_path}", "--poll-interval-ms=25"]) as client:
+        with _installed_client(store, table_path, transport) as (client, host):
             client.initialize()
             draft = client.structured("executor_check", {"spec": json.loads(machine.read_text())})
             report.equal(draft["status"], "compatible", "the installed host checks its actual loaded table")
@@ -316,30 +344,33 @@ def _installed_stdio_workflow(report, kind: str, outcome: str) -> None:
                                          "request_id": "quiet-installed-create"})
             instance = created["instance_id"]
             uri = f"fsm://instance/{instance}"
+            if transport == "http":
+                client.open_stream()
             client.request("resources/subscribe", {"uri": uri})
             triggered = client.structured("instance_send", {"instance_id": instance,
                                           "event": {"name": "start"}, "request_id": "quiet-installed-start"})
             report.equal(triggered["leaf"], "validating", "one trigger enters the barrier-protected prerequisite")
-            ready = _wait_for_files(lambda: list(native.resource.glob("*.ready")), client.process, 10)
+            ready = _wait_for_files(lambda: list(native.resource.glob("*.ready")), host, 10)
             report.equal(len(ready), 1, "exactly one external handler reached its barrier")
             report.equal(json.loads(ready[0].read_text())["operation"], "validate", "the first external operation is validation")
             report.equal(_fixture_rows(native.resource / "results.jsonl"), [], "the barrier still holds the actual handler")
             response = client.request("tools/list", timeout=2)
             report.true(bool(response.get("tools")), "an unrelated control request responds while the handler waits")
             report.equal(_fixture_rows(native.resource / "results.jsonl"), [], "the control request did not require handler completion")
+            client.drain(timeout=0.05)
             previous_notifications = len(client.notifications)
             quiet_id = client._next_id
             native.release.write_text("release", encoding="utf-8")
             _wait_for_files(lambda: len(_fixture_rows(native.resource / "results.jsonl")) == len(exit_codes),
-                            client.process, 30)
+                            host, 30)
             _wait_for_files(lambda: not observe_workflow_journal(read_journal_prefix(store), instance, events, stopped_statuses),
-                            client.process, 10)
+                            host, 10)
             records = read_journal_prefix(store)
             trace = _fixture_rows(native.resource / "trace.jsonl")
             results = _fixture_rows(native.resource / "results.jsonl")
             state = json.loads((native.resource / (hashlib.sha256(b"supplier").hexdigest() + ".json")).read_text())
             report.note("FSM_INSTALLED_WORKFLOW_EVIDENCE " + json.dumps(dict(
-                transport="stdio", handler_kind=kind, outcome=outcome, instance=instance,
+                transport=transport, handler_kind=kind, outcome=outcome, instance=instance,
                 namespace=native.namespace, trace=trace, results=results, state=state, journal=records), sort_keys=True))
             observed = observe_trace(trace, {"supplier": mutations}, complete=True)
             report.equal(observed.violations, (), "independent mutations are ordered with no missing work or overlap")
@@ -359,13 +390,17 @@ def _installed_stdio_workflow(report, kind: str, outcome: str) -> None:
             report.equal(final["effects_pending"], [], "no handled effect remains pending")
             report.equal(client.structured("journal_verify")["health"], "Ok", "the installed verifier checks the journal chain")
             report.true(client.structured("journal_replay")["matches"] is True, "the installed replay reproduces every recorded outcome")
-        report.equal(client.process.returncode, 0, "stdio EOF completes supervised host retirement")
+            if transport == "http":
+                report.true(client.delete_session() in (200, 204), "HTTP session deletion succeeds")
+                report.true(host.poll() is None, "deleting an HTTP session leaves the shared execution host alive")
+        report.equal(host.returncode, 0, "the transport's real EOF or SIGTERM completes supervised host retirement")
     report.true(native.cleaned, "original domain closures permit owned fixture cleanup")
 
 
 SCENARIOS = (executor_contract_fixtures_are_checked_without_external_work,
              executor_stdio_process_success_progresses_with_a_quiet_client,
-             executor_stdio_outcome_matrix_progresses_with_quiet_clients)
+             executor_stdio_outcome_matrix_progresses_with_quiet_clients,
+             executor_transport_outcome_matrix_progresses_with_quiet_clients)
 
 
 def _name(value) -> bool:

@@ -20,7 +20,8 @@ from acceptance.suite.native_fixture import require_disposable_runner, privilege
 from acceptance.suite.fsm import task_cache
 
 SCENARIOS = ("executor_stdio_process_success_progresses_with_a_quiet_client",
-             "executor_stdio_outcome_matrix_progresses_with_quiet_clients")
+             "executor_stdio_outcome_matrix_progresses_with_quiet_clients",
+             "executor_transport_outcome_matrix_progresses_with_quiet_clients")
 
 
 def main() -> int:
@@ -29,7 +30,7 @@ def main() -> int:
     parser.add_argument("--scenario", choices=SCENARIOS, default=SCENARIOS[0])
     arguments = parser.parse_args()
     scenario = arguments.scenario
-    cells = 1 if scenario == SCENARIOS[0] else 8
+    cells = (1, 8, 16)[SCENARIOS.index(scenario)]
     require_disposable_runner()
     if not re.fullmatch(r"[a-f0-9]{40}", arguments.candidate):
         parser.error("an immutable candidate commit is required")
@@ -42,7 +43,7 @@ def main() -> int:
     evidence = cache / "evidence"
     evidence.mkdir()
     control = dict(schema="fsm.installed-native-check/1", source_commit=arguments.candidate,
-                   scenario=scenario, scope="focused-stdio-workflows", cells=cells,
+                   scenario=scenario, scope="focused-installed-workflows", cells=cells,
                    passed=False, complete_matrix=False, native_handler_execution=False)
     control_path = evidence / "producer.json"
     control_path.write_text(json.dumps(control, indent=2))
