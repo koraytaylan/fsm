@@ -22,6 +22,7 @@ on:
           - executor_stdio_shutdown_and_restart_preserve_original_claims
           - executor_http_shutdown_and_restart_preserve_original_claims
           - executor_standalone_shutdown_and_restart_preserve_original_claims
+          - executor_active_drain_preserves_original_success_and_pending_work
 
 permissions:
   contents: read

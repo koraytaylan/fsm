@@ -336,6 +336,14 @@ def executor_standalone_shutdown_and_restart_preserve_original_claims(report) ->
             installed_restart(report, kind, control, "standalone")
 
 
+def executor_active_drain_preserves_original_success_and_pending_work(report) -> None:
+    """Drain admitted work on each real owner without entering its successor."""
+    from .executor_drain import installed_active_drain
+    for transport in ("stdio", "http", "standalone"):
+        for kind in ("process", "mcp"):
+            installed_active_drain(report, transport, kind)
+
+
 @contextmanager
 def _unread_http_subscription(client, uri: str):
     """A separate actual subscriber retains its body unread until retirement."""
@@ -667,7 +675,8 @@ SCENARIOS = (executor_contract_fixtures_are_checked_without_external_work,
              executor_http_unread_and_disconnected_sessions_do_not_stop_active_work,
              executor_stdio_shutdown_and_restart_preserve_original_claims,
              executor_http_shutdown_and_restart_preserve_original_claims,
-             executor_standalone_shutdown_and_restart_preserve_original_claims)
+             executor_standalone_shutdown_and_restart_preserve_original_claims,
+             executor_active_drain_preserves_original_success_and_pending_work)
 
 
 def _name(value) -> bool:
