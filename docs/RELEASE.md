@@ -1,5 +1,10 @@
 # Releasing
 
+Contract-check discovery now fits the existing 38,000-byte tools/list budget
+through shorter guidance; schemas retain their constraints, older tools retain
+their relative order, and degraded-tool discovery includes independent draft
+checking with the normal selector rules. No persisted format or version changes.
+
 MCP `executor_check` now preserves independent definition findings while
 unavailable host tables remain explicitly unknown, including effect-free drafts
 and degraded/read-only authority; immutable host-session configuration supplies

@@ -71,6 +71,18 @@ fn stamp_applies_every_requested_field() {
 fn output_schemas_are_field_level() {
     let expect: &[(&str, &[&str])] = &[
         (
+            "executor_check",
+            &[
+                "format",
+                "status",
+                "machine_id",
+                "contract_id",
+                "scope",
+                "findings",
+                "effects",
+            ],
+        ),
+        (
             "machine_create",
             &["machine_id", "name", "created", "dry_run", "warnings"],
         ),
@@ -190,7 +202,7 @@ fn output_schemas_are_field_level() {
         ),
     ];
     let reg = fsm_cli::mcp::tools::registry();
-    assert_eq!(reg.len(), 24);
+    assert_eq!(reg.len(), 25);
     for (name, fields) in expect {
         let t = reg.iter().find(|t| t.name == *name).expect(name);
         let out = (t.output_schema)();

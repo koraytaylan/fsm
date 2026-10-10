@@ -11,6 +11,7 @@ fn current_regions_deadlines_public_contract() {
     assert_eq!(
         fsm_cli::mcp::tools::names(),
         vec![
+            "executor_check",
             "machine_create",
             "machine_list",
             "machine_get",

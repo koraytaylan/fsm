@@ -1513,6 +1513,8 @@ it and MUST use only the immutable table loaded by its execution host; a client
 MUST NOT supply a handler override. Stored selectors and invocation catalogues
 MUST use the verified read-only definition view. A missing or degraded store
 MUST NOT prevent independent draft compilation.
+The degraded-tool inventory MUST include `executor_check`; its normal selector
+validation still applies, and unavailable stored definitions remain unknown.
 
 When the host table is unavailable, including writer-only, read-only and degraded
 modes, the common report MUST have null `contract_id`, false `effects_checked`

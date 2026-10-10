@@ -128,7 +128,7 @@ fn call(dir: &Scratch, name: &str, args: &str) -> Result<Value, ErrorObj> {
 /// than about a missing field.
 fn arguments(name: &str) -> &'static str {
     match name {
-        "machine_create" => {
+        "executor_check" | "machine_create" => {
             r#"{"spec":{"format":"fsm.machine/1","name":"gating_probe","states":[{"name":"a"},{"name":"b"}],"initial":"a","context":[],"events":[{"name":"go","fields":[]}],"transitions":[{"from":"a","on":"go","to":"b"}]}}"#
         }
         "machine_list" | "instance_list" | "store_doctor" | "journal_verify" | "journal_replay" => {
@@ -162,10 +162,19 @@ fn arguments(name: &str) -> &'static str {
 }
 
 #[test]
-fn the_three_diagnostic_tools_answer_from_the_directory() {
+fn degraded_tools_answer_with_their_valid_selectors() {
     let dir = torn("diagnostics");
     for name in DEGRADED_TOOLS {
-        let answered = call(&dir, name, "{}").unwrap_or_else(|e| panic!("{name}: {e:?}"));
+        let answered =
+            call(&dir, name, arguments(name)).unwrap_or_else(|e| panic!("{name}: {e:?}"));
+        if *name == "executor_check" {
+            assert_eq!(
+                answered.get("status").and_then(Value::as_str),
+                Some("unknown")
+            );
+            assert_eq!(answered.get("contract_id"), Some(&Value::Null));
+            continue;
+        }
         let text = format!("{answered:?}");
         assert!(
             text.contains("TornTail") || text.contains("matches") || text.contains("health"),

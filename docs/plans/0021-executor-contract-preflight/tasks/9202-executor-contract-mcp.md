@@ -33,6 +33,14 @@ touches:
   - crates/fsm-execute/tests/lifecycle_platform/workflow_probe.py
   - crates/fsm-execute/tests/lifecycle_platform/test_workflow_producer.py
   - crates/fsm-cli/tests/tool_schemas.rs
+  - crates/fsm-cli/tests/audit_golden.rs
+  - crates/fsm-cli/tests/degraded_gating.rs
+  - crates/fsm-cli/tests/mcp_regions_deadlines.rs
+  - crates/fsm-cli/tests/mcp_skeleton.rs
+  - crates/fsm-cli/tests/mcp_live_golden.rs
+  - crates/fsm-cli/tests/naive_caller/core_tests.rs
+  - crates/fsm-cli/tests/review_regressions/output_schema_and_wire_format.rs
+  - crates/fsm-cli/tests/fixtures/audit/
   - crates/fsm-cli/tests/mcp_affordance_golden.rs
   - crates/fsm-cli/tests/mcp_full.rs
   - crates/fsm-cli/tests/fixtures/contract/

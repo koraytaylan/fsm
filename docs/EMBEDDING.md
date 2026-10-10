@@ -1468,6 +1468,8 @@ check again, then use `machine_create`. Writer-only, read-only and degraded
 sessions retain independently available draft findings and explicitly report
 unknown execution evidence; clients cannot supply handler overrides or approval
 tokens, and a compatible report does not bypass current service admission.
+`DEGRADED_TOOLS` includes `executor_check`; supply its normal `spec` or `machine`
+selector even when audit tools accept empty arguments.
 
 Optional `manual_effects` explicitly lists effects that the operator intends
 to acknowledge manually. It defaults to `[]`, accepts at most 256 unique,

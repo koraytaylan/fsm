@@ -84,11 +84,15 @@ pub const MUTATING_TOOLS: &[&str] = &[
 ///
 /// The tools that answer when the store will not open.
 ///
-/// All three work from a **classification** rather than from a healthy open,
-/// which is why `6604` had to: the store most in need of a diagnosis is the
-/// one nothing can open. Named once, beside `MUTATING_TOOLS`, so the gate
-/// and the documentation read the same list.
-pub const DEGRADED_TOOLS: &[&str] = &["store_doctor", "journal_verify", "journal_replay"];
+/// Audit tools use classification; executor checks retain independent draft
+/// findings with unknown execution authority, without requiring a healthy open.
+/// Named beside `MUTATING_TOOLS` so dispatch and discovery agree.
+pub const DEGRADED_TOOLS: &[&str] = &[
+    "executor_check",
+    "store_doctor",
+    "journal_verify",
+    "journal_replay",
+];
 
 /// One list rather than six match arms, beside `MUTATING_TOOLS` for the same
 /// reason: membership is a fact about the tool, and a fact kept in one place

@@ -828,6 +828,8 @@ MCP `executor_check` adds a read-only tool using the existing closed
 existing `cause`, with no new error code, persisted format, hash domain or public
 Rust signature. Input and output schemas are closed; existing tools retain their
 order relative to each other, and executor discovery retains its existing format.
+The public `DEGRADED_TOOLS` inventory includes `executor_check`, matching its
+independent-draft dispatch; each tool still requires valid arguments.
 
 ## Dependencies
 

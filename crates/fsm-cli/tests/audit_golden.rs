@@ -300,9 +300,15 @@ fn a_degraded_server_serves_the_diagnosis_and_refuses_the_rest() {
         let dir = damaged(tag, tag);
         assert!(Store::open(&dir).is_err(), "{tag} still opens");
 
-        // The three that answer.
+        // Every documented degraded tool answers with its own valid selector.
         for name in DEGRADED_TOOLS {
-            call(&dir, name, "{}").unwrap_or_else(|e| panic!("{tag}/{name}: {e:?}"));
+            let draft = format!(r#"{{"spec":{CASE}}}"#);
+            let arguments = if *name == "executor_check" {
+                draft.as_str()
+            } else {
+                "{}"
+            };
+            call(&dir, name, arguments).unwrap_or_else(|e| panic!("{tag}/{name}: {e:?}"));
         }
         // One that does not, refused with the same facts.
         let doctor = call(&dir, "store_doctor", "{}").unwrap();
