@@ -169,5 +169,9 @@ class DebuggedAuthority(DisposableAuthority):
 
     def _capture_records(self):
         super()._capture_records()
+        for name in ('entries.jsonl', 'trace.jsonl', 'results.jsonl'):
+            path = self.resource / name
+            if path.exists():
+                retain_original_file(path, self.cache / ('fixture-observation-' + name))
         if hasattr(self, 'debugger_directory') and self.debugger_directory.exists():
             self.retain_debugger()
