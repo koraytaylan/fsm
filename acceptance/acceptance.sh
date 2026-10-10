@@ -5,6 +5,7 @@
 #   acceptance/acceptance.sh seal            # only scenarios whose name matches
 #   RUST_VERSION=1.89.0 acceptance/acceptance.sh
 #   FSM_EVIDENCE_DIR="$HOME/.cache/fsm-evidence" acceptance/acceptance.sh
+#   FSM_ACCEPTANCE_MEMORY=1g acceptance/acceptance.sh
 #
 # Requires host Python 3 and Podman. The source snapshot excludes Git metadata
 # and credentials; reports, controlled-build receipts and diagnostics survive
@@ -19,6 +20,7 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(cd "$here/.." && pwd)"
 image="${FSM_ACCEPTANCE_IMAGE:-fsm-acceptance}"
 rust="${RUST_VERSION:-1.89.0}"
+memory="${FSM_ACCEPTANCE_MEMORY:-1g}"
 cache_root="${XDG_CACHE_HOME:-$HOME/.cache}/fsm-acceptance"
 mkdir -p "$cache_root"
 task_directory="$(mktemp -d "$cache_root/run.XXXXXXXX")"
@@ -34,6 +36,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 "$here/suite/evidence.py" snapshot "$root" "$c
 
 echo "building $image (rust $rust)…"
 podman build \
+    --memory "$memory" --memory-swap "$memory" \
     --build-arg "RUST_VERSION=$rust" \
     -f "$context_parent/source/acceptance/Containerfile" \
     -t "$image" \
@@ -45,6 +48,7 @@ echo "evidence retained in $evidence"
 # connects to it, which needs a loopback interface. It stays inside the
 # container's own namespace either way.
 podman run --rm \
+    --memory "$memory" --memory-swap "$memory" \
     --name "fsm-acceptance-$$" \
     --volume "$evidence:/evidence:Z" \
     --env FSM_EVIDENCE_DIR=/evidence \
