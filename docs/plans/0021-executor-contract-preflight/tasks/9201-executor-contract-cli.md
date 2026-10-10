@@ -17,8 +17,8 @@ touches:
   - docs/EMBEDDING.md
   - docs/API-POLICY.md
   - docs/RELEASE.md
-status: in_progress
-merged_as: ""
+status: done
+merged_as: "59b7e2da846ecba0baa40c05d15945de6d45a9cc"
 ---
 # Executor Contract CLI Check
 
@@ -41,3 +41,16 @@ The operator needs a dry check that does not create a store or start a command t
 - Secret sentinels in an operator table do not appear in the machine compatibility report or machine-check error serialization; analyzer and CLI reports match byte-for-byte apart from the documented command envelope.
 
 - **Done when:** real CLI invocations pass the entire `executor_contract_cli` inventory with the specified output/exit contracts and proven filesystem read-only behavior, existing command goldens remain compatible except documented additive fields, and the applicable CONTRIBUTING gate succeeds.
+
+Frozen acceptance:
+
+All eleven written requirements have revalidated source evidence and real-binary
+execution at the landing OID: compatible/invalid/unknown and usage exits,
+offline and stored catalogue resolution, unchanged store/lock inventory under
+a held writer, separate stdin inputs, manual policy, legacy inspection and
+private-literal refusal. The target passes in debug and release on Linux,
+macOS and Windows at stable and MSRV in CI 38016795840; the complete applicable
+matrix passes on that same source. Frozen self-review verdict:
+`75972bfcb23446c8ead6c05c9410b31bc9b50b06cfffabbc0a5a4d5ae0ea39da`.
+No independent review is claimed; the separate native collected-timeout
+closure finding remains open under admission and blocks plan integration.
