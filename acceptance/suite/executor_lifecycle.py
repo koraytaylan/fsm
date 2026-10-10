@@ -47,7 +47,32 @@ def process_observation(identity: dict) -> dict:
                 pid=pid, pid_starttime=starttime, observed_stat=encoded.decode("utf-8"))
 
 
-def interruption_ledger(records: list[dict], instance: str, original_run: int) -> tuple[str, ...]:
+def original_completion(response: dict, attestation: dict, original_claim: dict) -> dict:
+    """SPEC's private response hash authenticates a cancellation payload."""
+    result = response.get("result", {})
+    claim = result.get("claim", {})
+    journal_hash = "sha256:" + original_claim["hash"]
+    encoded = json.dumps(response, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+    response_hash = "sha256:" + hashlib.sha256(b"fsm:native-response:1\n" + encoded).hexdigest()
+    if (response.get("format") != "fsm.native-response/1" or response.get("ok") is not True
+        or result.get("format") != "fsm.native-run-result/3"
+        or set(claim) != {"attempt", "domain", "effect_id", "handler_fingerprint", "instance_id", "retry", "run_id"}
+        or claim != {key: original_claim["body"].get(key) for key in claim}
+        or result.get("journal_claim") != journal_hash
+        or set(attestation) != {"format", "domain", "run_id", "journal_claim", "response_hash"}
+        or attestation.get("format") != "fsm.native-result-attestation/1"
+        or attestation.get("domain") != claim.get("domain")
+        or attestation.get("run_id") != claim.get("run_id")
+        or attestation.get("journal_claim") != journal_hash
+        or attestation.get("response_hash") != response_hash
+        or result.get("failure_class") is not None
+        or result.get("candidate") != {"error": "exec/cancelled", "status": -1}):
+        raise ValueError("the original cancellation result lacks its matching protected attestation")
+    return result["candidate"]
+
+
+def interruption_ledger(records: list[dict], instance: str, original_run: int,
+                        original_candidate: dict | None = None) -> tuple[str, ...]:
     """Only a complete original interrupted transaction can precede retry."""
     if type(original_run) is not int or original_run <= 0 or not isinstance(records, list):
         raise ValueError("an original positive run ID and bounded journal are required")
@@ -71,7 +96,11 @@ def interruption_ledger(records: list[dict], instance: str, original_run: int) -
         or any(record["body"].get("effect_id") != claim["body"].get("effect_id")
                for record in (stopped, settled))):
         return ("interruption/changed_disposition",)
-    if "result" in stopped["body"].get("outcome", {}) or settled["body"].get("outcome") is not None:
+    outcome = stopped["body"].get("outcome", {})
+    # SPEC preserves an already authenticated interrupted result; receipt-only
+    # interruption omits it, and single-consumption interruption never acks it.
+    if (("result" in outcome and (original_candidate is None or outcome["result"] != original_candidate))
+        or "outcome" in settled["body"] or "result" in settled["body"]):
         return ("interruption/invented_result",)
     successors = [record for record in records if record.get("kind") == "execution_claimed"
                   and record["body"].get("effect_id") == claim["body"].get("effect_id")
@@ -167,26 +196,32 @@ def installed_stdio_restart(report, kind: str, control: str) -> None:
             report.equal(len(ready), 1, "one successor retries the original pending effect")
             closure = json.loads(privileged("cat", str(native.directory / "closed-1.json")))
             report.equal(closure["domain"], original_claim["body"]["domain"], "the original domain closure exists before successor entry")
+            original_run = original_claim["body"]["run_id"]
+            completed = json.loads(privileged("cat", str(native.directory / f"completed-1-{original_run}.json")))
+            attestation = json.loads(privileged("cat", str(native.directory / f"result-1-{original_run}.json")))
+            candidate = original_completion(completed, attestation, original_claim)
+            report.equal(candidate, {"error": "exec/cancelled", "status": -1}, "the original interrupted result matches its protected response attestation")
             report.true(process_observation(original)["alive"] is False, "successor entry cannot revive or overlap the original identity")
             report.equal(_fixture_rows(native.resource / "results.jsonl"), [], "the replacement still waits at its own external barrier")
             native.release.write_text("successor only", encoding="utf-8")
             _wait_for_files(lambda: len(_fixture_rows(native.resource / "results.jsonl")) == 4, successor, 30)
             try:
                 _wait_for_files(lambda: not interruption_ledger(read_journal_prefix(store), instance,
-                    original_claim["body"]["run_id"]), successor, 10)
+                    original_run, candidate), successor, 10)
             finally:
                 observed = read_journal_prefix(store)
                 (native.cache / "restart-last-observation.json").write_text(json.dumps(dict(
                     control=control, handler_kind=kind, instance=instance, original_claim=original_claim,
                     journal=observed, trace=_fixture_rows(native.resource / "trace.jsonl"),
-                    violations=interruption_ledger(observed, instance, original_claim["body"]["run_id"])),
+                    original_completion=completed, original_attestation=attestation,
+                    violations=interruption_ledger(observed, instance, original_run, candidate)),
                     sort_keys=True), encoding="utf-8")
             records = read_journal_prefix(store)
             trace = _fixture_rows(native.resource / "trace.jsonl")
             results = _fixture_rows(native.resource / "results.jsonl")
             state = json.loads((native.resource / (hashlib.sha256(b"supplier").hexdigest() + ".json")).read_text())
             report.equal(interrupted_trace(trace, original["run"], witness), (), "observed original death and raw successor mutations prove no overlap")
-            report.equal(interruption_ledger(records, instance, original_claim["body"]["run_id"]), (),
+            report.equal(interruption_ledger(records, instance, original_run, candidate), (),
                          "original interruption preserves attempts and permits exactly one ack and advance per recovered effect")
             report.equal([row["exit_code"] for row in results], [0, 0, 0, 0], "only the four genuine successor operations report outcomes")
             report.equal(state, {"suspended": False, "items": [0, 1]}, "recovery actually restores the independently observed resource")
@@ -199,6 +234,7 @@ def installed_stdio_restart(report, kind: str, control: str) -> None:
             report.note("FSM_INSTALLED_RESTART_EVIDENCE " + json.dumps(dict(namespace=native.namespace,
                 handler_kind=kind, control=control, instance=instance, original=original, witness=witness,
                 original_claim=original_claim, closure_before_successor=closure, shutdown=shutdown,
+                original_completion=completed, original_attestation=attestation,
                 original_exit=host.returncode, quiet_request_id=quiet_id, trace=trace, results=results,
                 journal=records, state=state, final=final), sort_keys=True))
         report.equal(successor.returncode, 0, "the successful successor retires through its own EOF")

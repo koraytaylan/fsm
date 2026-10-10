@@ -1,13 +1,15 @@
 """Faulty lifecycle observations are harness tests, never candidate evidence."""
 import copy
 import io
+import json
+import hashlib
 import os
 import subprocess
 import sys
 import unittest
 from unittest.mock import patch
 
-from acceptance.suite.executor_lifecycle import process_observation, interruption_ledger, interrupted_trace
+from acceptance.suite.executor_lifecycle import process_observation, interruption_ledger, interrupted_trace, original_completion
 from acceptance.tests import test_executor_observer as baseline
 
 
@@ -79,6 +81,33 @@ class InterruptedLedgerFaultTests(unittest.TestCase):
 
     def test_original_interruption_then_unchanged_attempt_passes(self):
         self.assertEqual(interruption_ledger(self.good_journal(), "fixture", 1), ())
+
+    def test_original_attested_cancellation_is_preserved_without_ack(self):
+        claim = {"hash": "f" * 64, "body": {"run_id": 1, "domain": {"allocation": 1},
+            "attempt": 1, "effect_id": "fixture/1/0", "instance_id": "fixture",
+            "handler_fingerprint": "sha256:" + "a" * 64, "retry": {"attempts": 1}}}
+        response = {"format": "fsm.native-response/1", "ok": True, "result": {
+            "format": "fsm.native-run-result/3", "claim": claim["body"],
+            "journal_claim": "sha256:" + claim["hash"], "failure_class": None,
+            "candidate": {"error": "exec/cancelled", "status": -1}}}
+        encoded = json.dumps(response, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+        attestation = {"format": "fsm.native-result-attestation/1", "domain": {"allocation": 1},
+            "run_id": 1, "journal_claim": response["result"]["journal_claim"],
+            "response_hash": "sha256:" + hashlib.sha256(b"fsm:native-response:1\n" + encoded).hexdigest()}
+        candidate = original_completion(response, attestation, claim)
+        records = self.good_journal()
+        records[3]["body"]["outcome"]["result"] = candidate
+        self.assertEqual(interruption_ledger(records, "fixture", 1, candidate), ())
+        self.assertTrue(interruption_ledger(records, "fixture", 1))
+        for field in ("response_hash", "journal_claim", "run_id", "domain"):
+            wrong = copy.deepcopy(attestation)
+            wrong[field] = None
+            with self.assertRaisesRegex(ValueError, "protected attestation"):
+                original_completion(response, wrong, claim)
+        changed = copy.deepcopy(response)
+        changed["result"]["receipt"] = "foreign-closure"
+        with self.assertRaisesRegex(ValueError, "protected attestation"):
+            original_completion(changed, attestation, claim)
 
     def test_ack_result_changed_attempt_or_missing_consumption_fails(self):
         for index, field, value in ((4, "disposition", "acked"), (3, "outcome", {"status": "ok"}),
