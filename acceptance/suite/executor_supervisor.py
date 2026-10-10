@@ -11,13 +11,7 @@ from .executor_lifecycle import (_restart_host, process_observation,
 from .executor_scenarios import (_fixture_rows, _retire_execution_owner,
     _wait_for_files, _unique_object, _invalid_constant, read_journal_prefix, workflow_table)
 from .native_fixture import DisposableAuthority, privileged
-from .executor_helper_cut import fixture_entries
-
-
-def validation_entries(root, original_run=None):
-    """Read the shared entry slot which survives DynamicUser retirement."""
-    return [row for row in fixture_entries(root)
-            if row['operation'] == 'validate' and row['run'] != original_run]
+from .executor_entries import validation_entries
 
 
 def supervisor_observation(record: dict, namespace: str, phase: str, prior: dict | None = None) -> dict:

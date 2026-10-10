@@ -17,6 +17,7 @@ from .executor_scenarios import (_fixture_rows, _installed_client, _wait_for_fil
     _retire_execution_owner, _unique_object, _invalid_constant,
     observe_success_journal, observe_trace, read_journal_prefix, workflow_table)
 from .native_fixture import DisposableAuthority, privileged
+from .executor_entries import validation_entries
 
 EVENTS = ("start", "validated", "suspended", "processed", "restored")
 MUTATIONS = ["suspend", "process:0", "process:1", "restore"]
@@ -223,9 +224,9 @@ def installed_restart(report, kind: str, control: str, transport: str) -> None:
                 pending = client.structured("instance_send", {"instance_id": instance,
                     "event": {"name": "start"}, "request_id": "restart-installed-start"})
             report.equal(pending["leaf"], "validating", "the original owner admits genuine barrier-protected work")
-            ready = _wait_for_files(lambda: list(native.resource.glob("*.ready")), host, 10)
+            ready = _wait_for_files(lambda: validation_entries(native.resource), host, 10)
             report.equal(len(ready), 1, "exactly one original fixture invocation reaches the barrier")
-            original = json.loads(ready[0].read_text())
+            original = ready[0]
             before = process_observation(original)
             report.true(before["alive"] is True, "the original fixture birth identity is independently observed alive")
             records = read_journal_prefix(store)
@@ -285,8 +286,7 @@ def installed_restart(report, kind: str, control: str, transport: str) -> None:
             if replacement is not None:
                 replacement.initialize()
             quiet_id = replacement._next_id if replacement is not None else 0
-            ready = _wait_for_files(lambda: [path for path in native.resource.glob("*.ready")
-                if json.loads(path.read_text())["run"] != original["run"]], successor, 10)
+            ready = _wait_for_files(lambda: validation_entries(native.resource, original['run']), successor, 10)
             report.equal(len(ready), 1, "one successor retries the original pending effect")
             closure = json.loads(privileged("cat", str(native.directory / "closed-1.json")))
             report.equal(closure["domain"], original_claim["body"]["domain"], "the original domain closure exists before successor entry")

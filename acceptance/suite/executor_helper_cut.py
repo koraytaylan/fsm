@@ -9,6 +9,7 @@ import stat
 
 from . import fsm
 from .evidence import digest
+from .executor_entries import fixture_entries
 from .executor_crash import claim_prefix
 from .executor_lifecycle import _restart_host, interruption_ledger, interrupted_trace, MUTATIONS, process_observation
 from .executor_scenarios import (_fixture_rows, _wait_for_files, read_journal_prefix,
@@ -86,20 +87,6 @@ def phase_prefix(records, instance, cut, material, expected_argv):
 def native_record(native, name):
     path = native.directory / name
     return json.loads(privileged('cat', str(path))) if path.exists() else None
-
-
-def fixture_entries(root):
-    rows = _fixture_rows(root / 'entries.jsonl')
-    for row in rows:
-        if (set(row) != {'run', 'resource', 'operation', 'pid', 'pid_starttime'}
-            or not isinstance(row['run'], str) or not row['run']
-            or row['resource'] != 'supplier' or row['operation'] not in ('validate', 'suspend', 'process', 'restore')
-            or type(row['pid']) is not int or not 0 < row['pid'] < 1 << 31
-            or not isinstance(row['pid_starttime'], str) or not re.fullmatch('[0-9]{1,20}', row['pid_starttime'])):
-            raise ValueError('the original fixture entry log has an invalid process identity')
-    if len({row['run'] for row in rows}) != len(rows):
-        raise ValueError('the original fixture entry log duplicates an invocation')
-    return rows
 
 
 def entry_log_identity(root):

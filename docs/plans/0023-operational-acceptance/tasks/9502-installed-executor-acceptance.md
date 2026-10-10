@@ -30,6 +30,7 @@ touches:
   - acceptance/suite/scenarios.py
   - acceptance/suite/executor_scenarios.py
   - acceptance/suite/executor_lifecycle.py
+  - acceptance/suite/executor_entries.py
   - acceptance/suite/executor_crash.py
   - acceptance/suite/executor_helper_cut.py
   - acceptance/suite/executor_tree.py
