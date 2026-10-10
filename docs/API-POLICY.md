@@ -1,5 +1,11 @@
 # API and version policy
 
+CLI `journal replay` now uses the store's complete logical comparator, refusing
+snapshot divergence in execution admission, ownership, acknowledgement handoffs
+or complete instance state; separately verified claim hashes remain replay
+context. This corrects agreement reporting without changing signatures, error
+codes, persisted formats, hash domains or versions.
+
 Native owner observation now stops an exact current locally admitted cancelled
 claim even after paired polling consumed its cancellation notification; foreign
 ownership and verified closure/settlement checks remain unchanged, with no

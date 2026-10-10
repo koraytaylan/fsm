@@ -7,6 +7,8 @@ depends_on:
   - installed-executor-acceptance
 gated: false
 touches:
+  - crates/fsm-cli/src/cli/ops.rs
+  - crates/fsm-cli/tests/review_regressions/snapshot_divergence.rs
   - crates/fsm-store/src/store/seal.rs
   - crates/fsm-store/tests/archive_operation.rs
   - crates/fsm-execute/src/run/native_owners.rs

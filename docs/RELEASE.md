@@ -1,5 +1,9 @@
 # Releasing
 
+CLI `journal replay` now detects snapshot disagreement in execution state,
+acknowledgement handoffs and complete instance hashes using the store's full
+logical comparator, with no persisted format or version changes.
+
 Paired native cancellation now acts on the exact current local claim's cancelled
 instance after polling refreshes, preserving original completion, closure and
 interrupted settlement instead of waiting for its handler timeout.

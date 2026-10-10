@@ -30,6 +30,10 @@ subprocess.run(['cargo','test','--locked','-p','fsm-store','--test','archive_ope
                cwd=source,check=True,timeout=180)
 subprocess.run(['cargo','test','--locked','-p','fsm-cli','--test','sealed_diagnostics'],
                cwd=source,check=True,timeout=180)
+subprocess.run(['cargo','test','--locked','-p','fsm-cli','--test','review_regressions','snapshot_divergence'],
+               cwd=source,check=True,timeout=180)
+subprocess.run(['cargo','clippy','--locked','-p','fsm-cli','--all-targets','--','-D','warnings'],
+               cwd=source,check=True,timeout=180)
 subprocess.run(['cargo','clippy','--locked','-p','fsm-store','--all-targets','--','-D','warnings'],
                cwd=source,check=True,timeout=180)
 subprocess.run(['cargo','test','--locked','-p','fsm-execute','--lib','run::native_owners'],

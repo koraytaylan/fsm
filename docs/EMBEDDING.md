@@ -1,5 +1,9 @@
 # Embedding fsm as a library
 
+CLI `journal replay` compares execution admission and ownership, acknowledgement
+handoffs and complete instance state using the store's logical comparator;
+separately reconstructed original claim hashes remain verified replay context.
+
 Paired polling observes current instance cancellation when stopping an exact
 locally admitted native claim, so cancellation remains actionable after a
 watcher refresh; stopping its transport grants no closure or settlement fact.

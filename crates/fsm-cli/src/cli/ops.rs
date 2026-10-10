@@ -667,44 +667,7 @@ fn first_divergent_view(
 }
 
 fn states_agree(a: &fsm_core::replay::StoreState, b: &fsm_core::replay::StoreState) -> bool {
-    if a.last_seq != b.last_seq || a.last_hash != b.last_hash {
-        return false;
-    }
-    if a.machines.len() != b.machines.len() {
-        return false;
-    }
-    for (id, ma) in &a.machines {
-        let Some(mb) = b.machines.get(id) else {
-            return false;
-        };
-        if ma.def != mb.def || ma.compiled.machine_id != mb.compiled.machine_id {
-            return false;
-        }
-    }
-    if a.dedup != b.dedup {
-        return false;
-    }
-    if a.instance_machines != b.instance_machines {
-        return false;
-    }
-    if a.instances.len() != b.instances.len() {
-        return false;
-    }
-    for (id, ia) in &a.instances {
-        let Some(ib) = b.instances.get(id) else {
-            return false;
-        };
-        if ia.configuration != ib.configuration
-            || ia.status != ib.status
-            || ia.ctx != ib.ctx
-            || ia.history != ib.history
-            || ia.deadlines != ib.deadlines
-            || ia.pending != ib.pending
-        {
-            return false;
-        }
-    }
-    true
+    fsm_store::snapshot::store_states_eq(a, b)
 }
 
 pub static SPECS: &[CmdSpec] = &[

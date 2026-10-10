@@ -815,6 +815,12 @@ Historical genesis without execution admission MUST remain quarantined after
 migration, as specified in the claim-era persistence contract below; stamping
 the current version does not establish legacy executor quiescence.
 
+CLI `journal replay` agreement MUST compare the complete logical execution
+state, acknowledgement handoffs and instance state committed by the instance
+hash, as well as the journal position, catalog and request ledger. Verified
+original claim hashes remain separately reconstructed replay context, not
+mutable snapshot authority or logical execution serialization.
+
 `Store::open_read_only` and CLI inspection MUST NOT create directories, take
 the advisory writer lock, stamp or migrate `VERSION`, or write snapshots.
 `Store::open_read_only` returns one self-consistent journal prefix even if a

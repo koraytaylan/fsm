@@ -164,6 +164,47 @@ fn journal_replay_disagrees_on_stripped_dedup_snapshot() {
 }
 
 #[test]
+fn journal_replay_disagrees_on_execution_admission_divergent_snapshot() {
+    let _g = gate();
+    let dir = tmp("execdiv");
+    let mut store = Store::open(&dir).unwrap();
+    store.define_machine(case(), false, false).unwrap();
+    store
+        .create_instance("case_review", "i1", "c1", None)
+        .unwrap();
+    store.shutdown_snapshot().unwrap();
+    let snap_seq = store.journal.last_seq;
+    drop(store);
+    let path = keep_only_snap_seq(&dir, snap_seq);
+    let bytes = std::fs::read(&path).unwrap();
+    let mut snapshot = parse(&bytes, &JsonLimits::DEFAULT)
+        .unwrap()
+        .as_obj()
+        .unwrap()
+        .clone();
+    let Value::Obj(execution) = snapshot.get_mut("execution").unwrap() else {
+        panic!("snapshot execution must be an object");
+    };
+    assert_eq!(
+        execution.get("admission").and_then(Value::as_str),
+        Some("enabled")
+    );
+    execution.insert("admission".into(), Value::Str("quarantined".into()));
+    reseal_snapshot(&mut snapshot);
+    let forged = Value::Obj(snapshot);
+    fsm_cli::snapshot::snapshot_to_state(&forged).expect("self-consistent cache must parse");
+    std::fs::write(&path, fsm_core::canon::canon_bytes(&forged)).unwrap();
+    let reopened = Store::open_read_only(&dir).unwrap();
+    assert_eq!(
+        reopened.state.execution.admission(),
+        fsm_core::record::execution::Admission::Enabled,
+        "read-only open must reject the divergent cache"
+    );
+    let (_, div) = replay_disagreement(&dir);
+    assert_eq!(div, snap_seq, "execution divergence starts at this cache");
+}
+
+#[test]
 fn snapshot_binding_skips_prefix_replay() {
     let _g = gate();
     let dir = tmp("fastp");
