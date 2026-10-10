@@ -177,6 +177,29 @@ fn shared_tick_admission() {
 
     let cancelled = std::env::var_os("FSM_NATIVE_TEST_CANCEL_PRECLAIM").is_some();
     let competing = std::env::var_os("FSM_NATIVE_TEST_COMPETING_DOMAIN").is_some();
+    if cancelled || competing {
+        // These controls race an already owned preparation, rather than a
+        // selection refused before allocation; first admit under a valid writer.
+        let mut writer = Store::open(path).unwrap();
+        let lines = tick_with(
+            &mut watcher,
+            &mut scheduler,
+            &mut runner,
+            &mut pipeline,
+            &mut writer,
+            &mut clock,
+            1000,
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.starts_with("native-preparing ")),
+            "{lines:?}"
+        );
+        assert_eq!(scheduler.inflight_effect(&effect), Some(&pending));
+        assert_eq!(writer.records, records);
+        assert!(fsm_store::snapshot::store_states_eq(&writer.state, &state));
+    }
     let mut holder = if cancelled || competing {
         WriterHolder::start_test(
             path.to_str().unwrap(),
@@ -199,11 +222,16 @@ fn shared_tick_admission() {
         )
         .writer_unavailable
     });
-    assert!(scheduler.inflight_effect(&effect).is_none());
-    absent(
-        authority,
-        &["allocation", "binding", "launch", "entry", "handoff"],
-    );
+    if cancelled || competing {
+        assert_eq!(scheduler.inflight_effect(&effect), Some(&pending));
+        absent(authority, &["binding", "launch", "entry", "handoff"]);
+    } else {
+        assert!(scheduler.inflight_effect(&effect).is_none());
+        absent(
+            authority,
+            &["allocation", "binding", "launch", "entry", "handoff"],
+        );
+    }
     let mut readonly = Store::open_read_only(path).unwrap();
     assert_eq!(readonly.records, records);
     assert!(
