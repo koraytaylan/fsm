@@ -247,6 +247,7 @@ impl Scheduler {
         )
     }
 
+    #[cfg(target_os = "linux")]
     pub(crate) fn handler_table(&self) -> &HandlerTable {
         &self.table
     }
