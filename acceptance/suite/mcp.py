@@ -112,19 +112,24 @@ class StdioClient:
     """One `fsm serve` child, spoken to over its stdin and stdout."""
 
     def __init__(self, argv: list[str], env: dict[str, str] | None = None) -> None:
+        process = subprocess.Popen(
+            argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, encoding="utf-8", bufsize=1, env=env,
+        )
+        self._attach(process, argv)
+
+    @classmethod
+    def from_process(cls, process) -> "StdioClient":
+        """Attach independent protocol readers to an already owned stream child."""
+        client = cls.__new__(cls)
+        client._attach(process, [])
+        return client
+
+    def _attach(self, process, argv):
         self.argv = argv
         self._next_id = 0
         self._notifications: list[dict] = []
-        self.process = subprocess.Popen(
-            argv,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-            bufsize=1,
-            env=env,
-        )
+        self.process = process
         self._stderr = bytearray()
 
         def errors():

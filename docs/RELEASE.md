@@ -935,6 +935,11 @@ The post-event cut observes the same original call's hardware entry and its
 stack-derived hardware return on x86-64; all threads stop, code stays unchanged,
 and the accepted event is durable before another domain can be claimed.
 Quiet recovery must preserve the original advance without sending it again.
+The stdio cut inventory initializes a real MCP client before its one trigger,
+then uses separate private FIFO stdin/stdout/stderr under the external debugger.
+Original descriptor identities must match those endpoints; debugger diagnostics
+cannot stand in for protocol responses, and fresh stdio recovery must preserve
+the exact original claim, successful result or accepted event at each cut.
 
 `acceptance/` builds an image with `cargo install --path crates/fsm-cli
 --locked`, the same command a consumer runs, and drives that binary from a

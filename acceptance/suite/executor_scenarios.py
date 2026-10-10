@@ -745,6 +745,18 @@ def executor_standalone_event_cut_recovers_without_repeating_advance(report) -> 
 SCENARIOS += (executor_standalone_event_cut_recovers_without_repeating_advance,)
 
 
+def executor_stdio_hardware_cuts_recover_original_claims_results_and_events(report) -> None:
+    from .executor_crash import installed_claim_cut
+    from .executor_settlement import installed_completed_cut, SUPPORTED_CUTS
+    for kind in ('process', 'mcp'):
+        installed_claim_cut(report, kind, 'stdio')
+        for cut in SUPPORTED_CUTS:
+            installed_completed_cut(report, kind, cut, 'stdio')
+
+
+SCENARIOS += (executor_stdio_hardware_cuts_recover_original_claims_results_and_events,)
+
+
 def _name(value) -> bool:
     return isinstance(value, str) and 0 < len(value) <= MAX_TRACE_TEXT
 

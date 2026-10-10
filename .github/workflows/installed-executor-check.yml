@@ -28,6 +28,7 @@ on:
           - executor_standalone_claim_cut_recovers_without_unclaimed_entry
           - executor_standalone_completed_cuts_recover_without_repeating_success
           - executor_standalone_event_cut_recovers_without_repeating_advance
+          - executor_stdio_hardware_cuts_recover_original_claims_results_and_events
           - full
 
 permissions:
@@ -57,7 +58,7 @@ jobs:
       - name: Focused independent observer checks
         run: python3 -m unittest discover -s acceptance/tests -p 'test*observer.py'
       - name: Install the external hardware observer
-        if: ${{ inputs.scenario == 'executor_standalone_claim_cut_recovers_without_unclaimed_entry' || inputs.scenario == 'executor_standalone_completed_cuts_recover_without_repeating_success' || inputs.scenario == 'executor_standalone_event_cut_recovers_without_repeating_advance' || inputs.scenario == 'full' }}
+        if: ${{ contains(inputs.scenario, 'cut') || inputs.scenario == 'full' }}
         run: |
           sudo -n env "TMPDIR=$TMPDIR" apt-get update
           sudo -n env "TMPDIR=$TMPDIR" apt-get install -y --no-install-recommends gdb binutils

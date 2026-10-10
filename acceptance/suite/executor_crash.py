@@ -95,11 +95,11 @@ def claim_prefix(records: list[dict], instance: str) -> dict:
 
 @contextmanager
 def debugger(store: Path, table: Path, directory: Path, namespace: str,
-             cut: str = 'claimed-before-binding'):
+             cut: str = 'claimed-before-binding', transport: str = 'standalone'):
     require_disposable_runner()
-    if cut not in CUT_SYMBOLS:
+    if cut not in CUT_SYMBOLS or transport not in ('standalone', 'stdio'):
         raise ValueError('unknown exact installed hardware cut')
-    directory.mkdir()
+    directory.mkdir(exist_ok=True)
     script = Path(fsm.REPO) / 'acceptance/fixtures/installed_debugger.py'
     commands = directory / 'observer.gdb'
     commands.write_text('python\nimport runpy\nrunpy.run_path(' + repr(str(script)) +
@@ -114,11 +114,13 @@ def debugger(store: Path, table: Path, directory: Path, namespace: str,
         'env', 'GITHUB_ACTIONS=true', 'FSM_ACCEPTANCE_DISPOSABLE_NATIVE=1',
         'PYTHONDONTWRITEBYTECODE=1', 'TMPDIR=' + fsm.task_cache(),
         'FSM_DEBUGGER_DIRECTORY=' + str(directory), 'FSM_DEBUGGER_CUT=' + cut,
+        'FSM_DEBUGGER_TRANSPORT=' + transport,
         'FSM_BIN=' + str(Path(fsm.FSM).resolve()),
         'gdb', '--batch', '--nx', '--quiet', '-iex', 'set auto-load off',
         '-iex', 'set startup-with-shell off', '-iex', 'set disable-randomization off',
         '-iex', 'set debuginfod enabled off', '-x', str(commands), '--args', fsm.FSM,
-        'execute', '--handlers=' + str(table), '--data-dir=' + str(store), '--poll-interval-ms=50']
+        *(['execute'] if transport == 'standalone' else ['serve', '--execute']),
+        '--handlers=' + str(table), '--data-dir=' + str(store), '--poll-interval-ms=50']
     with (directory / 'debugger.log').open('wb') as log:
         process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
         try:
@@ -145,6 +147,24 @@ def observe_debugged_owner(report, owner, unit, directory, binary_hash, cut):
     return ready, limits
 
 
+@contextmanager
+def original_host(store, table, directory, namespace, cut, transport):
+    if transport == 'standalone':
+        with debugger(store, table, directory, namespace, cut) as (owner, unit):
+            yield owner, unit, None
+        return
+    from .executor_debug_stdio import StdioPipes
+    directory.mkdir()
+    with StdioPipes(directory) as pipes:
+        with debugger(store, table, directory, namespace, cut, transport) as (owner, unit):
+            client = pipes.attach(owner, unit)
+            try:
+                yield owner, unit, client
+            finally:
+                pipes.release_guards()
+                client.close()
+
+
 def retire_debugged_owner(report, owner, directory, ready, store, prefix):
     (directory / 'kill').write_text('terminate only the original debugged inferior\n')
     owner.wait(timeout=15)
@@ -163,10 +183,13 @@ def retain_debugger(directory: Path, cache: Path) -> None:
     retained = cache / 'debugger'; retained.mkdir()
     for name in ('ready.json', 'retired.json', 'debugger.log', 'observer.gdb'):
         shutil.copy2(directory / name, retained / name)
+    for name in ('stdio.json', 'stdio-launch.json'):
+        if (directory / name).exists():
+            shutil.copy2(directory / name, retained / name)
 
 
-def installed_claim_cut(report, kind: str) -> None:
-    if kind not in ('process', 'mcp'):
+def installed_claim_cut(report, kind: str, transport: str = 'standalone') -> None:
+    if kind not in ('process', 'mcp') or transport not in ('standalone', 'stdio'):
         raise ValueError('unknown installed claim-cut handler kind')
     fixture = Path(fsm.REPO) / 'acceptance/fixtures/executor_handler.py'
     machine = Path(fsm.REPO) / 'acceptance/fixtures/executor_workflow.json'
@@ -180,11 +203,16 @@ def installed_claim_cut(report, kind: str) -> None:
         table_path = native.approve(store, table)
         instance = fsm.run_json('instance', 'new', 'acceptance_workflow',
             '--request-id=claim-cut-create', data_dir=str(store))['instance_id']
-        fsm.run_json('instance', 'send', instance, 'start', '--request-id=claim-cut-start', data_dir=str(store))
+        if transport == 'standalone':
+            fsm.run_json('instance', 'send', instance, 'start', '--request-id=claim-cut-start', data_dir=str(store))
         directory = Path(scratch.path) / 'debugger'
         binary_hash = digest(Path(fsm.FSM))
-        with debugger(store, table_path, directory, native.namespace) as (owner, unit):
+        with original_host(store, table_path, directory, native.namespace, 'claimed-before-binding', transport) as (owner, unit, client):
+            from .executor_debug_stdio import capture_stdio, trigger_stdio
+            if client is not None:
+                trigger_stdio(report, client, instance, 'claim-cut-start')
             ready, limits = observe_debugged_owner(report, owner, unit, directory, binary_hash, 'claimed-before-binding')
+            stdio = capture_stdio(client, ready, Path(fsm.FSM))
             prefix = read_journal_prefix(store)
             original = claim_prefix(prefix, instance)
             report.equal(_fixture_rows(native.resource / 'trace.jsonl'), [], 'durable claiming has not entered user code')
@@ -192,7 +220,9 @@ def installed_claim_cut(report, kind: str) -> None:
             report.true(not (native.directory / 'binding-1.json').exists(), 'the exact installed cut precedes native binding')
             report.true(not (native.directory / 'entry-1.json').exists(), 'the original claim has not authorized handler entry')
             retired = retire_debugged_owner(report, owner, directory, ready, store, prefix)
-        with _restart_host(store, table_path, 'standalone') as (_, successor):
+        with _restart_host(store, table_path, transport) as (successor_client, successor):
+            if successor_client is not None:
+                successor_client.initialize()
             entries = _wait_for_files(lambda: list(native.resource.glob('*.ready')), successor, 10)
             report.equal(len(entries), 1, 'one genuine successor reaches the first user-code barrier')
             closure = json.loads(privileged('cat', str(native.directory / 'closed-1.json')))
@@ -219,9 +249,9 @@ def installed_claim_cut(report, kind: str) -> None:
             report.equal(digest(Path(fsm.FSM)), binary_hash, 'every original installed candidate byte remains unchanged')
             retain_debugger(directory, native.cache)
             report.note('FSM_INSTALLED_CLAIM_CUT_EVIDENCE ' + json.dumps(dict(namespace=native.namespace,
-                transport='standalone', handler_kind=kind, instance=instance, hardware=ready,
+                transport=transport, handler_kind=kind, instance=instance, hardware=ready, stdio=stdio,
                 retirement=retired, enforced_limits=limits, original_claim=original, original_prefix=prefix,
                 closure_before_successor=closure, journal=records, trace=trace, results=results, state=state, final=final), sort_keys=True))
-            _retire_execution_owner(report, successor, store, native.namespace, 'standalone')
+            _retire_execution_owner(report, successor, store, native.namespace, transport)
         report.equal(successor.returncode, 0, 'the actual successor retires through its confirmed owner drain')
     report.true(native.cleaned, 'every original native domain closes before owned fixture removal')

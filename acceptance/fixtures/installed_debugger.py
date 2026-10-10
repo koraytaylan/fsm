@@ -8,6 +8,8 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
+import stat
 import subprocess
 import time
 
@@ -116,6 +118,23 @@ def main():
                     'set language c', 'set breakpoint pending off',
                     'set follow-fork-mode parent', 'set detach-on-fork on', 'target native'):
         gdb.execute(command, to_string=True)
+    transport = os.environ.get('FSM_DEBUGGER_TRANSPORT', 'standalone')
+    if transport == 'stdio':
+        redirects = []
+        for number, name in enumerate(('stdin', 'stdout', 'stderr')):
+            path = directory / (name + '.fifo')
+            metadata = path.lstat()
+            if not stat.S_ISFIFO(metadata.st_mode) or metadata.st_uid != os.geteuid() or metadata.st_mode & 0o077:
+                raise ValueError('stdio cut requires separate private task-owned FIFOs')
+            redirects.append(('<' if number == 0 else '>' if number == 1 else '2>') + shlex.quote(str(path)))
+        arguments = gdb.parameter('args')
+        if not isinstance(arguments, str) or len(arguments.encode()) > 16_384:
+            raise ValueError('original stdio launch arguments exceed their bound')
+        gdb.execute('set environment SHELL /bin/sh', to_string=True)
+        gdb.execute('set startup-with-shell on', to_string=True)
+        gdb.execute('set args ' + arguments + ' ' + ' '.join(redirects), to_string=True)
+    elif transport != 'standalone':
+        raise ValueError('unknown installed hardware-observer transport')
     symbol = resolve_symbol(binary)
     breakpoint = gdb.Breakpoint("*'" + symbol['raw_symbol'] + "'", type=gdb.BP_HARDWARE_BREAKPOINT)
     if breakpoint.pending or breakpoint.type != gdb.BP_HARDWARE_BREAKPOINT or len(breakpoint.locations) != 1:
@@ -128,6 +147,8 @@ def main():
 
     gdb.events.stop.connect(stop)
     try:
+        if transport == 'stdio':
+            publish(directory, 'stdio-launch', dict(binary_sha256=original_hash, transport=transport))
         startup = gdb.execute('run', to_string=True)
         inferior = gdb.selected_inferior()
         first_cut = 'acked-before-event' if CUT == 'event-after-advance' else CUT
