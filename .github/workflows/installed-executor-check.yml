@@ -17,6 +17,7 @@ on:
           - executor_stdio_outcome_matrix_progresses_with_quiet_clients
           - executor_transport_outcome_matrix_progresses_with_quiet_clients
           - executor_transport_admission_and_manual_effects_preserve_pending_work
+          - executor_transport_read_only_and_degraded_hosts_refuse_execution
 
 permissions:
   contents: read

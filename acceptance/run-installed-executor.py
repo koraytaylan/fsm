@@ -22,7 +22,8 @@ from acceptance.suite.fsm import task_cache
 SCENARIOS = ("executor_stdio_process_success_progresses_with_a_quiet_client",
              "executor_stdio_outcome_matrix_progresses_with_quiet_clients",
              "executor_transport_outcome_matrix_progresses_with_quiet_clients",
-             "executor_transport_admission_and_manual_effects_preserve_pending_work")
+             "executor_transport_admission_and_manual_effects_preserve_pending_work",
+             "executor_transport_read_only_and_degraded_hosts_refuse_execution")
 
 
 def main() -> int:
@@ -31,7 +32,7 @@ def main() -> int:
     parser.add_argument("--scenario", choices=SCENARIOS, default=SCENARIOS[0])
     arguments = parser.parse_args()
     scenario = arguments.scenario
-    cells = (1, 8, 16, 4)[SCENARIOS.index(scenario)]
+    cells = (1, 8, 16, 4, 8)[SCENARIOS.index(scenario)]
     require_disposable_runner()
     if not re.fullmatch(r"[a-f0-9]{40}", arguments.candidate):
         parser.error("an immutable candidate commit is required")
@@ -110,7 +111,7 @@ def main() -> int:
                    "--inode", str(installed["inode"]), "--sha256", authority_digest)
         privileged("rmdir", str(BASE))
         success = True
-        control.update(passed=True, native_handler_execution=True, report_sha256=digest(reports[0]),
+        control.update(passed=True, native_handler_execution=scenario != SCENARIOS[4], report_sha256=digest(reports[0]),
                        assertions=len(report["scenarios"][0]["assertions"]), authority_removed=True)
         return 0
     except Exception as error:

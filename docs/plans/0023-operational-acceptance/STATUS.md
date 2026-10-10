@@ -50,8 +50,18 @@ ownership across DynamicUser retirement rather than losing fixture evidence.
 HTTP harness corrections use the documented launch options and original stop
 control; their preceding failed runs remain failed, and SIGTERM is not drain.
 
-Task 9502 remains in progress: slow/disconnected observers, runtime admission
-and manual/refusal cases, complete shutdown/restart and the pre-existing
+Frozen admission/manual acceptance at `8e1689e13346232122b0484a508ae74df8f2567f`
+establishes four stdio/HTTP process/MCP cells with 176 passing assertions:
+exact draft and runtime incompatibility diagnostics, unchanged incompatible
+and manual pending effects while valid work completes, no fabricated claim,
+attempt or acknowledgement, sixteen original domain closures and two HTTP drains.
+[Disposable installed evidence](https://github.com/koraytaylan/fsm/actions/runs/38039558162)
+revalidates all 1,275 source blobs and retained binary/helper bytes;
+filtered proof remains release-ineligible, with frozen author replay digest
+`0c4e019c1862d5eb0eb27e20703a235ff767cd8fda15ef3f35db0b6f795c6c7b`.
+
+Task 9502 remains in progress: slow/disconnected observers, read-only/degraded
+refusals, complete shutdown/restart and the pre-existing
 portable acceptance inventory are outstanding.
 Sustained native operation, nine human-reviewed uncoached
 live-model sessions, Desktop compatibility and independent final review remain

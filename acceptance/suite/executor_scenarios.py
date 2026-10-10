@@ -297,6 +297,103 @@ def executor_transport_admission_and_manual_effects_preserve_pending_work(report
             _installed_workflow(report, transport, kind, "success", admission=True)
 
 
+def executor_transport_read_only_and_degraded_hosts_refuse_execution(report) -> None:
+    """A provisioned native table cannot confer writer authority on a fallback."""
+    for transport in ("stdio", "http"):
+        for kind in ("process", "mcp"):
+            for mode in ("read-only", "degraded"):
+                _installed_refusal(report, transport, kind, mode)
+
+
+def _journal_bytes(store: Path) -> dict[str, bytes]:
+    # The independent bounded reader checks the fixture inventory before bytes
+    # are retained; it intentionally does not validate canonical encoding.
+    read_journal_prefix(store)
+    return {path.name: path.read_bytes() for path in sorted((store / "journal").glob("seg-*.jsonl"))}
+
+
+def _assert_refusal(report, client, instance: str, mode: str) -> dict:
+    result = client.request("tools/call", {"name": "instance_send", "arguments": {
+        "instance_id": instance, "event": {"name": "validated"},
+        "request_id": "forbidden-installed-send"}})
+    report.true(result.get("isError") is True, "the actual mutating entry refuses the fallback session")
+    report.equal(result["structuredContent"]["error"]["code"],
+                 "io/write" if mode == "read-only" else "store/degraded",
+                 "the refusal carries the exact public error code")
+    return result
+
+
+def _installed_refusal(report, transport: str, kind: str, mode: str) -> None:
+    fixture = Path(fsm.REPO) / "acceptance/fixtures/executor_handler.py"
+    machine = Path(fsm.REPO) / "acceptance/fixtures/executor_workflow.json"
+    with fsm.Scratch("refusing-installed") as scratch, DisposableAuthority(fixture) as native:
+        store = Path(scratch.dir("store"))
+        fsm.run("machine", "add", str(machine), data_dir=str(store)).ok()
+        table = workflow_table(native.resource, native.handler, kind=kind, outcome="success")
+        table_path = native.approve(store, table)
+        with StdioClient([fsm.FSM, "serve", f"--data-dir={store}"]) as writer:
+            writer.initialize()
+            instance = writer.structured("instance_create", {"machine": "acceptance_workflow",
+                "request_id": "refusal-installed-create"})["instance_id"]
+            pending = writer.structured("instance_send", {"instance_id": instance,
+                "event": {"name": "start"}, "request_id": "refusal-installed-start"})
+            report.equal(pending["leaf"], "validating", "the writer creates genuine pending handler work")
+            report.equal(len(pending["effects_pending"]), 1, "the refusal fixture has one pending effect")
+            if mode == "degraded":
+                writer.close()
+                segment = sorted((store / "journal").glob("seg-*.jsonl"))[0]
+                original = segment.read_bytes()
+                if not original.startswith(b"{"):
+                    raise ValueError("the corruption fixture requires a canonical object record")
+                segment.write_bytes(b"{ " + original[1:])
+            before = _journal_bytes(store)
+            with _installed_client(store, table_path, transport) as (client, host):
+                client.initialize()
+                capability = json.loads(client.request("resources/read", {"uri": "fsm://executor"})["contents"][0]["text"])
+                report.equal(capability["mode"], mode, "discovery exposes the actual fallback mode")
+                report.equal(capability["progress"], "external" if mode == "read-only" else "unavailable",
+                             "discovery does not invent an autonomous writer")
+                report.true(capability["executes_effects"] is False, "fallback discovery refuses execution authority")
+                report.equal(capability["handlers"], None, "a fallback cannot advertise another owner's table")
+                draft = client.structured("executor_check", {"spec": json.loads(machine.read_text())})
+                report.equal(draft["status"], "unknown", "draft compilation survives without authoritative execution evidence")
+                report.equal(draft["contract_id"], None, "fallback contract identity is unavailable")
+                for field in ("effects_checked", "outcomes_checked"):
+                    report.true(draft[field] is False, f"fallback does not claim {field}")
+                report.true(any(finding.get("code") == "exec/contract_unknown"
+                                and finding.get("cause") == {"mode": mode, "table": "unavailable"}
+                                for finding in draft["findings"]), "draft evidence names its exact unavailable-table cause")
+                first = _assert_refusal(report, client, instance, mode)
+                if mode == "read-only":
+                    observed = client.structured("instance_get", {"instance_id": instance})
+                    report.equal(observed["effects_pending"], pending["effects_pending"], "the observer exposes the original pending effect")
+                    writer.close()
+                    capability_after = json.loads(client.request("resources/read", {"uri": "fsm://executor"})["contents"][0]["text"])
+                    report.equal(capability_after["mode"], "read-only", "writer retirement does not promote the original observer")
+                    second = _assert_refusal(report, client, instance, mode)
+                    report.equal(client.structured("journal_verify")["health"], "Ok", "the refused healthy journal still verifies")
+                    report.true(client.structured("journal_replay")["matches"] is True, "the refused healthy journal still replays")
+                else:
+                    second = client.structured("store_doctor")
+                    report.equal(second["health"], "NonCanonical", "the doctor identifies the deliberate canonical-byte fault")
+                report.equal(_journal_bytes(store), before, "fallback checks and refusals leave every original journal byte unchanged")
+                for name in ("trace.jsonl", "results.jsonl"):
+                    report.equal(_fixture_rows(native.resource / name), [], "no external handler starts or reports completion after refusal")
+                report.note("FSM_INSTALLED_REFUSAL_EVIDENCE " + json.dumps(dict(
+                    namespace=native.namespace, transport=transport, handler_kind=kind, mode=mode,
+                    instance=instance, pending=pending, capability=capability, draft=draft,
+                    first_refusal=first, after=second, journal=read_journal_prefix(store),
+                    journal_sha256={name: hashlib.sha256(value).hexdigest() for name, value in before.items()}), sort_keys=True))
+                if transport == "http":
+                    report.true(client.delete_session() in (200, 204), "the fallback HTTP session can be deleted")
+                    report.true(host.poll() is None, "session deletion leaves the fallback frontend alive")
+            report.equal(host.returncode, 0 if transport == "stdio" else -15,
+                         "the original fallback frontend retires by EOF or its owned SIGTERM without claiming native drain")
+    report.true(native.cleaned, "the original provisioned fixture retires after the refusal")
+    retirement = json.loads((native.cache / "retirement.json").read_text())
+    report.equal(retirement["original_closed_domains"], [], "the original allocation counter proves that no native domain was allocated")
+
+
 @contextmanager
 def _installed_client(store: Path, table: Path, transport: str):
     options = ["--execute", f"--handlers={table}"]
@@ -480,7 +577,8 @@ SCENARIOS = (executor_contract_fixtures_are_checked_without_external_work,
              executor_stdio_process_success_progresses_with_a_quiet_client,
              executor_stdio_outcome_matrix_progresses_with_quiet_clients,
              executor_transport_outcome_matrix_progresses_with_quiet_clients,
-             executor_transport_admission_and_manual_effects_preserve_pending_work)
+             executor_transport_admission_and_manual_effects_preserve_pending_work,
+             executor_transport_read_only_and_degraded_hosts_refuse_execution)
 
 
 def _name(value) -> bool:
