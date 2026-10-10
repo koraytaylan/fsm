@@ -63,8 +63,8 @@ fn machine() -> Value {
     parse(br#"{
       "format":"fsm.machine/1","name":"native_contract_draft",
       "context":[
-        {"name":"resource","ty":"str","init":"\"resource with spaces; $(literal) \\\"quoted\\\"\""},
-        {"name":"run","ty":"str","init":"\"run-1\""}
+        {"name":"resource","ty":"str","init":"resource with spaces; $(literal) \"quoted\""},
+        {"name":"run","ty":"str","init":"run-1"}
       ],
       "events":[{"name":"begin","fields":[]},{"name":"check_prerequisite_ok","fields":[]},{"name":"check_prerequisite_failed","fields":[]},
                 {"name":"suspend_ok","fields":[]},{"name":"suspend_failed","fields":[]},
@@ -693,6 +693,16 @@ fn staged_receiver_repair_preserves_the_original_pending_operation() {
         .unwrap();
     let pending = store.state.instances["original"].pending.clone();
     let historical = fsm_execute::effect::resolve(&store, &pending[0]).unwrap();
+    assert_eq!(
+        historical.args.get("resource"),
+        Some(&fsm_core::expr::eval::Val::Str(
+            "resource with spaces; $(literal) \"quoted\"".into()
+        ))
+    );
+    assert_eq!(
+        historical.args.get("run"),
+        Some(&fsm_core::expr::eval::Val::Str("run-1".into()))
+    );
     let table = independent_table();
     assert_eq!(
         fsm_execute::contract::check_pending(&store, &historical, &table)
