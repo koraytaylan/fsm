@@ -171,8 +171,16 @@ def installed_stdio_restart(report, kind: str, control: str) -> None:
             report.equal(_fixture_rows(native.resource / "results.jsonl"), [], "the replacement still waits at its own external barrier")
             native.release.write_text("successor only", encoding="utf-8")
             _wait_for_files(lambda: len(_fixture_rows(native.resource / "results.jsonl")) == 4, successor, 30)
-            _wait_for_files(lambda: not interruption_ledger(read_journal_prefix(store), instance,
-                original_claim["body"]["run_id"]), successor, 10)
+            try:
+                _wait_for_files(lambda: not interruption_ledger(read_journal_prefix(store), instance,
+                    original_claim["body"]["run_id"]), successor, 10)
+            finally:
+                observed = read_journal_prefix(store)
+                (native.cache / "restart-last-observation.json").write_text(json.dumps(dict(
+                    control=control, handler_kind=kind, instance=instance, original_claim=original_claim,
+                    journal=observed, trace=_fixture_rows(native.resource / "trace.jsonl"),
+                    violations=interruption_ledger(observed, instance, original_claim["body"]["run_id"])),
+                    sort_keys=True), encoding="utf-8")
             records = read_journal_prefix(store)
             trace = _fixture_rows(native.resource / "trace.jsonl")
             results = _fixture_rows(native.resource / "results.jsonl")
