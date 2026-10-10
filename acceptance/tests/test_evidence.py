@@ -14,11 +14,12 @@ from unittest.mock import patch
 
 from acceptance.suite.evidence import Evidence, candidate, release_rejections, snapshot, build, source_files, validate_bundle
 from acceptance.suite import run
+from acceptance.suite.fsm import task_cache
 
 
 class EvidenceTests(unittest.TestCase):
     def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory()
+        self.temporary = tempfile.TemporaryDirectory(dir=task_cache())
         self.addCleanup(self.temporary.cleanup)
         self.directory = Path(self.temporary.name)
         self.identity = {"source_commit": "a" * 40, "dirty": False,
