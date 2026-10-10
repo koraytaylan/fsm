@@ -220,8 +220,22 @@ non-overlap assertions.
 implementing-author review digest:
 `9feb6323271c90e7d5cd214d3a4b733a3112eb65f3793e7b6a16354e2c1ec41f`.
 
-Task 9502 remains in progress: remaining installed crash cuts and separate Podman
-consumer execution are outstanding.
+Frozen consumer acceptance for `cca8c528..25970b8d` establishes the separate
+Podman executor recipe with 16 scenarios, 2,666 assertions, 85 native fixtures
+and 319 original domain closures; replay revalidates 1,294 source blobs,
+retained CLI/helper bytes, 1,601 journal records and 862 raw trace records.
+[Disposable consumer evidence](https://github.com/koraytaylan/fsm/actions/runs/38057971871)
+confirms a nonroot operator, private cgroup namespace, effective 1 GiB memory,
+zero swap and removal of the owned container and protected helper.
+Review also repaired the ordinary rootless evidence-volume mapping;
+[focused offline evidence](https://github.com/koraytaylan/fsm/actions/runs/38058880239)
+retains twelve passing seal assertions and verified build provenance.
+Both reports remain filtered and release-ineligible; 137 disposable observer
+checks, eighteen focused consumer/reporter checks and formatting/size checks pass.
+Frozen implementing-author review digest:
+`5796b7e7bba0ff01454b86fa91c32acad60ce0f2702071418919adfe30b3f3c8`.
+
+Task 9502 remains in progress: remaining installed crash cuts are outstanding.
 Sustained native operation, nine human-reviewed uncoached
 live-model sessions, Desktop compatibility and independent final review remain
 mandatory and incomplete; no passing skip or synthetic control replaces them.
