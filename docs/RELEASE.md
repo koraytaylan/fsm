@@ -948,6 +948,13 @@ next irreversible epoch permits receipt-only recovery and quiet successor work.
 Protected debugger records remain separate from authority records and numeric
 host wait receipts; the fresh Root observer unit enforces 1 GiB, zero swap,
 a two-minute runtime and control-group retirement on observer failure.
+The helper-boundary matrix additionally observes exact pre-submission,
+pre-authorization and collected-result entries across standalone, stdio and
+HTTP owners, including HTTP domain-closed recovery; approximate file timing
+never replaces these hardware stops. Original launch intent, isolated gate,
+entry grant, fixture history and closure presence must match the declared
+phase, and every fresh validation waits until the original claim-bound
+closure receipt and absence of original user-code processes are observed.
 
 `acceptance/` builds an image with `cargo install --path crates/fsm-cli
 --locked`, the same command a consumer runs, and drives that binary from a

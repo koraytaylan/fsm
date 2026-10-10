@@ -24,7 +24,10 @@ CUT_SYMBOLS = {'claimed-before-binding': SYMBOL,
     'stopped-before-settlement': 'fsm_execute::run::pipeline::Pipeline::settle_native_stopped',
     'acked-before-event': 'fsm_execute::run::pipeline::Pipeline::deliver_native_handoff',
     'event-after-advance': 'fsm_execute::run::pipeline::Pipeline::deliver_native_handoff',
-    'closed-before-result-publication': 'fsm_containment_authority::authority::runner::completion_record::publish'}
+    'closed-before-result-publication': 'fsm_containment_authority::authority::runner::completion_record::publish',
+    'spawn-before-submission': 'fsm_containment_authority::authority::launch::begin',
+    'authorization-before-grant': 'fsm_containment_authority::authority::authorize::publish_enrolled',
+    'candidate-before-fence': 'fsm_containment_authority::authority::runner::observed_candidate'}
 
 
 def validate_cut(value: dict, binary_hash: str, cut: str = 'claimed-before-binding') -> dict:

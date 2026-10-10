@@ -16,6 +16,7 @@ from .executor_scenarios import _wait_for_files
 from .native_fixture import AUTHORITY, DisposableAuthority, privileged, require_disposable_runner
 
 CUT = 'closed-before-result-publication'
+CUTS = ('spawn-before-submission', 'authorization-before-grant', 'candidate-before-fence', CUT)
 
 
 def helper_digest():
@@ -103,6 +104,12 @@ def validate_restart(dead_record: dict, restarted_record: dict, namespace: str, 
 
 
 class DebuggedAuthority(DisposableAuthority):
+    def __init__(self, handler, cut=CUT):
+        if cut not in CUTS:
+            raise ValueError('unknown installed Root helper hardware cut')
+        super().__init__(handler)
+        self.cut = cut
+
     def _start_broker(self):
         require_disposable_runner()
         self.debugger_directory = self.stage / 'debugger'
@@ -123,7 +130,7 @@ class DebuggedAuthority(DisposableAuthority):
             '--property=MemoryMax=1G', '--property=MemorySwapMax=0', 'env',
             'GITHUB_ACTIONS=true', 'FSM_ACCEPTANCE_DISPOSABLE_NATIVE=1',
             'PYTHONDONTWRITEBYTECODE=1', 'TMPDIR=' + fsm.task_cache(),
-            'FSM_DEBUGGER_DIRECTORY=' + str(self.debugger_directory), 'FSM_DEBUGGER_CUT=' + CUT,
+            'FSM_DEBUGGER_DIRECTORY=' + str(self.debugger_directory), 'FSM_DEBUGGER_CUT=' + self.cut,
             'FSM_BIN=' + str(AUTHORITY), 'python3', str(self.stage / 'installed_broker_owner.py'),
             self.namespace], stdin=subprocess.PIPE, stdout=self.log, stderr=subprocess.STDOUT,
             start_new_session=True, umask=0o077)
@@ -131,7 +138,7 @@ class DebuggedAuthority(DisposableAuthority):
     def observe_cut(self, report):
         _wait_for_files(lambda: (self.debugger_directory / 'ready.json').exists(), self.process, 15)
         record = protected_observation(self.debugger_directory / 'ready.json')
-        ready = validate_cut(record['value'], self.debugger_hash, CUT)
+        ready = validate_cut(record['value'], self.debugger_hash, self.cut)
         report.true(process_observation(ready['original'])['alive'] is True,
             'the exact hardware-stopped original installed Root helper is alive')
         properties = privileged('systemctl', 'show', self.debugger_unit,

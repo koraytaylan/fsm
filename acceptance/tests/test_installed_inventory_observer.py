@@ -23,9 +23,9 @@ class InstalledInventoryTests(unittest.TestCase):
     def test_full_selects_the_entire_inventory_without_a_filter(self):
         arguments, names, cells = RUNNER.selection("full")
         self.assertEqual(arguments, [])
-        self.assertEqual(len(names), 33)
-        self.assertEqual(len(set(names)), 33)
-        self.assertEqual(cells, 105)
+        self.assertEqual(len(names), 34)
+        self.assertEqual(len(set(names)), 34)
+        self.assertEqual(cells, 129)
         self.assertEqual(cells, sum(RUNNER.CELLS[:-1]))
         RUNNER.validate_installed_report(self.report(), "full", "a" * 40, "b" * 64)
         with self.assertRaises(ValueError):

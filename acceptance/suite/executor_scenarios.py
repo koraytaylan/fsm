@@ -767,6 +767,18 @@ def executor_helper_closed_cut_recovers_without_publishing_an_original_result(re
 SCENARIOS += (executor_helper_closed_cut_recovers_without_publishing_an_original_result,)
 
 
+def executor_helper_hardware_cut_matrix_recovers_original_claims(report) -> None:
+    from .executor_helper_cut import installed_helper_cut
+    from .native_debugger import CUTS
+    for transport in ('standalone', 'stdio', 'http'):
+        for kind in ('process', 'mcp'):
+            for cut in CUTS:
+                installed_helper_cut(report, kind, transport, cut)
+
+
+SCENARIOS += (executor_helper_hardware_cut_matrix_recovers_original_claims,)
+
+
 def _name(value) -> bool:
     return isinstance(value, str) and 0 < len(value) <= MAX_TRACE_TEXT
 

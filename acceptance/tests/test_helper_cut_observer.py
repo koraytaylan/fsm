@@ -9,8 +9,8 @@ import unittest
 from unittest.mock import patch
 
 from acceptance.suite.executor_crash import CUT_SYMBOLS, validate_cut
-from acceptance.suite.executor_helper_cut import closed_prefix
-from acceptance.suite.native_debugger import CUT, validate_restart, helper_digest, retain_original_file
+from acceptance.suite.executor_helper_cut import closed_prefix, phase_prefix
+from acceptance.suite.native_debugger import CUT, CUTS, validate_restart, helper_digest, retain_original_file
 from acceptance.suite.fsm import Scratch
 
 
@@ -64,6 +64,68 @@ class HelperCutTests(unittest.TestCase):
             dict(breakpoint_type='software'), dict(binary_sha256='d'*64), dict(all_threads_stopped=False)):
             with self.subTest(change=change), self.assertRaises(ValueError):
                 validate_cut({**hardware, **change}, 'b'*64, CUT)
+        for cut in CUTS:
+            value={**hardware,'cut':cut,'symbol':CUT_SYMBOLS[cut],'demangled_symbol':CUT_SYMBOLS[cut]}
+            self.assertEqual(validate_cut(value,'b'*64,cut),value)
+
+    def phase(self, cut):
+        records,binding,closed,receipt=self.prefix()
+        argv=['/labelled/python','/labelled/fixture','--resource','supplier']
+        completed=cut in ('candidate-before-fence',CUT)
+        material=dict(binding=binding,closed=closed if cut==CUT else None,
+            receipt=receipt if cut==CUT else None,closing=dict(format='fsm.native-closing/1',domain=closed['domain']) if cut==CUT else None,
+            intent=None,handoff=None,entry=None,trace=[],results=[])
+        if cut!='spawn-before-submission':
+            material.update(intent=dict(format='fsm.native-launch-intent/1',binding=binding),
+                handoff=dict(format='fsm.native-launch-handoff/1',binding=binding,
+                    gate=dict(pid=125,group_id=62450,invocation_id='a'*32)))
+        if cut=='candidate-before-fence':
+            material['entry']=dict(format='fsm.native-entry/1',claim=binding['claim'],journal_claim=binding['journal_claim'],argv=argv)
+        if completed:
+            material.update(trace=[dict(kind='start',run='original'),dict(kind='end',run='original')],
+                results=[dict(operation='validate',run='original',exit_code=0)])
+        return records,material,argv
+
+    def test_every_helper_boundary_requires_its_own_original_phase_material(self):
+        for cut in CUTS:
+            records,material,argv=self.phase(cut)
+            self.assertEqual(phase_prefix(records,'original',cut,material,argv),records[0])
+            for other in CUTS:
+                if other==cut:continue
+                with self.subTest(cut=cut,other=other),self.assertRaises(ValueError):
+                    phase_prefix(records,'original',other,material,argv)
+
+    def test_declared_hardware_matrix_enumerates_every_cut_host_and_handler_pair(self):
+        from acceptance.suite.executor_scenarios import executor_helper_hardware_cut_matrix_recovers_original_claims
+        calls=[]
+        with patch('acceptance.suite.executor_helper_cut.installed_helper_cut',
+            side_effect=lambda report,kind,transport,cut:calls.append((kind,transport,cut))):
+            executor_helper_hardware_cut_matrix_recovers_original_claims(None)
+        self.assertEqual(len(calls),24)
+        self.assertEqual(set(calls),{(kind,transport,cut) for kind in ('process','mcp')
+            for transport in ('standalone','stdio','http') for cut in CUTS})
+
+    def test_pre_authorization_cannot_possess_a_grant_or_handler_entry(self):
+        records,material,argv=self.phase('authorization-before-grant')
+        for change in (dict(entry={'grant':'invented'}),dict(trace=[dict(kind='start',run='foreign')]),
+            dict(results=[dict(operation='validate',run='foreign',exit_code=0)]),dict(closing={'revoked':True})):
+            with self.subTest(change=change),self.assertRaises(ValueError):
+                phase_prefix(records,'original','authorization-before-grant',{**material,**change},argv)
+
+    def test_candidate_phase_cannot_use_a_foreign_grant_gate_or_completed_outcome(self):
+        records,material,argv=self.phase('candidate-before-fence')
+        changes=[lambda v:v['handoff']['gate'].update(pid=True),
+            lambda v:v['handoff']['gate'].update(group_id=0),
+            lambda v:v['handoff']['gate'].update(invocation_id='invalid'),
+            lambda v:v['entry'].update(journal_claim='sha256:'+'e'*64),
+            lambda v:v['entry'].update(argv=['another','handler']),
+            lambda v:v['results'][0].update(exit_code=False),
+            lambda v:v['results'][0].update(run='foreign'),
+            lambda v:v.update(closed=dict(format='fsm.native-domain-closed/1',domain=records[0]['body']['domain']))]
+        for change in changes:
+            value=copy.deepcopy(material);change(value)
+            with self.subTest(change=change),self.assertRaises(ValueError):
+                phase_prefix(records,'original','candidate-before-fence',value,argv)
 
     def test_wrong_claim_or_missing_original_closure_cannot_prove_the_phase(self):
         records, binding, closed, receipt = self.prefix()

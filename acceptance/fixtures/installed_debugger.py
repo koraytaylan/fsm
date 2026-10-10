@@ -16,13 +16,17 @@ import time
 import gdb
 
 CUT = os.environ.get('FSM_DEBUGGER_CUT', 'claimed-before-binding')
-AUTHORITY_SYMBOL = 'fsm_containment_authority::authority::runner::completion_record::publish'
+AUTHORITY_SYMBOLS = {
+    'spawn-before-submission': 'fsm_containment_authority::authority::launch::begin',
+    'authorization-before-grant': 'fsm_containment_authority::authority::authorize::publish_enrolled',
+    'candidate-before-fence': 'fsm_containment_authority::authority::runner::observed_candidate',
+    'closed-before-result-publication': 'fsm_containment_authority::authority::runner::completion_record::publish'}
 METHODS = {'claimed-before-binding': 'start_native',
     'stopped-before-settlement': 'settle_native_stopped',
     'acked-before-event': 'deliver_native_handoff',
     'event-after-advance': 'deliver_native_handoff'}
-ROOT_CUT = CUT == 'closed-before-result-publication'
-SYMBOL = AUTHORITY_SYMBOL if ROOT_CUT else 'fsm_execute::run::pipeline::Pipeline::' + METHODS[CUT]
+ROOT_CUT = CUT in AUTHORITY_SYMBOLS
+SYMBOL = AUTHORITY_SYMBOLS[CUT] if ROOT_CUT else 'fsm_execute::run::pipeline::Pipeline::' + METHODS[CUT]
 DEMANGLED = (SYMBOL,) if ROOT_CUT else (SYMBOL, '<fsm_execute::run::pipeline::Pipeline>::' + METHODS[CUT])
 
 

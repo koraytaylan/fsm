@@ -1,7 +1,8 @@
-"""Installed domain-closed cut before any protected result publication."""
+"""Installed exact helper boundaries with receipt-only same-host recovery."""
 import hashlib
 import json
 from pathlib import Path
+import re
 import signal
 
 from . import fsm
@@ -10,11 +11,11 @@ from .executor_crash import claim_prefix
 from .executor_lifecycle import _restart_host, interruption_ledger, MUTATIONS, process_observation
 from .executor_scenarios import (_fixture_rows, _wait_for_files, read_journal_prefix,
     workflow_table, observe_trace, _retire_execution_owner)
-from .native_debugger import DebuggedAuthority, validate_restart
+from .native_debugger import CUT, CUTS, DebuggedAuthority, validate_restart
 from .native_fixture import privileged
 
 
-def closed_prefix(records, instance, binding, closed, receipt):
+def bound_prefix(records, instance, binding):
     claim = claim_prefix(records, instance)
     domain = claim['body'].get('domain')
     fields = {'attempt', 'domain', 'effect_id', 'handler_fingerprint', 'instance_id', 'retry', 'run_id'}
@@ -23,23 +24,86 @@ def closed_prefix(records, instance, binding, closed, receipt):
     bound_claim = {key: claim['body'][key] for key in fields}
     if (type(claim['body'].get('run_id')) is not int or claim['body']['run_id'] != 1
         or not isinstance(domain, dict) or type(domain.get('allocation')) is not int or domain['allocation'] != 1
-        or binding != dict(format='fsm.native-claim-binding/1', claim=bound_claim, journal_claim='sha256:' + claim['hash'])
-        or closed != dict(format='fsm.native-domain-closed/1', domain=domain)
+        or binding != dict(format='fsm.native-claim-binding/1', claim=bound_claim, journal_claim='sha256:' + claim['hash'])):
+        raise ValueError('the original protected binding differs from the exact durable claim')
+    return claim
+
+
+def closed_prefix(records, instance, binding, closed, receipt):
+    claim = bound_prefix(records, instance, binding)
+    domain = claim['body']['domain']
+    if (closed != dict(format='fsm.native-domain-closed/1', domain=domain)
         or receipt != dict(format='fsm.native-closure/1', domain=domain,
             journal_claim='sha256:' + claim['hash'], run_id=claim['body']['run_id'])):
         raise ValueError('the original closed domain and receipt do not bind the exact durable claim')
     return claim
 
 
+def phase_prefix(records, instance, cut, material, expected_argv):
+    if cut not in CUTS:
+        raise ValueError('unknown original helper boundary')
+    claim = bound_prefix(records, instance, material['binding'])
+    binding = material['binding']; domain = claim['body']['domain']
+    completed = cut in ('candidate-before-fence', CUT)
+    expected_trace = ['start', 'end'] if completed else []
+    trace = material['trace']; results = material['results']
+    if ([row.get('kind') for row in trace] != expected_trace
+        or len(results) != int(completed)
+        or (completed and (results[0].get('operation') != 'validate'
+            or type(results[0].get('exit_code')) is not int or results[0]['exit_code'] != 0
+            or any(row.get('run') != results[0].get('run') for row in trace)))):
+        raise ValueError('the original fixture entry/result history differs from the exact helper phase')
+    if cut == CUT:
+        closed_prefix(records, instance, binding, material['closed'], material['receipt'])
+        if material['closing'] != dict(format='fsm.native-closing/1', domain=domain):
+            raise ValueError('closed helper cut lacks its original revocation')
+    elif any(material[key] is not None for key in ('closed', 'receipt', 'closing')):
+        raise ValueError('an earlier helper boundary cannot already possess domain closure')
+    if cut == 'spawn-before-submission':
+        if any(material[key] is not None for key in ('intent', 'handoff', 'entry')):
+            raise ValueError('the pre-spawn boundary already submitted or authorized a native launch')
+        return claim
+    handoff = material['handoff']
+    if (material['intent'] != dict(format='fsm.native-launch-intent/1', binding=binding)
+        or not isinstance(handoff, dict) or set(handoff) != {'format', 'binding', 'gate'}
+        or handoff['format'] != 'fsm.native-launch-handoff/1' or handoff['binding'] != binding):
+        raise ValueError('original launched helper phase lacks its exact protected handoff')
+    gate = handoff['gate']
+    if (not isinstance(gate, dict) or set(gate) != {'pid', 'group_id', 'invocation_id'}
+        or type(gate['pid']) is not int or not 0 < gate['pid'] < 1 << 31
+        or type(gate['group_id']) is not int or not 0 < gate['group_id'] < (1 << 32)-1
+        or not isinstance(gate['invocation_id'], str) or not re.fullmatch('[a-f0-9]{32}', gate['invocation_id'])):
+        raise ValueError('the protected original isolated gate identity differs')
+    expected_entry = dict(format='fsm.native-entry/1', claim=binding['claim'],
+        journal_claim=binding['journal_claim'], argv=expected_argv) if cut == 'candidate-before-fence' else None
+    if material['entry'] != expected_entry:
+        raise ValueError('original entry authorization differs from the precise helper phase')
+    return claim
+
+
+def native_record(native, name):
+    path = native.directory / name
+    return json.loads(privileged('cat', str(path))) if path.exists() else None
+
+
 def installed_helper_closed_cut(report, kind, transport):
-    if kind not in ('process', 'mcp') or transport not in ('standalone', 'stdio'):
-        raise ValueError('unsupported installed helper closure cell')
+    installed_helper_cut(report, kind, transport, CUT)
+
+
+def installed_helper_cut(report, kind, transport, cut):
+    if kind not in ('process', 'mcp') or transport not in ('standalone', 'stdio', 'http') or cut not in CUTS:
+        raise ValueError('unsupported installed helper hardware cell')
     fixture = Path(fsm.REPO) / 'acceptance/fixtures/executor_handler.py'
     machine = Path(fsm.REPO) / 'acceptance/fixtures/executor_workflow.json'
-    with fsm.Scratch('helper-cut-installed', preserve_on_failure=True) as scratch, DebuggedAuthority(fixture) as native:
+    with fsm.Scratch('helper-cut-installed', preserve_on_failure=True) as scratch, DebuggedAuthority(fixture, cut) as native:
         store = Path(scratch.dir('store'))
         fsm.run('machine', 'add', str(machine), data_dir=str(store)).ok()
-        table = workflow_table(native.resource, native.handler, kind=kind, outcome='success')
+        table = workflow_table(native.resource, native.handler, kind=kind, outcome='success', release=native.release)
+        validation = table['handlers'][0]
+        validation['argv'][validation['argv'].index('--wait-seconds') + 1] = '60'
+        validation['timeout_ms'] = 70_000
+        expected_argv = [argument.replace('{resource}', 'supplier') for argument in validation['argv']]
+        native.release.write_text('original validation may complete\n')
         table_path = native.approve(store, table)
         instance = fsm.run_json('instance', 'new', 'acceptance_workflow',
             '--request-id=helper-cut-create', data_dir=str(store))['instance_id']
@@ -53,26 +117,32 @@ def installed_helper_closed_cut(report, kind, transport):
                     event=dict(name='start'), request_id='helper-cut-start'))
             protected, ready, limits = native.observe_cut(report)
             prefix = read_journal_prefix(store)
-            binding = json.loads(privileged('cat', str(native.directory / 'binding-1.json')))
-            closed = json.loads(privileged('cat', str(native.directory / 'closed-1.json')))
-            receipt = json.loads(privileged('cat', str(native.directory / 'closure-1-1.json')))
-            original = closed_prefix(prefix, instance, binding, closed, receipt)
-            report.equal(original['body']['domain']['namespace'], native.namespace,
-                'the original closed native domain belongs to this fresh fixture')
-            report.equal(original['body']['run_id'], 1, 'the exact first native run is observed')
+            material = {key: native_record(native, name) for key, name in
+                (('binding', 'binding-1.json'), ('closed', 'closed-1.json'), ('receipt', 'closure-1-1.json'),
+                 ('intent', 'launch-1.json'), ('handoff', 'handoff-1.json'), ('entry', 'entry-1.json'), ('closing', 'closing-1.json'))}
             original_results = _fixture_rows(native.resource / 'results.jsonl')
             original_trace = _fixture_rows(native.resource / 'trace.jsonl')
-            report.equal(len(original_results), 1, 'one genuine original validation finished before domain closure')
-            report.equal(original_results[0]['exit_code'], 0, 'the original external validation genuinely succeeded')
-            report.equal([row['kind'] for row in original_trace], ['start', 'end'],
-                'original validation entered and retired without an external mutation')
-            report.equal({row['run'] for row in original_trace}, {original_results[0]['run']},
-                'the original result and complete external trace name the same original run')
+            material.update(trace=original_trace, results=original_results)
+            original = phase_prefix(prefix, instance, cut, material, expected_argv)
+            binding = material['binding']; closed = material['closed']; receipt = material['receipt']
+            report.equal(original['body']['domain']['namespace'], native.namespace,
+                'the original claimed native domain belongs to this fresh fixture')
+            report.equal(original['body']['run_id'], 1, 'the exact first native run is observed')
+            report.equal(len(original_results), int(cut in ('candidate-before-fence', CUT)),
+                'original external validation results match the exact observed helper phase')
+            original_runs = {row['run'] for row in original_trace}
+            originals = [json.loads(path.read_text()) for path in native.resource.glob('*.ready')]
+            report.equal({row['run'] for row in originals}, original_runs,
+                'the original physical fixture entries match the complete original trace')
+            before = [process_observation(row) for row in originals]
+            report.equal(native_record(native, 'counter.json')['last_allocation'], 1,
+                'only the original native domain exists at the exact helper boundary')
             paths = [native.directory / name for name in ('result-1-1.json', 'completed-1-1.json',
                 'result-1-1.json.pending', 'completed-1-1.json.pending')]
             report.true(all(not path.exists() for path in paths),
                 'the hardware cut precedes every original result and completed-response publication')
             report.true(host.poll() is None, 'the original execution host is alive independently of the stopped helper')
+            native.release.unlink()
             host.kill(); host.wait(timeout=15)
             report.equal(host.returncode, -signal.SIGKILL, 'the original owned host is independently killed and reaped')
             report.true(process_observation(ready['original'])['alive'] is True,
@@ -95,18 +165,34 @@ def installed_helper_closed_cut(report, kind, transport):
             if replacement is not None:
                 replacement.initialize()
             quiet = replacement._next_id if replacement is not None else 0
-            _wait_for_files(lambda: len(_fixture_rows(native.resource / 'results.jsonl')) == 5, successor, 30)
+            entries = _wait_for_files(lambda: [path for path in native.resource.glob('*.ready')
+                if json.loads(path.read_text())['run'] not in original_runs], successor, 35)
+            report.equal(len(entries), 1, 'one genuine successor validation waits at its external barrier')
+            closure_before = native_record(native, 'closed-1.json')
+            receipt_before = native_record(native, 'closure-1-1.json')
+            closed_prefix(prefix, instance, binding, closure_before, receipt_before)
+            report.equal(closure_before['domain'], original['body']['domain'],
+                'the exact original native domain is proved closed before successor fixture entry')
+            after = [process_observation(row) for row in originals]
+            report.true(all(row['alive'] is False for row in after),
+                'every original user-code process is dead before the only successor fixture enters')
+            report.equal(_fixture_rows(native.resource / 'results.jsonl'), original_results,
+                'the waiting successor cannot disguise or replace an original outcome')
+            report.true(all(not path.exists() for path in paths), 'original closure authorizes no invented completed result')
+            native.release.write_text('successor may proceed after verified original closure\n')
+            result_count = len(original_results) + 4
+            _wait_for_files(lambda: len(_fixture_rows(native.resource / 'results.jsonl')) == result_count, successor, 30)
             _wait_for_files(lambda: not interruption_ledger(read_journal_prefix(store), instance, 1), successor, 10)
             records = read_journal_prefix(store)
             trace = _fixture_rows(native.resource / 'trace.jsonl')
             results = _fixture_rows(native.resource / 'results.jsonl')
             report.equal(trace[:len(original_trace)], original_trace, 'recovery preserves the original external history')
-            report.equal(results[:1], original_results, 'recovery preserves the genuine original fixture result')
+            report.equal(results[:len(original_results)], original_results, 'recovery preserves genuine original fixture results')
             report.equal(interruption_ledger(records, instance, 1), (),
                 'receipt-only interruption preserves the attempt and permits exactly one successor validation')
             report.equal(observe_trace(trace, {'supplier': MUTATIONS}, complete=True).violations, (),
                 'all original and successor work remains sequential with exactly the required mutations')
-            report.equal([row['exit_code'] for row in results], [0] * 5, 'every reported outcome comes from a genuine operation')
+            report.equal([row['exit_code'] for row in results], [0] * result_count, 'every reported outcome comes from a genuine operation')
             report.true(all(not path.exists() for path in paths),
                 'closure-only recovery never publishes a fabricated original completed result')
             report.equal(replacement._next_id if replacement is not None else 0, quiet,
@@ -121,9 +207,11 @@ def installed_helper_closed_cut(report, kind, transport):
             report.equal(digest(Path(fsm.FSM)), binary_hash, 'all installed CLI candidate bytes remain unchanged')
             native.retain_debugger()
             report.note('FSM_INSTALLED_HELPER_CUT_EVIDENCE ' + json.dumps(dict(namespace=native.namespace,
-                transport=transport, handler_kind=kind, instance=instance, hardware=ready, protected_hardware=protected,
+                transport=transport, handler_kind=kind, cut=cut, instance=instance, hardware=ready, protected_hardware=protected,
                 enforced_limits=limits, dead=dead, restarted=restarted, original_claim=original,
                 original_prefix=prefix, binding=binding, closed=closed, receipt=receipt,
+                phase_material=material, expected_argv=expected_argv, original_fixture_before=before,
+                original_fixture_after=after, closure_before_successor=closure_before, receipt_before_successor=receipt_before,
                 original_results=original_results, original_trace=original_trace,
                 journal=records, trace=trace, results=results, state=state, final=final), sort_keys=True))
             _retire_execution_owner(report, successor, store, native.namespace, transport)
