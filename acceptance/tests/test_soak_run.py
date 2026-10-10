@@ -42,8 +42,9 @@ class AccountingTests(unittest.TestCase):
                   FileNotFoundError(2,'foreign','/proc/124/fd/5'),
                   ValueError('resource observation lost its original live host identity')]
         for failure in failures:
-            with patch('acceptance.suite.soak_resources.observe_live_host',side_effect=failure):
+            with patch('acceptance.suite.soak_resources.observe_live_host',side_effect=failure) as host:
                 with self.assertRaises(type(failure)):observe_process_resources(identity)
+            host.assert_called_once_with(identity)
         with patch('acceptance.suite.soak_resources.observe_live_host',side_effect=
                    FileNotFoundError(2,'gone','/proc/123/task/124/children')) as host, \
              patch('acceptance.suite.soak_resources.time.monotonic',side_effect=[0,1,2]), \
