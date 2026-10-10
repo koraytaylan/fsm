@@ -3169,6 +3169,14 @@ Requests MUST use the closed six-field fsm.executor-control/1 schema, match
 that exact identity and validate finite timeout bounds before closing admission.
 Discovery MUST refuse ambiguous matching endpoints, symlinks and nonprivate
 endpoint files; it MUST NOT select an arbitrary newest endpoint or process.
+After validating the original private discovery files and physical store,
+discovery MAY exclude a socket only when its actual connect returns
+ConnectionRefused; it MUST preserve those files and MUST NOT infer owner death,
+native closure or writer release from refusal. Every other connect error MUST
+remain transport uncertainty. Discovery MUST require exactly one connected
+matching endpoint before sending any request and retain that connection for
+the exact-incarnation exchange; two connected endpoints MUST refuse without
+closing either executor's admission.
 
 Requests MUST be bounded to 1024 wire bytes before LF and reports to 128 KiB
 before LF. One nonblocking transport loop MUST retain at most 64 connections,

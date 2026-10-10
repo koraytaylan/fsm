@@ -1,5 +1,10 @@
 # Releasing
 
+Local executor stop and observation can reach the unique connected replacement
+after a signal-killed owner leaves a refused original socket; stale files are
+preserved, multiple connected owners still refuse, and socket refusal grants
+no native cleanup or writer-release fact, with no format or version changes.
+
 Degraded HTTP initialization now returns its original JSON-RPC reply instead
 of replacing it with the trailing diagnostic; the diagnostic remains available
 in the same session's bounded SSE history, with no format or version changes.

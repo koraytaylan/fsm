@@ -7,6 +7,8 @@ depends_on:
   - acceptance-evidence-reports
 gated: false
 touches:
+  - crates/fsm-cli/src/local_control/client.rs
+  - crates/fsm-cli/tests/local_executor_control.rs
   - crates/fsm-cli/src/http/endpoint.rs
   - crates/fsm-cli/src/http/endpoint/retirement_tests.rs
   - docs/SPEC.md

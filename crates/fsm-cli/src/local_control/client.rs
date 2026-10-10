@@ -11,7 +11,7 @@ use std::{
         fs::{FileTypeExt, MetadataExt},
         net::UnixStream,
     },
-    path::{Path, PathBuf},
+    path::Path,
     sync::{
         atomic::{AtomicUsize, Ordering},
         mpsc,
@@ -111,9 +111,8 @@ fn exchange(
     timeout_ms: i64,
     deadline: Instant,
 ) -> io::Result<Value> {
-    let (socket, identity) = discover(root, data_dir, deadline)?;
+    let (mut stream, identity) = discover(root, data_dir, deadline)?;
     remaining(deadline)?;
-    let mut stream = UnixStream::connect(socket)?;
     // A connect that completed late must not initiate a late first stop request.
     stream.set_write_timeout(Some(remaining(deadline)?))?;
     let mut request = Vec::new();
@@ -159,7 +158,7 @@ fn discover(
     root: &Path,
     data_dir: &Path,
     deadline: Instant,
-) -> io::Result<(PathBuf, ControlIdentity)> {
+) -> io::Result<(UnixStream, ControlIdentity)> {
     let uid = owner_uid()?;
     private_directory(root, uid)?;
     let physical = fs::metadata(data_dir)?;
@@ -213,12 +212,20 @@ fn discover(
         {
             return Err(invalid("control socket is not owner-only and original"));
         }
+        // SPEC's local-control discovery: refusal excludes only this listener,
+        // never proves native death or permits removal of its original files.
+        let stream = match UnixStream::connect(&socket) {
+            Ok(stream) => stream,
+            Err(error) if error.kind() == io::ErrorKind::ConnectionRefused => continue,
+            Err(error) => return Err(error),
+        };
+        remaining(deadline)?;
         if found.is_some() {
             return Err(invalid(
                 "multiple original executor endpoints; stop target is ambiguous",
             ));
         }
-        found = Some((socket, identity));
+        found = Some((stream, identity));
     }
     found.ok_or_else(|| {
         io::Error::new(

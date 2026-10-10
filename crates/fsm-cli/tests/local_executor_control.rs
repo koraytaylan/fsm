@@ -14,7 +14,10 @@ use fsm_store::{clock::FixedClock, store::Store};
 use std::{
     fs,
     io::{Read, Write},
-    os::unix::{fs::DirBuilderExt, net::UnixStream},
+    os::unix::{
+        fs::{DirBuilderExt, MetadataExt, PermissionsExt},
+        net::{UnixListener, UnixStream},
+    },
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
     time::{Duration, Instant},
@@ -240,6 +243,84 @@ fn ambiguous_original_endpoints_refuse_without_stopping_either_control() {
     assert!(!driver.control().report().admission_closed);
     assert!(first.close(1000).unwrap());
     assert!(second.close(1000).unwrap());
+}
+
+fn refused_sibling(fixture: &Fixture, endpoint: &LocalControlEndpoint) -> PathBuf {
+    let directory = fixture.root.join(format!("c-{}", "e".repeat(16)));
+    fs::DirBuilder::new()
+        .mode(0o700)
+        .create(&directory)
+        .unwrap();
+    let mut identity = request(endpoint, "abort", 1000);
+    let Value::Obj(fields) = &mut identity else {
+        unreachable!()
+    };
+    fields.insert(
+        "format".into(),
+        Value::Str("fsm.executor-control-endpoint/1".into()),
+    );
+    fields.insert("incarnation".into(), Value::Str("e".repeat(64)));
+    fields.remove("mode");
+    fields.remove("timeout_ms");
+    let mut bytes = Vec::new();
+    write_canonical(&identity, &mut bytes);
+    fs::write(directory.join("identity"), bytes).unwrap();
+    fs::set_permissions(
+        directory.join("identity"),
+        fs::Permissions::from_mode(0o600),
+    )
+    .unwrap();
+    let listener = UnixListener::bind(directory.join("s")).unwrap();
+    fs::set_permissions(directory.join("s"), fs::Permissions::from_mode(0o600)).unwrap();
+    drop(listener);
+    directory
+}
+
+#[test]
+fn refused_socket_preserves_original_files_and_targets_unique_connected_owner() {
+    let fixture = Fixture::new();
+    let mut driver = fixture.driver();
+    let endpoint = LocalControlEndpoint::publish(&fixture.root, &mut driver).unwrap();
+    let stale = refused_sibling(&fixture, &endpoint);
+    let original = fs::read(stale.join("identity")).unwrap();
+    let inode = fs::symlink_metadata(stale.join("s")).unwrap().ino();
+    let observed = fsm_cli::local_control::observe(&fixture.root, &fixture.data, 1000).unwrap();
+    assert_eq!(
+        observed.get("phase").and_then(Value::as_str),
+        Some("running")
+    );
+    assert!(!driver.control().report().admission_closed);
+    let root = fixture.root.clone();
+    let data = fixture.data.clone();
+    let caller = std::thread::spawn(move || stop(&root, &data, ShutdownMode::Abort, 1000));
+    wait_for(|| driver.control().report().admission_closed);
+    driver.poll(&mut FixedClock::new(0, 1), 0);
+    let response = caller.join().unwrap().unwrap();
+    assert_eq!(
+        response.get("phase").and_then(Value::as_str),
+        Some("stopped")
+    );
+    assert_eq!(response.get("writer_released"), Some(&Value::Bool(true)));
+    assert_eq!(fs::read(stale.join("identity")).unwrap(), original);
+    assert_eq!(fs::symlink_metadata(stale.join("s")).unwrap().ino(), inode);
+    assert!(endpoint.close(1000).unwrap());
+}
+
+#[test]
+fn only_refused_socket_confirms_no_shutdown_and_missing_socket_stays_uncertain() {
+    let fixture = Fixture::new();
+    let mut driver = fixture.driver();
+    let endpoint = LocalControlEndpoint::publish(&fixture.root, &mut driver).unwrap();
+    let stale = refused_sibling(&fixture, &endpoint);
+    assert!(endpoint.close(1000).unwrap());
+    let error = stop(&fixture.root, &fixture.data, ShutdownMode::Abort, 1000).unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
+    assert!(stale.join("identity").exists() && stale.join("s").exists());
+    assert!(!driver.control().report().admission_closed);
+    fs::remove_file(stale.join("s")).unwrap();
+    assert!(stop(&fixture.root, &fixture.data, ShutdownMode::Abort, 1000).is_err());
+    assert!(!driver.control().report().admission_closed);
+    assert!(driver.store_mut().is_some());
 }
 
 #[test]

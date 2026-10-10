@@ -1,5 +1,11 @@
 # API and version policy
 
+Local executor control discovery now excludes only original private sockets
+whose actual connect returns ConnectionRefused, so a signal-killed owner's
+retained endpoint cannot make its unique connected replacement ambiguous.
+All other errors and multiple connected owners still refuse; retained files,
+native closure authority, public signatures, formats and versions are unchanged.
+
 Buffered HTTP JSON replies now select the original request ID rather than the
 last output line, preserving trailing degraded-store diagnostics in the same
 session's bounded SSE history; this transport correction changes no public

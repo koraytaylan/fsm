@@ -2600,13 +2600,17 @@ random incarnation. The host still owns and drives the executor; the endpoint
 thread handles only control metadata and cannot acquire the journal writer.
 
 A separate caller uses local_control::stop(root, data_dir, mode, timeout_ms).
-It refuses multiple matching endpoints and returns the actual report JSON
+It refuses multiple connected matching endpoints and returns the actual report JSON
 when delivered; errors mean admission and cleanup remain unconfirmed. Its
 finite transport budget includes filesystem discovery and Unix connect, and
 is separate from the first lifecycle deadline accepted by the server. The
 server can return uncertainty while the owner retains its writer without
 polling, and an owner poll can publish Stopped only after actual writer release.
 The response is diagnostic metadata and grants no authority to reuse a claim.
+Signal-killed owners may leave original private sockets behind: discovery
+excludes only an actual ConnectionRefused socket, preserves its files, and
+reuses the unique connected endpoint for the original-incarnation request.
+Other connect errors remain uncertain; socket refusal proves no native cleanup.
 
 At most 64 server connections are retained; old response connections may be
 evicted so waiting drains and silent clients cannot consume all abort parsing
