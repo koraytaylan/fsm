@@ -27,22 +27,25 @@ Downloaded logs/reports independently verify the exact source, complete native
 inventories and original-run workflow/upgrade transcripts; binary identities
 remain producer-attested. Frozen integration verdict:
 `21fdeda473a6748f9f11b6158d16046e41fcd68faa234a8a1d5224db89de739c`.
-The 83-item source audit and full passing matrix do not close the finding below.
+The 83-item source audit remains applicable; final current-candidate integration
+and remaining task promotion are pending.
 
-**Open integration finding:** preceding source `a6a1f815` failed the
-standalone/process/collected-timeout crash case in CI 38014300746: the original
-group was absent but the immutable closure receipt was missing and its claim
-remained unresolved. The disconnected runner's cleanup error was not retained,
-so the disposed original run cannot establish the cause. Fixture-only refusal
-diagnostics now retain that error. After full crash reruns passed, source
-`cfe64c6d` targets twenty fresh instances of the exact failed case per compiler;
-all forty pass the unchanged kill, original-closure and recovery assertions in
-CI 38020913274. Diagnostic reports cannot release full acceptance; frozen verdict
-`251cf393c1c43ab7203c70036208de4d6ea23a68f2abedf2f4faf7d19c4cbab7`.
-The failure remains unreproduced and its cause or repair unproven; the missing
-original cleanup refusal is an explicit integration blocker, not a passed skip.
-Admission and dependent MCP/acceptance tasks remain incomplete; plan 0023
-cannot register before this integration review closes.
+**Historical failure disposition:** source `a6a1f815` failed the
+standalone/process/collected-timeout case in CI 38014300746; that run remains
+failed and its lost cleanup error leaves the cause unknown. Its retained closing
+marker, missing receipt and unresolved claim are consistent with SPEC's bounded
+cleanup-uncertainty contract, which forbids settlement from native absence alone;
+this observation does not by itself establish a contract violation. The earlier
+requirement to recover that lost error before integration is withdrawn, without
+claiming a production repair or changing the failed test's verdict.
+
+At `7e7a3011`, the five original preceding cases and collected-timeout pass in
+order twenty times per compiler, retaining all closure and recovery assertions:
+[CI 38026217445](https://github.com/koraytaylan/fsm/actions/runs/38026217445),
+240 scenario executions independently verified. Frozen self-review:
+`f678d87ea7d4ce68189fd09674fd3fd515e9f43ee22a8300be90245098a0bdad`.
+These diagnostics do not replace the final complete applicable integration gate;
+plan 0023 still requires plan 0021 integration before registration.
 
 Earlier guard sensitivity, workflow milestones and reviews remain in the task
 cache, including the 48 original/neutralized/restored guard proofs at `80366824`
