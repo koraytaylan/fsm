@@ -8,6 +8,8 @@ mod cancellation;
 mod receiver;
 #[path = "provisioned/retry.rs"]
 mod retry;
+#[path = "provisioned/sensitivity.rs"]
+mod sensitivity;
 #[path = "provisioned/settlement.rs"]
 mod settlement;
 use fsm_execute::{
@@ -74,6 +76,8 @@ enum Scenario {
     Recovery,
     BoundRecheck,
     BoundCancel,
+    GuardStructure,
+    GuardBound,
 }
 
 #[test]
@@ -218,6 +222,7 @@ fn observe(borrowed: bool, scenario: Scenario) {
             | Scenario::Recovery
             | Scenario::BoundRecheck
             | Scenario::BoundCancel
+            | Scenario::GuardBound
     ) {
         restore.on_ok = None;
     }
@@ -322,6 +327,17 @@ fn observe(borrowed: bool, scenario: Scenario) {
             outcome.lines
         }
     };
+    let guard_fixture = sensitivity::Fixture::new(&store_path, &resource, scenario);
+    if sensitivity::observe(
+        guard_fixture,
+        &mut watcher,
+        &mut scheduler,
+        &mut runner,
+        &mut clock,
+        tick,
+    ) {
+        return;
+    }
     let diagnostic = if matches!(scenario, Scenario::UnknownRepair) {
         "error exec/contract_unknown"
     } else {
@@ -364,6 +380,7 @@ fn observe(borrowed: bool, scenario: Scenario) {
         assert_eq!(manual_stalls, 1);
     }
     let completed_instance = match scenario {
+        Scenario::GuardStructure | Scenario::GuardBound => unreachable!("guard probe returned"),
         Scenario::Contention
         | Scenario::AckOnly
         | Scenario::BoundRecheck

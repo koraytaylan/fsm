@@ -29,6 +29,7 @@ touches:
   - crates/fsm-execute/tests/contract_admission/provisioned.rs
   - crates/fsm-execute/tests/contract_admission/provisioned/receiver.rs
   - crates/fsm-execute/tests/contract_admission/provisioned/cancellation.rs
+  - crates/fsm-execute/tests/contract_admission/provisioned/sensitivity.rs
   - crates/fsm-execute/tests/contract_admission/provisioned/retry.rs
   - crates/fsm-execute/tests/contract_admission/provisioned/settlement.rs
   - crates/fsm-execute/src/containment/crash_matrix_native_tests.rs
