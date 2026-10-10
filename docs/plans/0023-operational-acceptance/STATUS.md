@@ -107,8 +107,22 @@ and pass after restoration; no refusal establishes native cleanup.
 Filtered proof remains release-ineligible, with frozen author review digest
 `4b937650daabc000e16ddefea3c38d03d9474d1b5df2a6771b280202ecafffe6`.
 
+Frozen standalone restart acceptance at `05a819bc19bd4aa9f6bbbc5ad380bf2c23b5e04c`
+establishes eight process/MCP abort, SIGINT, SIGTERM and SIGKILL cells with
+268 passing assertions and eight original successor-owner drains:
+[disposable installed evidence](https://github.com/koraytaylan/fsm/actions/runs/38046296501)
+proves original death and closure before quiet recovery, unchanged attempts,
+exactly one acknowledgement and advance, and actual resource restoration.
+Replay revalidates 1,278 source blobs and retained executable/helper bytes,
+forty original domain closures, 184 journal records and 104 raw trace records.
+Seventy-nine observer tests and actual unprivileged CLI setup/report checks
+pass; standalone replay uses its actual `agreement` report rather than the
+MCP wrapper's `matches`. Filtered proof remains release-ineligible, with
+frozen author review digest
+`c3785f99d144e9fb32f80a8e0f728e1c3f8ef30853056f4d4f44d92287533485`.
+
 Task 9502 remains in progress: slow/retired stdio observers, active drain,
-standalone lifecycle paths, remaining crash cuts and the pre-existing
+remaining crash cuts and the pre-existing
 portable acceptance inventory are outstanding.
 Sustained native operation, nine human-reviewed uncoached
 live-model sessions, Desktop compatibility and independent final review remain
