@@ -15,6 +15,7 @@ touches:
   - acceptance/provision-podman-runner.py
   - acceptance/tests/test_provision.py
   - acceptance/suite/evidence.py
+  - acceptance/suite/executor_scenarios.py
   - acceptance/tests/test_native.py
   - acceptance/profiles/operational.json
   - docs/OPERATIONS.md

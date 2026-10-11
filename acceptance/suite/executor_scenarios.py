@@ -604,7 +604,7 @@ def _installed_workflow(report, transport: str, kind: str, outcome: str, *,
         table = workflow_table(native.resource, native.handler, kind=kind, outcome=outcome,
                                release=native.release)
         table_path = native.approve(store, table)
-        with _installed_client(store, table_path, transport) as (client, host), ExitStack() as clients:
+        with _installed_client(store, table_path, transport, diagnostic_format="json") as (client, host), ExitStack() as clients:
             client.initialize()
             admission_evidence = (_installed_admission(report, client, native, store,
                                    json.loads(machine.read_text())) if admission else None)
