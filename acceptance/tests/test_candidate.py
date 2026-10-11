@@ -306,6 +306,25 @@ class CandidateControls(unittest.TestCase):
                      patch.object(VERIFY.NATIVE,'verify_original_sources'),self.assertRaises((ValueError,KeyError)):
                     VERIFY.manual_report(root,reference,CANDIDATE,index['binaries'],REVIEWER)
 
+    def test_manual_timestamp_duration_cannot_be_hidden_by_a_shorter_declared_duration(self):
+        with Scratch('candidate-synthetic-manual-timestamp-controls') as scratch:
+            index,github=self.fixture(Path(scratch.path));root=github.bundles[200]
+            original=VERIFY.read_json(root/'report.json')
+            for ended,passed in [('2026-10-11T00:15:00+00:00',True),
+                                 ('2026-10-11T00:15:00.000001+00:00',False),
+                                 ('2026-10-11T01:15:01+01:00',False)]:
+                report=copy.deepcopy(original);row=report['attempts'][0]
+                row.update(ended_at=ended,elapsed_seconds=600,human_reviewed_at='2026-10-11T00:20:00+00:00')
+                write(root/'report.json',report)
+                reference={**index['manual'],'report_sha256':digest(root/'report.json')}
+                with self.subTest(ended=ended),patch.object(VERIFY,'git',return_value=PROTOCOL), \
+                     patch.object(VERIFY.NATIVE,'verify_original_sources'):
+                    if passed:
+                        VERIFY.manual_report(root,reference,CANDIDATE,index['binaries'],REVIEWER)
+                    else:
+                        with self.assertRaisesRegex(ValueError,'timestamp duration'):
+                            VERIFY.manual_report(root,reference,CANDIDATE,index['binaries'],REVIEWER)
+
     def test_required_repository_and_release_jobs_must_really_pass(self):
         github=VERIFY.GitHubEvidence('owner/repository',Path('/unused'))
         repository_jobs={f'gate ({os_name}, {toolchain})' for os_name in ('ubuntu-latest','macos-latest','windows-latest') for toolchain in ('stable','1.89')}

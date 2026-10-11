@@ -1133,6 +1133,8 @@ producer jobs, and rechecks original reports, Git blobs, executable bytes and
 retirement records without executing native helpers locally.
 It refuses dirty or stale checkouts, missing proof, altered bytes, incomplete
 work/duration/resource bounds and unresolved review findings.
+Live-session start/end timestamps must independently fit the fifteen-minute
+bound; a shorter declared elapsed duration cannot hide a timestamped overrun.
 Run it from the clean tested checkout or its explicitly identified evidence-only
 successor, using a task cache outside `/tmp`:
 

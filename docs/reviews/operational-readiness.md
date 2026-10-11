@@ -64,6 +64,7 @@ job results; a generated score or preparation receipt does not unblock it.
 | Finding | Observed behavior and governing contract | Owner and disposition |
 |---|---|---|
 | Stale embedding shutdown/claim guidance | The earlier guide said a killed executor left no journaled start and immediately launched fresh handlers; supported native execution durably claims before entry and requires original authenticated closure before settlement/replacement. | Reconciled under task 9703 in [execution guarantees](../EMBEDDING.md#execution-guarantees-and-limits); documentation correction preserves the implemented plan-0022 contract. |
+| Timestamped manual-session overrun accepted | A session's original start/end timestamps could exceed fifteen minutes while a shorter declared `elapsed_seconds` passed the candidate verifier. | Fixed under task 9702: timestamp duration is checked independently; a focused regression rejects both a microsecond overrun and an equivalent offset timestamp, while preserving the exact fifteen-minute boundary. |
 | Sustained infrastructure unavailable | The repository has no registered runner or `FSM_OPERATIONAL_RUNNER_READY` value at preparation; hosted-job allowance cannot establish the required eight-hour run. | Task 9602 remains in progress until an actual disposable runner/declared host and separate original calibration/validation are available. |
 | Genuine human acceptance unavailable | No retained real nine-session campaign, Desktop capture or independent final review exists. | Tasks 9701/9703 remain incomplete until actual model/host/operator/reviewer observations and approval are supplied. |
 
@@ -73,6 +74,35 @@ and repeat the affected focused evidence before the final integration checkpoint
 Broader expensive gates execute once against the frozen end-of-plan candidate.
 Do not weaken rubric outcomes, duration/count floors, ownership/closure checks
 or supported-scope claims to turn an unresolved finding green.
+
+## User-authorized delegated review
+
+At the user's explicit request, Codex performed a delegated review on their
+behalf against base revision `bfe6afbe698e6f169406e746abb34666a67c2f92`
+and the timestamp-bound correction described above.
+The reviewer is identified as Codex acting for the requesting user; this is
+not a claim that a separate human examined artifacts or that the implementing
+agent became independent of its earlier work.
+
+Authenticated GitHub run/job metadata and original archive provenance were
+checked again, and all six historical baseline axes plus both complete Linux
+executor axes were replayed from original retained artifacts at `935e5af7`.
+Their source inventories, executable digests, native records and producer
+success remain valid for that historical revision, rather than supplying
+execution of the changed final candidate.
+The timestamp regression failed on the original implementation for both
+over-budget cases; all fifteen focused candidate controls pass after the fix.
+These controls remain explicitly synthetic and supply no live-session evidence.
+
+The delegated verdict is **incomplete**: approval is withheld until the real
+final-candidate sustained run/calibration, nine uncoached model sessions,
+Desktop compatibility, installed/native inventories, executed operational
+runbooks and integration gates establish all five concern rows.
+No approval comment, human score or independent-review pass was generated.
+The frozen delegated review receipt remains in the task cache, with digest
+`852be75cf02466eef54640413c645a5ff15d1979e31532d5a61663c479c56c28`;
+it records reviewer/principal, historical evidence identities, the adopted
+finding and remaining proof without changing task-completion claims.
 
 ## Closure record
 

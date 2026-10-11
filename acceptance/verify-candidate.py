@@ -322,8 +322,12 @@ def manual_report(root, reference, candidate, binaries, reviewer):
         require(row['verdict'] == 'passed' and row['coached'] is False and row['aborted'] is False
                 and row['safety_failure'] is False and row['cleanup_verified'] is True
                 and row['human_reviewer_identity'] == reviewer and row['human_reviewed_at'], 'manual session failed or lacks human review')
-        require(observation_time(row['started_at']) <= observation_time(row['ended_at'])
-                <= observation_time(row['human_reviewed_at']), 'manual session or review timestamp order differs')
+        started = observation_time(row['started_at'])
+        ended = observation_time(row['ended_at'])
+        require(started <= ended <= observation_time(row['human_reviewed_at']),
+                'manual session or review timestamp order differs')
+        require(0 < (ended - started).total_seconds() <= 900,
+                'manual session timestamp duration exceeded or omitted its time bound')
         require(type(row['model_call_count']) is int and 0 < row['model_call_count'] <= 40
                 and type(row['elapsed_seconds']) in (int, float) and 0 < row['elapsed_seconds'] <= 900,
                 'manual session exceeded or omitted a work/time bound')
