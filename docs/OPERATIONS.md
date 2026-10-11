@@ -165,6 +165,9 @@ Use `--rootful` to provision kernel device nodes while mapping
 container root to the non-root caller and other IDs to its assigned subordinate
 range, with private PID and
 cgroup namespaces; this mode does not use `--privileged` or map host root.
+The trusted owner has `SYS_PTRACE` within that private user namespace to
+authenticate the nondumpable DynamicUser gate's executable and descriptors;
+the contained handler's capability set remains empty.
 Rootless provisioning cannot create the root-owned kernel random device that
 native authority requires and remains unsuitable for this acceptance path.
 The provisioner creates a private kernel random node in the task cache,

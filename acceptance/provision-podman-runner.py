@@ -116,7 +116,7 @@ class Host:
         name = pwd.getpwuid(os.getuid()).pw_name
         if os.getuid() == 0 or os.getgid() == 0:
             raise ValueError('the provisioner requires a non-root caller')
-        options = ['--cap-add=SYS_ADMIN', '--cap-add=MKNOD',
+        options = ['--cap-add=SYS_ADMIN', '--cap-add=MKNOD', '--cap-add=SYS_PTRACE',
                    '--security-opt=apparmor=unconfined']
         for kind in ('uid', 'gid'):
             rows = [line.split(':') for line in Path('/etc/sub' + kind).read_text().splitlines()
