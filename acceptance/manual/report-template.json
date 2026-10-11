@@ -52,7 +52,9 @@
     "correction_reference", "correction_sha256", "corrected_configuration_reference",
     "corrected_configuration_sha256"
   ],
-  "desktop": {
+  "client_compatibility": {
+    "name": null,
+    "transport": null,
     "verdict": "unexecuted",
     "version": null,
     "candidate_code_sha": null,
@@ -75,6 +77,6 @@
     "unresolved_findings": []
   },
   "incomplete_reasons": [
-    "Template only: no live sessions, human scores or Desktop check executed."
+    "Template only: no live sessions, human scores or MCP client compatibility check executed."
   ]
 }

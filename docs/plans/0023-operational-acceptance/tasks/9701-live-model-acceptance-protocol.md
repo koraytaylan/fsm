@@ -31,7 +31,7 @@ running a mock does not open this gate or complete the task.
 3. Run three fresh sessions per brief against the candidate, with only the
    published resources/docs and operator-provisioned table available to the
    model, recording model/host versions, tool calls and final external state.
-4. Run the separate Desktop configuration/connect/list check already required
+4. Run the separate MCP client compatibility configuration/connect/list check already required
    by RELEASE; do not substitute it for live authoring or protocol coverage.
 5. Have a human score the frozen rubric, retain redacted transcripts and
    artifact references, and rerun the complete set after relevant fixes.

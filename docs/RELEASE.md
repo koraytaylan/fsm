@@ -1062,18 +1062,20 @@ Two items are not in the suite, and neither is a scheduling problem:
   natural-language brief, unaided, in a bounded number of tool calls.** This is
   the project's premise, it needs a live model, and a pass you coached is not a
   pass. Automating it against a pinned model would test the model.
-- `manual:` **Claude Desktop specifically.** Its transport is stdio MCP, which
-  the suite covers; what it does not cover is Desktop's own configuration
-  parsing and UI. Worth one connect-and-list before a release, and worth being
-  clear that is all it proves.
+- `manual:` **a genuine configured MCP client connects to the candidate.**
+  Record the selected client name and version, transport, operative configuration,
+  initialize and tools-list output; protocol tests alone do not prove that
+  client's configuration and connection work.
 
-Plan 0023 retains both manual obligations and extends live authoring to the
+At the user's direction, this check is client-neutral; Codex or Claude Code
+can supply it, and Claude Desktop is not required. Plan 0023 retains both
+manual obligations and extends live authoring to the
 frozen [three-brief protocol](../acceptance/manual/briefs.md): three fresh
 sessions each for parent/child case review, automated compensation and
 incompatible-handler recovery, with forty calls and fifteen minutes per session.
 The [human scoring rubric](../acceptance/manual/rubric.md) requires original
 transcripts, candidate/model/host identity, independent external observations,
-every attempted session and a separately retained Desktop configuration/connect/
+every attempted session and a separately retained MCP client configuration/connect/
 list result; the [report template](../acceptance/manual/report-template.json)
 starts incomplete and supplies no executed evidence.
 All nine uncoached sessions must pass the frozen rubric under genuine human
@@ -1120,7 +1122,7 @@ Before tagging, freeze one `fsm.candidate-index/1` document described by
 It identifies the tested code SHA, exact implementation-contract digests,
 each installed executable, immutable GitHub artifact IDs/archive digests and
 original report paths/digests, the complete repository CI run, nine genuine
-uncoached sessions, Desktop compatibility and the independent five-concern
+uncoached sessions, MCP client compatibility and the independent five-concern
 operational review with executed clean-setup and interrupted-recovery runbooks.
 All six native baseline axes, both Linux executor axes, the separately
 calibrated Linux sustained axis and the complete unfiltered Podman consumer

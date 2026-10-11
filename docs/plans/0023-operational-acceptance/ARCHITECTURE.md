@@ -24,7 +24,7 @@ At `67ad5e3`, `acceptance/acceptance.sh` builds a Podman image and invokes
 address an installed binary and source fixtures. The runner prints assertions
 but has no durable candidate manifest; it returns success if no scenario
 fails, even when a scenario is skipped. `docs/RELEASE.md` requires live-model
-and Desktop checks but does not retain a structured candidate report.
+and MCP client compatibility checks but does not retain a structured candidate report.
 
 `.github/workflows/ci.yml` runs the stable/MSRV Rust gate on three OS families;
 `release.yml` adds release and fuzz proofs. Those configured jobs are not
@@ -152,7 +152,7 @@ and accurately explain the final state. Any safety failure blocks acceptance;
 all nine must pass the frozen rubric. Report every attempted session, including
 coached or aborted attempts, and rerun the full set after relevant fixes.
 
-Keep the Desktop connect/list/configuration smoke check distinct from model
+Keep the MCP client compatibility connect/list/configuration smoke check distinct from model
 authoring and protocol conformance. Genuine human review remains explicit;
 credentials or an unavailable interactive host leave the task gated, never
 converted into a mock pass. Artifacts can be stored in access-controlled CI

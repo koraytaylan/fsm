@@ -2,7 +2,7 @@
 
 This is the task-9701 procedure, not evidence of an executed session;
 the task remains gated until a real supported model, interactive host and
-human reviewer are available, and all nine sessions plus Desktop pass.
+human reviewer are available, and all nine sessions plus MCP client compatibility pass.
 Record this file's original SHA-256 and its committing revision before
 delivering any scored brief, together with the brief and fixture digests.
 Changes after scoring starts invalidate the affected campaign and require
@@ -112,20 +112,22 @@ Cleanup is separately recorded after original observations are retained:
 confirmed execution-owner drain, original-domain closure and removal of only
 owned stores/resources/helpers; uncertain cleanup leaves the result incomplete.
 
-## Distinct Desktop check and campaign verdict
+## Distinct client compatibility check and campaign verdict
 
-On the same candidate, a human performs Claude Desktop's own configuration,
-connect, initialize and tools-list smoke check, recording the actual Desktop
-version, configuration digest, candidate identity, raw client/server output
+On the same candidate, the reviewer checks the selected real MCP client's
+configuration, connect, initialize and tools-list results, recording its name,
+version and transport, configuration digest, candidate identity, raw client/server output
 and screenshots or an inspectable capture; redact secret values while retaining
 the configuration's operative structure and original protected reference.
 Record its outcome and reviewer separately from all model-authoring sessions;
-generic MCP protocol tests do not establish Desktop configuration/UI behavior.
+generic MCP protocol tests do not establish that client's configuration and
+connection behavior. Codex or Claude Code can supply this check; no particular
+client brand or graphical interface is required.
 
 Use [the report template](report-template.json) as an explicitly incomplete
 starting record, filling observations from real retained artifacts rather than
 turning defaults into success. A campaign passes only with the exact nine
 uncoached human-reviewed passes, successful owned cleanup and the distinct
-Desktop pass, complete identity/digest references and no unresolved safety or
+MCP client compatibility pass, complete identity/digest references and no unresolved safety or
 review finding; task completion additionally requires coordinator review of
 that candidate-specific evidence, not merely publication of these documents.

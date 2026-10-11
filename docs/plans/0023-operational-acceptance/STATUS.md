@@ -447,7 +447,7 @@ until a separately calibrated sustained run meets both eight hours and 10,000
 completed cycles on the same final candidate as the required remaining axes.
 
 Sustained native operation, nine human-reviewed uncoached
-live-model sessions, Desktop compatibility and independent final review remain
+live-model sessions, MCP client compatibility compatibility and independent final review remain
 mandatory and incomplete; no passing skip or synthetic control replaces them.
 Expensive integration gates run at the end of the plan against a frozen candidate.
 

@@ -343,11 +343,11 @@ def manual_report(root, reference, candidate, binaries, reviewer):
         references(root, previous, ('original_report', 'correction', 'corrected_configuration'))
     require(len({row['campaign_id'] for row in report['previous_campaigns']}) == len(report['previous_campaigns']),
             'previous manual campaigns contain duplicates')
-    desktop = report['desktop']
-    require(desktop['verdict'] == 'passed' and desktop['version'] and desktop['candidate_code_sha'] == candidate
-            and desktop['binary_sha256'] in binaries.values() and desktop['human_reviewer_identity'] == reviewer
-            and desktop['human_reviewed_at'], 'genuine candidate-specific Desktop evidence is incomplete')
-    references(root, desktop, ('configuration', 'connect_initialize_list', 'capture'))
+    client = report['client_compatibility']
+    require(client['verdict'] == 'passed' and client['name'] and client['version'] and client['transport'] in ('stdio', 'streamable-http') and client['candidate_code_sha'] == candidate
+            and client['binary_sha256'] in binaries.values() and client['human_reviewer_identity'] == reviewer
+            and client['human_reviewed_at'], 'genuine candidate-specific MCP client compatibility evidence is incomplete')
+    references(root, client, ('configuration', 'connect_initialize_list', 'capture'))
     review = report['human_review']
     require(review['verdict'] == 'passed' and review['reviewer_identity'] == reviewer and review['reviewed_at']
             and review['unresolved_findings'] == [], 'live-model human review is incomplete')

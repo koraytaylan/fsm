@@ -20,7 +20,7 @@ not establish that an installed binary works through a real client or survives
 a long-running workload on every supported operating system. The current
 `acceptance/suite/` already provides an independent Python standard-library
 client and fifteen installed-binary scenarios; `docs/RELEASE.md` also requires
-manual live-model and Desktop checks. This plan extends those assets and makes
+manual live-model and MCP client compatibility checks. This plan extends those assets and makes
 their evidence attributable to a candidate, rather than claiming they are
 absent or replacing them with an engine-derived oracle.
 

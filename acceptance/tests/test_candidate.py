@@ -116,9 +116,9 @@ class CandidateControls(unittest.TestCase):
             references(row,('table','starting_store','starting_resource','original_transcript','public_redacted_transcript',
                 'final_answer','original_journal','external_observations','cleanup','native_closure'))
             report['attempts'].append(row)
-        report['desktop'].update(verdict='passed',version='synthetic',candidate_code_sha=CANDIDATE,binary_sha256=digest(binary),
+        report['client_compatibility'].update(verdict='passed',name='synthetic MCP client',version='synthetic',transport='stdio',candidate_code_sha=CANDIDATE,binary_sha256=digest(binary),
             human_reviewer_identity=REVIEWER,human_reviewed_at='synthetic review timestamp')
-        references(report['desktop'],('configuration','connect_initialize_list','capture'))
+        references(report['client_compatibility'],('configuration','connect_initialize_list','capture'))
         report['human_review'].update(verdict='passed',reviewer_identity=REVIEWER,reviewed_at='synthetic review timestamp')
         references(report['human_review'],('conclusion',));write(manual/'report.json',report)
         index['manual']=dict(artifact_id=200,job_id=200,run_id=200,archive_sha256='b'*64,report_path='report.json',report_sha256=digest(manual/'report.json'))
@@ -192,7 +192,9 @@ class CandidateControls(unittest.TestCase):
                 lambda value:value['attempts'][0].update(model_call_count=41),lambda value:value['attempts'][0].update(model_call_count=True),
                 lambda value:value['attempts'][0].update(elapsed_seconds=901),lambda value:value['attempts'][0]['criterion_results'].update(safety=False),
                 lambda value:value['attempts'][0].update(verdict='skipped'),lambda value:value['candidate'].update(code_sha='c'*40),
-                lambda value:value['desktop'].update(verdict='unexecuted'),lambda value:value['human_review'].update(unresolved_findings=['unresolved'])]
+                lambda value:value['client_compatibility'].update(verdict='unexecuted'),
+                lambda value:value['client_compatibility'].update(name=''),lambda value:value['client_compatibility'].update(version=''),
+                lambda value:value['client_compatibility'].update(transport='invented'),lambda value:value['human_review'].update(unresolved_findings=['unresolved'])]
             for change in changes:
                 report=copy.deepcopy(original);change(report);write(root/'report.json',report)
                 reference={**index['manual'],'report_sha256':digest(root/'report.json')}
@@ -292,7 +294,7 @@ class CandidateControls(unittest.TestCase):
             paths=[('candidate',key) for key in ('code_sha','source_fixture_revision','binary_sha256','build_receipt')]
             paths += [('protocol',key) for key in original['protocol']]
             paths += [('operator',key) for key in original['operator']]
-            paths += [('desktop',key) for key in original['desktop']]
+            paths += [('client_compatibility',key) for key in original['client_compatibility']]
             paths += [('human_review',key) for key in original['human_review']]
             paths += [('attempts',0,key) for key in original['attempts'][0] if not key.startswith('native_closure_')]
             paths += [('attempts',3,key) for key in ('native_closure_reference','native_closure_sha256')]
