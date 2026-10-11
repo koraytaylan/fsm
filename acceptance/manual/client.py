@@ -37,6 +37,17 @@ def remote_receipt(host, container, directory, name, value):
 
 def run_client(host, container, current, destination, prompt):
     destination.mkdir(mode=0o700)
+    # The genuine client persists large resource results to files unavailable
+    # to this MCP-only session; preload the same complete published spec bytes
+    # before brief delivery, without an answer definition or corrective advice.
+    repository = Path(__file__).resolve().parents[2]
+    specification = subprocess.run(['git', 'show', current['candidate'] + ':docs/SPEC.md'],
+        cwd=repository, check=True, capture_output=True, timeout=10).stdout
+    specification_path = destination / 'published-spec.md'
+    specification_path.write_bytes(specification)
+    specification_identity = dict(candidate=current['candidate'], source='docs/SPEC.md',
+                                  sha256=hashlib.sha256(specification).hexdigest())
+    (destination / 'published-spec-identity.json').write_text(json.dumps(specification_identity) + '\n')
     arguments = host.podman[1:] + ['exec', '--interactive', '--user', 'fsm',
         '--env', 'PYTHONDONTWRITEBYTECODE=1', container, 'python3', '-B',
         current['source'] + '/acceptance/manual/bridge.py', current['socket']]
@@ -47,12 +58,14 @@ def run_client(host, container, current, destination, prompt):
         str(destination / 'mcp.json'), '--tools', 'ListMcpResourcesTool,ReadMcpResourceTool',
         '--allowedTools', 'ListMcpResourcesTool,ReadMcpResourceTool,mcp__fsm__*',
         '--setting-sources', '', '--disable-slash-commands', '--no-session-persistence',
+        '--append-system-prompt-file', str(specification_path),
         '--print', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose']
     (destination / 'invocation.json').write_text(json.dumps(cli, indent=2) + '\n')
     model, version, final, process = None, None, None, None
     started = time.monotonic()
     receipt = dict(monotonic=started, prompt_sha256=hashlib.sha256(prompt.encode()).hexdigest(),
-                   session_id=current['session_id'], candidate=current['candidate'])
+                   session_id=current['session_id'], candidate=current['candidate'],
+                   published_specification=specification_identity)
     try:
         with (destination / 'client-output.jsonl').open('wb') as output, \
              (destination / 'client-stderr.log').open('wb') as error:
@@ -108,7 +121,8 @@ def run_client(host, container, current, destination, prompt):
         try:
             remote_receipt(host, container, current['directory'], 'client-result.json', final)
             for name in ('client-output.jsonl', 'client-stderr.log', 'prompt.txt', 'mcp.json',
-                         'invocation.json', 'brief-delivered.json'):
+                         'invocation.json', 'brief-delivered.json', 'published-spec.md',
+                         'published-spec-identity.json'):
                 host_path = destination / name
                 if host_path.exists():
                     host.exec(container, ['mkdir', '-p', current['directory'] + '/client-originals'], user='fsm')

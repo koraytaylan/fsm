@@ -3,6 +3,9 @@ import unittest
 import os
 import subprocess
 import sys
+import io
+import socket
+from types import SimpleNamespace
 from pathlib import Path
 
 from acceptance.suite.fsm import Scratch
@@ -11,6 +14,20 @@ from acceptance.manual.session import Budget, Session, publish
 
 
 class SessionBudgetTests(unittest.TestCase):
+    def test_client_eof_preserves_server_input_until_owner_cleanup(self):
+        with Scratch('live-eof-owner-drain-control') as scratch:
+            session = Session(Path(scratch.path), [], {})
+            session.process = SimpleNamespace(stdin=io.BytesIO())
+            client, server = socket.socketpair()
+            with client, server:
+                session.connection = server
+                client.shutdown(socket.SHUT_WR)
+                session.forward_input()
+                self.assertIsNone(session.failure)
+                self.assertFalse(session.process.stdin.closed)
+                session.close_transport()
+                self.assertTrue(session.process.stdin.closed)
+
     def test_executable_entrypoints_do_not_shadow_standard_library(self):
         repository = Path(__file__).resolve().parents[2]
         for name in ('client.py', 'provision.py'):

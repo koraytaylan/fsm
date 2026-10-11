@@ -238,12 +238,18 @@ ephemeral Podman runner and run `acceptance/manual/client.py --run-id RUN_ID
 --candidate CODE_SHA` from the authenticated client host with its owned task
 cache; the client uses genuine restricted streaming sessions, a fresh directory
 per brief, only MCP and resource tools, and no model/version override.
+Before delivering each brief, it supplies the complete public `docs/SPEC.md`
+bytes from the frozen Git revision as client context, retaining their digest;
+this prevents the client's large-resource persistence from hiding the spec
+when filesystem tools are disabled, without supplying an answer or coaching.
 The operator supplies empty stores and immutable approved process-handler
 tables, including the documented partial-processing fixture, without loading
 machine definitions or sending product operations for the model.
 Every MCP request/response, exact delivery/final timestamps, original CLI
 conversation, independent external state and native cleanup receipt is retained;
 late initialization receipts cannot hide post-delivery discovery calls.
+Client EOF leaves the original server input open until its separately recorded
+execution-owner drain completes, so transport retirement cannot race cleanup.
 Each native producer retains the 1 GiB/zero-swap bound, each model has the frozen
 40-call/900-second budget, and the protected broker's finite 1,000-second
 lifetime covers one session plus cleanup; existing short fixtures keep their

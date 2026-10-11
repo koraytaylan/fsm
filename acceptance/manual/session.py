@@ -101,8 +101,8 @@ class Session:
                     self.process.stdin.flush()
         except Exception as error:
             self.fail(error)
-        finally:
-            self.process.stdin.close()
+        # Client EOF must not race the separately recorded execution-owner
+        # drain: keep the original server input open until owned cleanup.
 
     def forward_output(self):
         try:
@@ -198,3 +198,5 @@ class Session:
             worker.join(timeout=2)
             if worker.is_alive():
                 raise RuntimeError('original MCP relay did not retire')
+        if self.process is not None and not self.process.stdin.closed:
+            self.process.stdin.close()
