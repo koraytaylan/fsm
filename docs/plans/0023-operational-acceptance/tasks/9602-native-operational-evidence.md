@@ -10,6 +10,7 @@ touches:
   - .github/workflows/ci.yml
   - .github/workflows/operational-acceptance.yml
   - acceptance/run-native.py
+  - acceptance/run-installed-executor.py
   - acceptance/Containerfile
   - acceptance/Runner.Containerfile
   - acceptance/provision-podman-runner.py
@@ -17,6 +18,7 @@ touches:
   - acceptance/suite/evidence.py
   - acceptance/suite/executor_scenarios.py
   - acceptance/tests/test_native.py
+  - acceptance/tests/test_installed_inventory_observer.py
   - acceptance/profiles/operational.json
   - docs/OPERATIONS.md
 status: in_progress

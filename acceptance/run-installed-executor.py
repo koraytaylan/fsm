@@ -23,6 +23,15 @@ from acceptance.suite.installed import (SCENARIOS, CELLS, selection,
     validate_installed_report, retain_failed_stores)
 
 
+def retain_observations(temporary, evidence, cells):
+    """Preserve partial fixture/store originals even when the consumer times out."""
+    if not temporary.is_dir():
+        return
+    for directory in temporary.glob("installed-native-*"):
+        shutil.copytree(directory, evidence / directory.name)
+    retain_failed_stores(temporary, evidence, cells)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--candidate", required=True)
@@ -55,8 +64,10 @@ def main() -> int:
     control_path.write_text(json.dumps(control, indent=2))
     installed = None
     success = False
+    observations_retained = False
     source = cache / "source"
     install_root = cache / "install"
+    temporary = cache / "temporary"
     try:
         source_manifest = snapshot(REPO, source)
         if source_manifest["dirty"]:
@@ -79,26 +90,29 @@ def main() -> int:
             installed = json.loads(privileged(sys.executable, str(installer), "install",
                                               "--source", str(authority), "--sha256", authority_digest))
             privileged("mkdir", "-m", "0755", str(BASE))
-        temporary = cache / "temporary"
         temporary.mkdir()
         environment = {**os.environ, "TMPDIR": str(temporary), "PYTHONDONTWRITEBYTECODE": "1",
                        "FSM_BIN": str(binary), "FSM_REPO": str(source),
                        "FSM_BUILD_RECEIPT": str(receipt), "FSM_CANDIDATE_REVISION": arguments.candidate,
                        "FSM_CANDIDATE_SHA256": digest(binary), "FSM_EVIDENCE_DIR": str(evidence / "reports")}
-        with (evidence / "consumer.log").open("wb") as log:
-            result = subprocess.run([sys.executable, "-m", "acceptance.suite.run", *consumer_arguments],
-                                    cwd=source, env=environment, stdout=log, stderr=subprocess.STDOUT,
-                                    timeout=600 if scenario == "full" else 360)
-        control.update(consumer_invoked=True, consumer_exit=result.returncode,
-                       binary_sha256=digest(binary), authority_sha256=authority_digest,
+        control.update(binary_sha256=digest(binary), authority_sha256=authority_digest,
                        build_receipt_sha256=digest(receipt))
         shutil.copy2(binary, evidence / "fsm-installed-binary")
         if native:
             shutil.copy2(authority, evidence / "fsm-containment-authority-built")
         shutil.copy2(receipt, evidence / "build-receipt.json")
-        for directory in temporary.glob("installed-native-*"):
-            shutil.copytree(directory, evidence / directory.name)
-        retain_failed_stores(temporary, evidence, cells)
+        control.update(consumer_invoked=True, consumer_exit=None)
+        with (evidence / "consumer.log").open("wb") as log:
+            try:
+                result = subprocess.run([sys.executable, "-m", "acceptance.suite.run", *consumer_arguments],
+                                        cwd=source, env=environment, stdout=log, stderr=subprocess.STDOUT,
+                                        timeout=600 if scenario == "full" else 360)
+            except subprocess.TimeoutExpired:
+                control["consumer_timed_out"] = True
+                raise
+        control["consumer_exit"] = result.returncode
+        retain_observations(temporary, evidence, cells)
+        observations_retained = True
         reports = list((evidence / "reports").glob("*/report.json"))
         if result.returncode != 0 or len(reports) != 1:
             raise RuntimeError("installed autonomous scenario failed or its report is missing")
@@ -126,6 +140,11 @@ def main() -> int:
         print("installed native acceptance failed: " + str(error), file=sys.stderr)
         return 1
     finally:
+        if not observations_retained:
+            try:
+                retain_observations(temporary, evidence, cells)
+            except Exception as error:
+                control["retention_error"] = str(error)
         control_path.write_text(json.dumps(control, indent=2, sort_keys=True), encoding="utf-8")
         print("focused evidence: " + str(evidence))
 

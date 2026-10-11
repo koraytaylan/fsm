@@ -462,7 +462,7 @@ BASE..HEAD`.
 Final review of a high-risk change uses a committed, frozen `BASE..HEAD`
 range. Later edits invalidate the affected review and gates. The
 authoritative review procedure, the release checklist, and the
-manual-acceptance list (Claude Code, Claude Desktop, MCP Inspector, the
+manual-acceptance list (a genuine Codex or Claude Code MCP client, MCP Inspector, the
 LLM-authored case-review loop, the `EXAMPLES.md` transcript replay under
 `FSM_CLOCK_MS`, the decimal-vector regeneration, the latency harness) are
 in [`docs/RELEASE.md`](docs/RELEASE.md). A high-risk change that touches
