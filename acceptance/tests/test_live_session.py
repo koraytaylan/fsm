@@ -1,5 +1,8 @@
 """Synthetic session-budget controls, never live-model acceptance evidence."""
 import unittest
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 from acceptance.suite.fsm import Scratch
@@ -8,6 +11,16 @@ from acceptance.manual.session import Budget, Session, publish
 
 
 class SessionBudgetTests(unittest.TestCase):
+    def test_executable_entrypoints_do_not_shadow_standard_library(self):
+        repository = Path(__file__).resolve().parents[2]
+        for name in ('client.py', 'provision.py'):
+            with self.subTest(entrypoint=name):
+                result = subprocess.run([sys.executable, '-B', str(repository / 'acceptance/manual' / name),
+                    '--help'], cwd=repository, env=dict(os.environ, PYTHONDONTWRITEBYTECODE='1'),
+                    text=True, capture_output=True, timeout=10)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn('--candidate', result.stdout)
+
     def test_fortieth_call_and_exact_elapsed_boundary_pass(self):
         budget = Budget(100)
         for index in range(40):

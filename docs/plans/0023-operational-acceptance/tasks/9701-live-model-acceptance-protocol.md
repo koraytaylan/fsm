@@ -11,7 +11,7 @@ touches:
   - acceptance/manual/rubric.md
   - acceptance/manual/report-template.json
   - acceptance/manual/session.py
-  - acceptance/manual/operator.py
+  - acceptance/manual/provision.py
   - acceptance/manual/client.py
   - acceptance/manual/bridge.py
   - acceptance/tests/test_live_session.py

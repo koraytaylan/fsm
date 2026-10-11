@@ -251,7 +251,7 @@ jobs:
           spec = importlib.util.spec_from_file_location('native_producer', 'acceptance/run-native.py')
           module = importlib.util.module_from_spec(spec)
           spec.loader.exec_module(module)
-          arguments = [str(Path('acceptance/manual/operator.py').resolve()),
+          arguments = [str(Path('acceptance/manual/provision.py').resolve()),
                        '--candidate', os.environ['FSM_NATIVE_CANDIDATE']]
           subprocess.run(module.controlled_command(arguments, 10_200), check=True, timeout=10_230)
           PY
