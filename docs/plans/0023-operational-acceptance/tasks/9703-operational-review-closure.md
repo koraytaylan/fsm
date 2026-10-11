@@ -9,6 +9,7 @@ gated: false
 touches:
   - docs/OPERATIONS.md
   - docs/RELEASE.md
+  - docs/EMBEDDING.md
   - docs/reviews/operational-readiness.md
 status: planned
 merged_as: ""

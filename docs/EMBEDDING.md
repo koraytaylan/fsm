@@ -1902,7 +1902,7 @@ cannot hide a pending recovery step. Hosts should construct
 `Watcher::new` constructor receives only effect names and assumes both outcomes
 can advance.
 
-### What this does not promise
+### Execution guarantees and limits
 
 The guarantee, stated in the shape the design actually holds:
 **at-least-once execution, exactly-once journaling.**
@@ -1911,17 +1911,31 @@ The guarantee, stated in the shape the design actually holds:
   single-writer ceiling.
   There is no HA, no multi-writer coordination, and no distribution of handlers
   across machines.
-- **At-least-once at the process boundary.** What the journal knows, a
-  successor honours; what it does not, a successor repeats. An ack that was
-  journaled but whose advance was lost is re-derived and replayed, never
-  double-applied. A handler that was running when the executor was killed is
-  re-run by the next one, because nothing in the journal says it ever started.
+- **At-least-once external effects.** Supported Linux native execution journals
+  its original claim before handler entry. A successor must authenticate that
+  original run's closure and retained result before settlement or replacement;
+  missing or uncertain proof retains ownership and refuses new entry.
+  An acknowledgement whose outcome event was interrupted is recovered from its
+  original checked handoff without running the handler or acknowledging again.
+  Unacknowledged external work can still repeat after safe original-run
+  retirement, so handlers need domain-specific idempotency or reconciliation.
 - **No rollback.** A handler that already reached the outside world is not
   undone by `fsm`. Model the undo as an explicit **compensating** effect the
   machine's failure path emits, and let the engine decide when it fires.
-- A clean shutdown kills and reaps every handler it started. A signalled one —
-  `kill -9`, or Ctrl-C — cannot: those children are orphaned and keep running,
-  and the next executor starts fresh ones rather than adopting them.
+- **Confirmed native shutdown.** `execute stop --mode drain|abort` closes
+  admission and reports actual original-domain/helper retirement and writer
+  release within its retained deadline. Drain observes already admitted work;
+  later effects, including compensation, may remain pending for a safe successor.
+  Killing the owner, a refused socket or elapsed time supplies no closure proof:
+  recovery must reconcile the original claim before admitting a replacement.
+  Protocol output drainage is a separate fact, and local process closure neither
+  cancels remote work nor rolls back external mutations.
+
+These lifecycle guarantees describe the supported owned Linux runtime;
+macOS/Windows refuse unsupported contained execution, and borrowed embedding
+helpers retain their documented caller-driven lifecycle obligations.
+The deployment, shutdown and recovery procedure is in
+[`OPERATIONS.md`](OPERATIONS.md#deployment-shutdown-and-recovery-runbook).
 
 ### Executor error codes
 

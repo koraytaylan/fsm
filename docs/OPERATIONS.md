@@ -189,3 +189,215 @@ or validation plus disk and artifact storage. Artifacts upload on failures and
 successes; a cancelled job or unsuccessful upload remains incomplete even if
 its producer had written a passing report. Final candidate acceptance also
 requires all other plan evidence, including human sessions and independent review.
+
+## Deployment, shutdown and recovery runbook
+
+This procedure targets the supported owned Linux/systemd runtime on one
+physical store with one writer; macOS/Windows provide observation and protocol
+coverage while refusing unsupported contained execution.
+The [operational review matrix](reviews/operational-readiness.md) identifies
+executed historical evidence separately from the final candidate still to be
+reviewed. Writing this runbook does not establish that its final-candidate
+walkthrough has executed successfully.
+
+### Install and provision
+
+Select one immutable code revision and retain its controlled-build receipt,
+CLI and helper SHA-256 digests, actual Rust/native OS identities, operator UID,
+handler-table digest and physical data-directory identity before starting work.
+Use a non-root execution account, a private task cache, bounded diagnostics
+and an explicitly provisioned Linux/systemd host with cgroup v2.
+Inspect memory/swap before compilation; compile with one Cargo worker and the
+same finite memory/zero-swap limits used for candidate evidence.
+The disposable acceptance installation is provided by the native workflows
+above; it refuses an existing helper and remains separate from production
+provisioning. Never enable its disposable-CI guard on a development machine.
+
+For a production installation, the administrator provides the candidate's
+`fsm-containment-authority` binary at `/usr/libexec/fsm-containment-authority`,
+Root-owned mode 0711 beneath protected nonsymlink parents, and the protected
+`/var/lib/fsm-containment` base. Handler programs/configuration must also satisfy
+the native protection policy; preserve the approved bytes rather than allowing
+the execution account or model to change them.
+The privileged binary is the `fsm-execute` package's separately built
+`fsm-containment-authority` target, not a file the model installs or edits.
+Retain installation ownership, device/inode and digest evidence; an unknown or
+writable existing installation requires refusal of execution and investigation
+before replacement. The pre-entry gate requires `fs.suid_dumpable` to be 0 or 2.
+
+As the non-root execution account, select the retained installed `fsm_binary`,
+approved `machine_file` and a fresh `data_dir`, then initialize that store once:
+
+```sh
+"$fsm_binary" --data-dir "$data_dir" machine add "$machine_file"
+```
+
+Register its physical path only after initialization; registration verifies
+the store without creating or repairing it.
+The administrator chooses a fresh 32-character lowercase hexadecimal namespace,
+a canonical positive generation and the non-root operator UID, then uses the
+existing authority operations in this order:
+
+```sh
+# Administrator operations on the selected provisioned host, with identified inputs.
+authority=/usr/libexec/fsm-containment-authority
+"$authority" register "$namespace" "$generation" "$data_dir"
+"$authority" catalogue "$namespace" "$generation" "$protected_handlers"
+"$authority" provision-broker "$namespace" "$generation" "$operator_uid"
+```
+
+Keep `serve "$namespace" "$generation"` supervised as Root with umask 0077;
+the protected route and socket authorize only the chosen operator UID.
+The catalogue source has protected parents and contains the approved handler
+table; catalogue publication is immutable after allocation begins.
+Retain the actual broker route/configuration/epoch and physical store binding.
+Replacing a directory, helper, table or broker configuration is not ordinary
+restart and cannot repair an unresolved original claim.
+
+### Check and complete one workflow
+
+For the isolated operational walkthrough, the operator uses
+`acceptance/fixtures/executor_workflow.json` and the independently provisioned
+success table for its synthetic `supplier` resource; the installed scenario
+producers generate and approve that table through
+`acceptance.suite.executor_scenarios.workflow_table`.
+Its two-item resource starts unsuspended and empty.
+This operator walkthrough supplies no model-authoring evidence; scored live
+sessions use separate fresh stores and receive their frozen briefs and public
+contracts, with no answer definition or private fixture code supplied to the model.
+
+Keep the initialized machine/store and set `handlers_file` to the retained
+candidate's actually approved table, then create a private mode-0700
+`control_root` owned by its execution account before starting the owner.
+Use the identical handler-table bytes for preflight, protected catalogue and
+execution. As that non-root account:
+
+```sh
+"$fsm_binary" --json --data-dir "$data_dir" execute --check \
+  --handlers "$handlers_file" --machine-file "$machine_file"
+"$fsm_binary" --json --data-dir "$data_dir" instance new acceptance_workflow \
+  --request-id operational-clean-create
+# Read instance_id from that original response; keep it as instance_identifier.
+"$fsm_binary" --json --data-dir "$data_dir" instance send "$instance_identifier" start \
+  --request-id operational-clean-start
+"$fsm_binary" --json --data-dir "$data_dir" execute \
+  --handlers "$handlers_file" --control-dir "$control_root"
+```
+
+Run the executor in its supervised owner terminal/process and retain stdout
+and stderr independently without letting a blocked reader retain ownership.
+From another terminal, observe the instance and the independent synthetic
+resource without supplying outcome events, acknowledgements or progress polls.
+The expected journal/event path is `start → validated → suspended → processed
+→ restored`, ending at `completed`; original external observations must show
+ordered `suspend`, `process:0`, `process:1`, `restore`, with no overlap, exactly
+two items and an unsuspended resource.
+A terminal instance alone cannot prove that its external resource was restored.
+
+For embedded deployments, use `serve --execute --handlers "$handlers_file"`
+through an actual MCP stdio client, or add `--http 127.0.0.1:<selected-port>` for
+the owned HTTP host; discover `fsm://executor` and require its actual embedded
+mode, `executes_effects` and autonomous progress before authoring automated work.
+Those hosts use the execution account's default `$HOME/.cache/fsm/control`
+root; HTTP owner lifetime is server-scoped, and deleting a session leaves the
+shared owner running. Stdio requires stdin to remain open; EOF starts retirement.
+Read-only, contended or degraded observation cannot prove available automation.
+
+### Drain, abort and diagnose uncertainty
+
+Use the original owner's actual control root and physical data directory:
+
+```sh
+"$fsm_binary" --json --data-dir "$data_dir" execute stop \
+  --control-dir "$control_root" --mode drain --timeout-ms 10000
+```
+
+Retain the original report and owner exit; require `phase: stopped`, true
+`admission_closed`, `inventory_complete`, `helpers_retired` and `writer_released`,
+false `timed_out`, no `unresolved_run_ids` and zero `unclaimed_reservations`.
+Observe original process/domain retirement, endpoint retirement and the owner's
+separate protocol/diagnostic output facts; successful native cleanup does not
+turn failed output drainage into success.
+`drain` stops admission and observes already admitted work; a pending later
+workflow action or compensation requires a safely admitted successor.
+Use the same command with `--mode abort` when admitted work must be revoked;
+abort may escalate an earlier drain, but neither a new caller nor a repeated
+request renews the owner's first absolute shutdown deadline.
+
+An `exec/inflight_deferred` error, transport timeout, missing endpoint or
+uncertain report leaves closure/writer availability unproved.
+Retain the journal, original ownership, protected records and external state;
+do not clear claims, delete authority files, acknowledge from absence, start a
+competing owner or signal arbitrary PIDs to manufacture a successful report.
+Use `execute runs` and original diagnostics to identify the retained work.
+
+### Recover a deliberate interruption
+
+Perform the fault walkthrough only on the isolated disposable acceptance host
+and resource, using a separate initialized store, new instance and fresh approved
+namespace. Provision its held-validation table before allocation and preserve
+those exact approved bytes throughout the original run and successor.
+Hold its actual validation handler at the fixture's external
+barrier, retain the original `execution_claimed` record, claim hash, domain,
+run ID, handler contract, owner PID/birth and live handler/descendant identities,
+then deliberately terminate that exact captured owner.
+The installed lifecycle scenarios exercise SIGINT, SIGTERM and hard-kill cuts;
+signals are crash mechanisms and supply no graceful shutdown or closure proof.
+Preserve the interrupted trace's original start without inventing a finish or
+result. The full hardware inventory additionally preserves acknowledged success
+and accepted events at their original instruction/descriptor boundaries.
+
+Inspect the same physical store read-only:
+
+```sh
+"$fsm_binary" --json --data-dir "$data_dir" execute runs
+"$fsm_binary" --json --data-dir "$data_dir" journal verify
+```
+
+The run inventory explicitly labels native evidence `unverified`; a stopped
+journal record, absent PID or refused socket alone cannot authorize replacement.
+After the original owner's death is independently observed, retain its exact
+run ID from that inventory and reconcile through the original protected authority:
+
+```sh
+"$fsm_binary" --json --data-dir "$data_dir" execute reconcile \
+  --run-id "$original_run_id" --timeout-ms 10000
+```
+
+Reconciliation requires a healthy original writer and matched protected closure,
+original claim/hash/domain and retained result; uncertainty refuses settlement
+and retains ownership. A known original success or acknowledged handoff must
+recover without repeating its handler or acknowledging again.
+An interrupted attempt may remain pending for a fresh owner after confirmed
+original retirement; retain absent results as absent, rather than assigning
+success or a fabricated failure event.
+Restart the same supported owner with the identical approved configuration only
+after safe original-run retirement permits admission, release the successor's
+own fixture barrier and require sequential, nonoverlapping work to restore the
+resource and reach the expected terminal state.
+Retain original closure before replacement entry and actual original-process
+death; a reused PID is not the original process.
+
+Finish with a confirmed owner drain and independent external observations, then:
+
+```sh
+"$fsm_binary" --json --data-dir "$data_dir" instance show "$instance_identifier"
+"$fsm_binary" --json --data-dir "$data_dir" execute runs
+"$fsm_binary" --json --data-dir "$data_dir" journal verify
+"$fsm_binary" --json --data-dir "$data_dir" journal replay
+```
+
+For a sealed store, provide its retained original archive chain to verification
+with the documented `--with-archive` option; a partial-prefix result is not full
+verification. Preserve request IDs, event/settlement ledgers, original closures,
+resource history and cleanup before removing only matched task-owned artifacts.
+Uncertain cleanup retains its authority and diagnostics; disposable VM retirement
+does not convert that incomplete run into a pass.
+
+External effects remain at least once and require domain-specific idempotency
+or reconciliation; local containment cannot roll back mutations or cancel work
+already delegated to a remote service. Recovery uses original claims and
+contracts, not the current handler table as replacement authority.
+The independent reviewer must record the actually executed clean-setup and
+interrupted-recovery artifacts for the final candidate before this runbook can
+establish task-9703 completion.
