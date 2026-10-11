@@ -185,8 +185,11 @@ This changes only the disposable container's mount view, with no host sysfs
 ownership change or relaxation of the production authority checks.
 Keep Podman storage, run root, runtime directory and temporary files in the
 owned home task cache, and use private PID/cgroup namespaces and slirp4netns
-networking, one worker,
-an enforced 1 GiB memory limit and zero swap. Root inside this user namespace
+networking, one worker and an enforced 2 GiB host memory limit with zero swap.
+Each native producer retains its separately observed 1 GiB limit and zero
+swap; the host budget also covers the Actions runner and protected observer
+services, so their memory does not consume the producer's entire allowance.
+Root inside this user namespace
 provides the task's protected authority without installing it on the host.
 No host stores, credentials or system directories enter the image or its build
 context. Allocate at least 30 GiB free task storage and no competing build.
@@ -220,6 +223,9 @@ After a provisioning repair, dispatch `scope=runner-check` on a fresh runner
 to execute one genuine installed quiet-client workflow before repeating the
 complete native inventory; this filtered diagnostic supplies no full-axis,
 sustained or candidate-completion verdict.
+For a recovery-specific repair, `scope=runner-recovery-check` runs only the
+24 installed helper hardware-cut cells under that same producer bound;
+it retains original failures and likewise supplies only filtered proof.
 At that milestone, use `scope=runner-calibration` with a named host, exact
 candidate SHA and seed to run the complete native executor inventory followed
 by the original bounded smoke calibration on one fresh ephemeral runner.

@@ -60,7 +60,7 @@ for source in original.iterdir():
 assert identity == (cgroup.stat().st_dev, cgroup.stat().st_ino)
 for path in (Path('/sys'), Path('/sys/fs'), cgroup):
     assert path.stat().st_uid == 0 and not path.stat().st_mode & 0o022
-assert (cgroup / 'memory.max').read_text().strip() == '1073741824'
+assert (cgroup / 'memory.max').read_text().strip() == '2147483648'
 assert (cgroup / 'memory.swap.max').read_text().strip() == '0'
 '''
 
@@ -195,7 +195,7 @@ class Host:
                         + self.prepare_random_device() + [
             '--systemd=always', '--cgroupns=private', '--pid=private',
             '--network=slirp4netns',
-            '--timeout=43200', '--memory=1g', '--memory-swap=1g', '--user=0', image],
+            '--timeout=43200', '--memory=2g', '--memory-swap=2g', '--user=0', image],
             timeout=300).strip()
         if not re.fullmatch(r'[a-f0-9]{64}', container):
             raise ValueError('Podman did not return a container identity')
@@ -207,7 +207,7 @@ class Host:
             run(self.podman + ['start', container])
             self.exec(container, ['bash', '-ec',
                 'timeout 45 bash -c \'until systemctl is-active --quiet multi-user.target; do sleep 1; done\'; '
-                'test "$(cat /sys/fs/cgroup/memory.max)" = 1073741824; '
+                'test "$(cat /sys/fs/cgroup/memory.max)" = 2147483648; '
                 'test "$(cat /sys/fs/cgroup/memory.swap.max)" = 0; '
                 'mkdir -p /home/fsm/actions-runner'])
             self.exec(container, ['bash', '-ec',
