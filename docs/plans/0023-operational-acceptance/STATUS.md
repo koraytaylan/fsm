@@ -446,8 +446,21 @@ relabel the earlier matrix's tested revision; task 9602 remains in progress
 until a separately calibrated sustained run meets both eight hours and 10,000
 completed cycles on the same final candidate as the required remaining axes.
 
+Frozen disposable-host repair through `85f6d4ab` establishes one complete
+[genuine quiet-client path](https://github.com/koraytaylan/fsm/actions/runs/38117196180)
+with 24 passing assertions, four original native closures, restored resource
+state, verified journal and matched helper removal; its container is removed.
+The original artifact digest is
+`c6d976d48dc2955699fac3a08015150c0102704ffa4025bdca64f18814649996`.
+The user-mapped Podman host preserves protected kernel/cgroup identities,
+genuine kernel entropy, non-root writable caches and private-owner inspection;
+production guards remain intact, with one worker, 1 GiB memory and zero swap.
+A genuine Claude Code 2.1.296 compatibility capture at `5ddfa6a4` independently
+records initialize, tools-list and one read-only call across 25 advertised tools;
+its originals stay in the task cache and it supplies no scored-session verdict.
+
 Sustained native operation, nine human-reviewed uncoached
-live-model sessions, MCP client compatibility compatibility and independent final review remain
+live-model sessions, final-candidate MCP client compatibility and independent final review remain
 mandatory and incomplete; no passing skip or synthetic control replaces them.
 Expensive integration gates run at the end of the plan against a frozen candidate.
 

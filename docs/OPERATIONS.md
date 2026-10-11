@@ -220,6 +220,12 @@ After a provisioning repair, dispatch `scope=runner-check` on a fresh runner
 to execute one genuine installed quiet-client workflow before repeating the
 complete native inventory; this filtered diagnostic supplies no full-axis,
 sustained or candidate-completion verdict.
+At that milestone, use `scope=runner-calibration` with a named host, exact
+candidate SHA and seed to run the complete native executor inventory followed
+by the original bounded smoke calibration on one fresh ephemeral runner.
+Its sixty-minute job retains both original evidence sets, including failure;
+the smoke profile still requires 100 completed cycles and cannot establish
+the eight-hour/10,000-cycle sustained floors or supply sustained budgets.
 
 Dispatch `scope=sustained`, a named `host`, exact candidate SHA and seed first
 with `mode=calibrate`; retain the original observations, commit numeric budgets

@@ -11,7 +11,7 @@ on:
         description: Native smoke matrix or separately provisioned sustained operation
         required: true
         type: choice
-        options: [smoke, runner-check, sustained]
+        options: [smoke, runner-check, runner-calibration, sustained]
       mode:
         description: Sustained host calibration or frozen-budget validation
         required: true
@@ -128,7 +128,7 @@ jobs:
             --smoke-matrix "$TMPDIR/original-axes" --job-conclusion "$FSM_NATIVE_CONCLUSION"
 
   sustained-prerequisites:
-    if: ${{ inputs.scope == 'sustained' || inputs.scope == 'runner-check' }}
+    if: ${{ inputs.scope == 'sustained' || inputs.scope == 'runner-check' || inputs.scope == 'runner-calibration' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -141,16 +141,17 @@ jobs:
           test -n "$FSM_NATIVE_HOST"
 
   runner-check:
-    if: ${{ inputs.scope == 'runner-check' }}
+    if: ${{ inputs.scope == 'runner-check' || inputs.scope == 'runner-calibration' }}
     needs: sustained-prerequisites
     runs-on: [self-hosted, Linux, X64, fsm-operational-disposable]
-    timeout-minutes: 25
+    timeout-minutes: 60
     env:
       CARGO_BUILD_JOBS: "1"
       CARGO_PROFILE_DEV_STRIP: debuginfo
       RUSTUP_TOOLCHAIN: stable
       PYTHONDONTWRITEBYTECODE: "1"
       FSM_ACCEPTANCE_DISPOSABLE_NATIVE: "1"
+      FSM_OPERATIONAL_EPHEMERAL_RUNNER: "1"
     steps:
       - uses: actions/checkout@v7
         with:
@@ -162,19 +163,45 @@ jobs:
           printf 'TMPDIR=%s\nCARGO_TARGET_DIR=%s\n' "$focused_cache" "$focused_cache/target" >> "$GITHUB_ENV"
           test "$(cat /sys/fs/cgroup/memory.max)" = 1073741824
           test "$(cat /sys/fs/cgroup/memory.swap.max)" = 0
-      - run: rustup toolchain install stable --profile minimal
+      - run: rustup toolchain install stable --profile minimal --component clippy
       - name: One genuine installed quiet-client workflow
+        if: ${{ inputs.scope == 'runner-check' }}
         env:
           FSM_NATIVE_CANDIDATE: ${{ inputs.candidate }}
         run: |
           python3 -B acceptance/run-installed-executor.py --candidate "$FSM_NATIVE_CANDIDATE" \
             --scenario executor_stdio_process_success_progresses_with_a_quiet_client
+      - name: Complete original native inventory on the provisioned host
+        if: ${{ inputs.scope == 'runner-calibration' }}
+        env:
+          FSM_NATIVE_CANDIDATE: ${{ inputs.candidate }}
+        run: |
+          python3 -B acceptance/run-native.py --candidate "$FSM_NATIVE_CANDIDATE" \
+            --axis executor --toolchain stable
+      - name: Original bounded smoke calibration for the named host
+        if: ${{ inputs.scope == 'runner-calibration' }}
+        env:
+          FSM_NATIVE_CANDIDATE: ${{ inputs.candidate }}
+          FSM_NATIVE_HOST: ${{ inputs.host }}
+          FSM_NATIVE_SEED: ${{ inputs.seed }}
+        run: |
+          python3 -B acceptance/run-operational.py --candidate "$FSM_NATIVE_CANDIDATE" \
+            --mode calibrate --profile smoke --seed "$FSM_NATIVE_SEED" --host "$FSM_NATIVE_HOST"
       - name: Retain filtered runner diagnostics including failures
-        if: ${{ always() }}
+        if: ${{ always() && inputs.scope == 'runner-check' }}
         uses: actions/upload-artifact@v4
         with:
           name: runner-check-original-evidence
           path: ${{ env.TMPDIR }}/installed-executor-check/evidence
+          if-no-files-found: error
+      - name: Retain original inventory and smoke calibration including failures
+        if: ${{ always() && inputs.scope == 'runner-calibration' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: runner-calibration-original-evidence
+          path: |
+            ${{ env.TMPDIR }}/native-check/evidence
+            ${{ env.TMPDIR }}/operational-check/evidence
           if-no-files-found: error
 
   sustained:
