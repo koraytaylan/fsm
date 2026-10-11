@@ -233,6 +233,25 @@ Its sixty-minute job retains both original evidence sets, including failure;
 the smoke profile still requires 100 completed cycles and cannot establish
 the eight-hour/10,000-cycle sustained floors or supply sustained budgets.
 
+For the frozen live-model campaign, dispatch `scope=live-model` on one fresh
+ephemeral Podman runner and run `acceptance/manual/client.py --run-id RUN_ID
+--candidate CODE_SHA` from the authenticated client host with its owned task
+cache; the client uses genuine restricted streaming sessions, a fresh directory
+per brief, only MCP and resource tools, and no model/version override.
+The operator supplies empty stores and immutable approved process-handler
+tables, including the documented partial-processing fixture, without loading
+machine definitions or sending product operations for the model.
+Every MCP request/response, exact delivery/final timestamps, original CLI
+conversation, independent external state and native cleanup receipt is retained;
+late initialization receipts cannot hide post-delivery discovery calls.
+Each native producer retains the 1 GiB/zero-swap bound, each model has the frozen
+40-call/900-second budget, and the protected broker's finite 1,000-second
+lifetime covers one session plus cleanup; existing short fixtures keep their
+120-second default. The three-hour job uploads originals on failure as well
+as success, and originals remain unscored until the required rubric review;
+its success cannot stand in for nine reviewed passes or the separate client
+compatibility proof.
+
 Dispatch `scope=sustained`, a named `host`, exact candidate SHA and seed first
 with `mode=calibrate`; retain the original observations, commit numeric budgets
 for that host and sustained workload, then dispatch a separate `mode=validate`

@@ -10,8 +10,16 @@ touches:
   - acceptance/manual/briefs.md
   - acceptance/manual/rubric.md
   - acceptance/manual/report-template.json
+  - acceptance/manual/session.py
+  - acceptance/manual/operator.py
+  - acceptance/manual/client.py
+  - acceptance/manual/bridge.py
+  - acceptance/tests/test_live_session.py
+  - acceptance/suite/native_fixture.py
+  - .github/workflows/operational-acceptance.yml
+  - docs/OPERATIONS.md
   - docs/RELEASE.md
-status: planned
+status: in_progress
 merged_as: ""
 ---
 # Live Model Acceptance Protocol

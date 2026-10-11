@@ -25,7 +25,7 @@ from pathlib import Path
 namespace=sys.argv[1]
 if not re.fullmatch('[a-f0-9]{32}',namespace): raise ValueError('invalid fixture namespace')
 maximum=int(sys.argv[2]) if len(sys.argv)>2 else 120
-if not 120<=maximum<=300: raise ValueError('invalid broker lifetime bound')
+if not 120<=maximum<=1000: raise ValueError('invalid broker lifetime bound')
 os.umask(0o077)
 directory=Path('/var/lib/fsm-containment')/namespace/'authority-1'
 stage=Path('/usr/libexec/fsm-acceptance-'+namespace)
@@ -127,8 +127,8 @@ class DisposableAuthority:
         if type(record_limit) is not int or not 128 <= record_limit <= 1024:
             raise ValueError('fixture record inventory must be bounded between 128 and 1024')
         self.record_limit = record_limit
-        if type(broker_seconds) is not int or not 120<=broker_seconds<=300:
-            raise ValueError('fixture broker lifetime must be bounded between 120 and 300 seconds')
+        if type(broker_seconds) is not int or not 120<=broker_seconds<=1000:
+            raise ValueError('fixture broker lifetime must be bounded between 120 and 1000 seconds')
         self.broker_seconds=broker_seconds
         self.resources = resources
         self.handler_source = handler.resolve()

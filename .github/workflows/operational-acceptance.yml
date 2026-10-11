@@ -11,7 +11,7 @@ on:
         description: Native smoke matrix or separately provisioned sustained operation
         required: true
         type: choice
-        options: [smoke, runner-check, runner-recovery-check, runner-calibration, sustained]
+        options: [smoke, runner-check, runner-recovery-check, runner-calibration, live-model, sustained]
       mode:
         description: Sustained host calibration or frozen-budget validation
         required: true
@@ -128,7 +128,7 @@ jobs:
             --smoke-matrix "$TMPDIR/original-axes" --job-conclusion "$FSM_NATIVE_CONCLUSION"
 
   sustained-prerequisites:
-    if: ${{ inputs.scope == 'sustained' || inputs.scope == 'runner-check' || inputs.scope == 'runner-recovery-check' || inputs.scope == 'runner-calibration' }}
+    if: ${{ inputs.scope == 'sustained' || inputs.scope == 'runner-check' || inputs.scope == 'runner-recovery-check' || inputs.scope == 'runner-calibration' || inputs.scope == 'live-model' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -215,6 +215,52 @@ jobs:
           path: |
             ${{ env.TMPDIR }}/native-check/evidence
             ${{ env.TMPDIR }}/operational-check/evidence
+          if-no-files-found: error
+
+  live-model:
+    if: ${{ inputs.scope == 'live-model' }}
+    needs: sustained-prerequisites
+    runs-on: [self-hosted, Linux, X64, fsm-operational-disposable]
+    timeout-minutes: 180
+    env:
+      CARGO_BUILD_JOBS: "1"
+      CARGO_PROFILE_DEV_STRIP: debuginfo
+      RUSTUP_TOOLCHAIN: stable
+      PYTHONDONTWRITEBYTECODE: "1"
+      FSM_ACCEPTANCE_DISPOSABLE_NATIVE: "1"
+      FSM_OPERATIONAL_EPHEMERAL_RUNNER: "1"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.candidate }}
+      - name: Prepare private live-model cache
+        run: |
+          live_cache="$HOME/.cache/fsm-live-model-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -p "$live_cache"
+          printf 'TMPDIR=%s\nCARGO_TARGET_DIR=%s\n' "$live_cache" "$live_cache/target" >> "$GITHUB_ENV"
+          test "$(cat /sys/fs/cgroup/memory.max)" = 2147483648
+          test "$(cat /sys/fs/cgroup/memory.swap.max)" = 0
+      - run: rustup toolchain install stable --profile minimal
+      - name: Provision nine empty stores and capture genuine client sessions
+        env:
+          FSM_NATIVE_CANDIDATE: ${{ inputs.candidate }}
+        run: |
+          python3 -B - <<'PY'
+          import importlib.util, os, subprocess
+          from pathlib import Path
+          spec = importlib.util.spec_from_file_location('native_producer', 'acceptance/run-native.py')
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          arguments = [str(Path('acceptance/manual/operator.py').resolve()),
+                       '--candidate', os.environ['FSM_NATIVE_CANDIDATE']]
+          subprocess.run(module.controlled_command(arguments, 10_200), check=True, timeout=10_230)
+          PY
+      - name: Retain original sessions including failures
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-model-originals
+          path: ${{ env.TMPDIR }}/live-model/evidence
           if-no-files-found: error
 
   sustained:
