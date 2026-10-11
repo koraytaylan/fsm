@@ -17,6 +17,34 @@ SPEC.loader.exec_module(PROVISION)
 
 
 class ProvisionTests(unittest.TestCase):
+    def test_rootful_isolation_maps_only_the_callers_complete_subordinate_ranges(self):
+        host = PROVISION.Host.__new__(PROVISION.Host)
+        host.rootful = True
+        name = PROVISION.pwd.getpwuid(os.getuid()).pw_name
+        with patch.object(PROVISION.Path, 'read_text', return_value=
+                          f'other-user:200000:65536\n{name}:100000:65536\n'):
+            options = host.isolation()
+        self.assertIn(f'--uidmap=0:{os.getuid()}:1', options)
+        self.assertIn(f'--gidmap=0:{os.getgid()}:1', options)
+        self.assertIn('--uidmap=1:100000:65535', options)
+        self.assertIn('--gidmap=1:100000:65535', options)
+        self.assertNotIn('--privileged', options)
+
+    def test_rootful_isolation_refuses_host_root_and_incomplete_ranges(self):
+        host = PROVISION.Host.__new__(PROVISION.Host)
+        host.rootful = True
+        name = PROVISION.pwd.getpwuid(os.getuid()).pw_name
+        for row in (f'{name}:0:65536', f'{name}:100000:65535', 'other-user:100000:65536'):
+            with self.subTest(row=row), patch.object(PROVISION.Path, 'read_text', return_value=row):
+                with self.assertRaisesRegex(ValueError, 'complete assigned subordinate ID range'):
+                    host.isolation()
+        for uid, gid in ((0, os.getgid()), (os.getuid(), 0)):
+            with self.subTest(uid=uid, gid=gid), \
+                 patch.object(PROVISION.os, 'getuid', return_value=uid), \
+                 patch.object(PROVISION.os, 'getgid', return_value=gid):
+                with self.assertRaisesRegex(ValueError, 'non-root caller'):
+                    host.isolation()
+
     def test_registration_failure_does_not_disclose_stdin_or_output(self):
         secret = 'synthetic-registration-secret'
         command = [sys.executable, '-B', '-c',

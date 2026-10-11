@@ -158,12 +158,22 @@ explicitly leaves sustained operation and candidate completion outstanding.
 
 [GitHub's documented hosted-job limit](https://docs.github.com/en/actions/reference/limits)
 is six hours, below the required eight-hour duration; self-hosted jobs permit
-longer execution. The user-selected disposable Linux host is a rootless Podman
+longer execution. The user-selected disposable Linux host is a Podman
 container built from `acceptance/Runner.Containerfile`, with systemd/cgroup v2,
 Python 3, Git, Rustup, GDB, binutils and a non-root `fsm` runner account.
-Podman's `--systemd=always` prepares the delegated cgroup mount; the rootful
-consumer's manual remount is refused in this rootless user namespace.
-Rootless sysfs ancestors expose unmapped host-root ownership, which the native
+Use `--rootful` to provision kernel device nodes while mapping
+container root to the non-root caller and other IDs to its assigned subordinate
+range, with private PID and
+cgroup namespaces; this mode does not use `--privileged` or map host root.
+Rootless provisioning cannot create the root-owned kernel random device that
+native authority requires and remains unsuitable for this acceptance path.
+The provisioner creates a private kernel random node in the task cache,
+binds it read-only at a separate container path and then binds that original
+inode over the container's `/dev/random` after runtime device setup; it checks
+namespace-root ownership and kernel device identity before registration.
+Host `/dev` ownership and the authority's entropy checks remain unchanged.
+Podman's `--systemd=always` prepares the delegated cgroup mount.
+User-namespace sysfs ancestors expose unmapped host-root ownership, which the native
 authority correctly refuses. Before runner registration, the provisioner gives
 `/sys` and `/sys/fs` namespace-root-owned private mount ancestors and retains
 the original kernel subtrees beneath them; it verifies unchanged delegated
@@ -191,10 +201,10 @@ After building the runner image from an isolated context containing only
 `gh` CLI and the home task cache:
 
 ```sh
-python3 -B acceptance/provision-podman-runner.py start
-python3 -B acceptance/provision-podman-runner.py status
+python3 -B acceptance/provision-podman-runner.py start --rootful
+python3 -B acceptance/provision-podman-runner.py status --rootful
 # After the one job terminates, including failure or cancellation:
-python3 -B acceptance/provision-podman-runner.py stop
+python3 -B acceptance/provision-podman-runner.py stop --rootful
 ```
 
 The provisioner verifies the official runner release asset's size and digest,

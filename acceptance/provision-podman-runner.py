@@ -11,6 +11,7 @@ import argparse
 import hashlib
 import json
 import os
+import pwd
 from pathlib import Path
 import re
 import subprocess
@@ -89,11 +90,12 @@ def api(path, method='GET'):
 
 
 class Host:
-    def __init__(self):
+    def __init__(self, rootful=False):
         temporary = Path(os.environ['TMPDIR']).resolve()
         if not temporary.is_relative_to(Path.home() / '.cache'):
             raise ValueError('TMPDIR must be an owned home task cache')
-        self.cache = temporary / 'disposable-podman-host'
+        self.rootful = rootful
+        self.cache = temporary / ('disposable-podman-rootful' if rootful else 'disposable-podman-host')
         self.state = self.cache / 'runner-state.json'
         for name in ('runtime', 'storage', 'run', 'temporary'):
             (self.cache / name).mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -101,9 +103,52 @@ class Host:
         self.podman = ['podman', '--root', str(self.cache / 'storage'),
                        '--runroot', str(self.cache / 'run'), '--tmpdir',
                        str(self.cache / 'temporary'), '--storage-driver', 'vfs']
+        if rootful:
+            self.podman = ['sudo', '-n', 'env', 'TMPDIR=' + str(temporary),
+                           'PYTHONDONTWRITEBYTECODE=1'] + self.podman
         info = json.loads(run(self.podman + ['info', '--format', 'json']))
-        if not info['host']['security']['rootless']:
-            raise ValueError('this provisioner requires rootless Podman')
+        if info['host']['security']['rootless'] == rootful:
+            raise ValueError('Podman runtime does not match the selected provisioning mode')
+
+    def isolation(self):
+        if not self.rootful:
+            return ['--privileged']
+        name = pwd.getpwuid(os.getuid()).pw_name
+        if os.getuid() == 0 or os.getgid() == 0:
+            raise ValueError('the provisioner requires a non-root caller')
+        options = ['--cap-add=SYS_ADMIN', '--cap-add=MKNOD',
+                   '--security-opt=apparmor=unconfined']
+        for kind in ('uid', 'gid'):
+            rows = [line.split(':') for line in Path('/etc/sub' + kind).read_text().splitlines()
+                    if line.split(':', 1)[0] == name]
+            first = next((int(row[1]) for row in rows
+                          if int(row[1]) >= 65536 and int(row[2]) >= 65536), None)
+            if first is None:
+                raise ValueError('the caller needs a complete assigned subordinate ID range')
+            caller = os.getuid() if kind == 'uid' else os.getgid()
+            options.extend(['--' + kind + 'map=0:' + str(caller) + ':1',
+                            '--' + kind + 'map=1:' + str(first) + ':65535'])
+        return options
+
+    def prepare_random_device(self):
+        if not self.rootful:
+            return []
+        device = self.cache / 'kernel-random-source'
+        run(['sudo', '-n', 'env', 'TMPDIR=' + os.environ['TMPDIR'],
+             'python3', '-B', '-c',
+             "import os,stat,sys; from pathlib import Path; "
+             "path=Path(sys.argv[1]); uid=int(sys.argv[2]); gid=int(sys.argv[3]); "
+             "assert uid!=0 and gid!=0; "
+             "exists=path.exists(); "
+             "os.mknod(path,stat.S_IFCHR|0o600,os.makedev(1,8)) if not exists else None; "
+             "os.chown(path,uid,gid) if not exists else None; "
+             "metadata=path.lstat(); "
+             "assert stat.S_ISCHR(metadata.st_mode) and metadata.st_rdev==os.makedev(1,8) "
+             "and metadata.st_uid==uid and metadata.st_gid==gid "
+             "and stat.S_IMODE(metadata.st_mode)==0o600",
+             str(device), str(os.getuid()), str(os.getgid())])
+        return ['--mount=type=bind,source=' + str(device)
+                + ',destination=/run/fsm-kernel-random,ro']
 
     def save(self, state):
         descriptor = os.open(self.state, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
@@ -146,8 +191,9 @@ class Host:
         image = json.loads(run(self.podman + ['image', 'inspect',
                               'localhost/fsm-operational-disposable:local']))[0]['Id']
         name = 'fsm-operational-' + str(time.time_ns())
-        container = run(self.podman + ['create', '--name', name,
-            '--privileged', '--systemd=always', '--cgroupns=private', '--pid=private',
+        container = run(self.podman + ['create', '--name', name] + self.isolation()
+                        + self.prepare_random_device() + [
+            '--systemd=always', '--cgroupns=private', '--pid=private',
             '--network=slirp4netns',
             '--timeout=43200', '--memory=1g', '--memory-swap=1g', '--user=0', image],
             timeout=300).strip()
@@ -165,6 +211,15 @@ class Host:
                 'test "$(cat /sys/fs/cgroup/memory.swap.max)" = 0; '
                 'mkdir -p /home/fsm/actions-runner'])
             self.exec(container, ['python3', '-B', '-c', SYSFS_VIEW])
+            if self.rootful:
+                self.exec(container, ['bash', '-ec',
+                    'mount --bind /run/fsm-kernel-random /dev/random; '
+                    'mount -o remount,bind,ro /dev/random'])
+            self.exec(container, ['python3', '-B', '-c',
+                "import os,stat; from pathlib import Path; "
+                "metadata=Path('/dev/random').stat(); "
+                "assert stat.S_ISCHR(metadata.st_mode) and metadata.st_uid==0 "
+                "and metadata.st_rdev==os.makedev(1,8)"])
             self.exec(container, ['bash', '-ec',
                 'for tool in python3 rustup cargo git sudo systemd-run gdb nm free swapon; '
                 'do command -v "$tool" >/dev/null; done'], user='fsm')
@@ -250,5 +305,7 @@ class Host:
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=('start', 'status', 'stop'))
+    parser.add_argument('--rootful', action='store_true',
+                        help='rootful runtime with container root mapped to the non-root caller')
     arguments = parser.parse_args()
-    getattr(Host(), arguments.action)()
+    getattr(Host(rootful=arguments.rootful), arguments.action)()
