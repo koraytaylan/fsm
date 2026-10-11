@@ -17,6 +17,27 @@ SPEC.loader.exec_module(PROVISION)
 
 
 class ProvisionTests(unittest.TestCase):
+    def test_capacity_boundaries_and_missing_observations(self):
+        def memory(available=10, swap=100, free=21):
+            return f'MemTotal: 100 kB\nMemAvailable: {available} kB\nSwapTotal: {swap} kB\nSwapFree: {free} kB\n'
+        PROVISION.require_capacity(memory())
+        PROVISION.require_capacity(memory(swap=0, free=0))
+        for observations, reason in ((memory(available=9), 'available memory'),
+                (memory(free=20), 'swap usage'), (memory(free=0), 'swap usage'),
+                ('MemTotal: 100 kB', 'incomplete'), (memory(available=101), 'invalid')):
+            with self.subTest(observations=observations), self.assertRaisesRegex(ValueError, reason):
+                PROVISION.require_capacity(observations)
+
+    def test_capacity_refusal_precedes_runner_registration_or_allocation(self):
+        host = PROVISION.Host.__new__(PROVISION.Host)
+        with patch.object(PROVISION.Path, 'read_text', return_value=
+                'MemTotal: 100 kB\nMemAvailable: 99 kB\nSwapTotal: 100 kB\nSwapFree: 20 kB\n'), \
+             patch.object(PROVISION, 'api') as api, patch.object(PROVISION, 'run') as run:
+            with self.assertRaisesRegex(ValueError, 'swap usage'):
+                host.start()
+            api.assert_not_called()
+            run.assert_not_called()
+
     def test_rootful_isolation_maps_only_the_callers_complete_subordinate_ranges(self):
         host = PROVISION.Host.__new__(PROVISION.Host)
         host.rootful = True

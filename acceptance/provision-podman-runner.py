@@ -89,6 +89,26 @@ def api(path, method='GET'):
     return json.loads(run(['gh', 'api', '--method', method, path]) or 'null')
 
 
+def require_capacity(memory):
+    values = {}
+    for line in memory.splitlines():
+        fields = line.split()
+        if fields and fields[0] in {'MemTotal:', 'MemAvailable:', 'SwapTotal:', 'SwapFree:'}:
+            if len(fields) != 3 or fields[2] != 'kB' or not fields[1].isdigit():
+                raise ValueError('host capacity observations are invalid')
+            values[fields[0]] = int(fields[1])
+    if set(values) != {'MemTotal:', 'MemAvailable:', 'SwapTotal:', 'SwapFree:'}:
+        raise ValueError('host capacity observations are incomplete')
+    total, available = values['MemTotal:'], values['MemAvailable:']
+    swap, free = values['SwapTotal:'], values['SwapFree:']
+    if not total or available > total or free > swap:
+        raise ValueError('host capacity observations are invalid')
+    if available * 10 < total:
+        raise ValueError('host available memory is below ten percent; do not start another runner')
+    if swap and (swap - free) * 5 >= swap * 4:
+        raise ValueError('host swap usage is at least eighty percent; do not start another runner')
+
+
 class Host:
     def __init__(self, rootful=False):
         temporary = Path(os.environ['TMPDIR']).resolve()
@@ -162,6 +182,7 @@ class Host:
                    container] + command, input=input)
 
     def start(self):
+        require_capacity(Path('/proc/meminfo').read_text())
         if self.state.exists():
             raise ValueError('inspect and stop the recorded runner before starting another')
         release = api('repos/actions/runner/releases/latest')

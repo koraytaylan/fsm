@@ -238,6 +238,9 @@ ephemeral Podman runner and run `acceptance/manual/client.py --run-id RUN_ID
 --candidate CODE_SHA` from the authenticated client host with its owned task
 cache; the client uses genuine restricted streaming sessions, a fresh directory
 per brief, only MCP and resource tools, and no model/version override.
+The provisioner refuses to start another host when system swap is at least
+80% used or available RAM is below 10%, before allocation or registration;
+cleanup remains available under pressure, and existing host swap is untouched.
 Before delivering each brief, it supplies the complete public `docs/SPEC.md`
 bytes from the frozen Git revision as client context, retaining their digest;
 this prevents the client's large-resource persistence from hiding the spec
