@@ -179,8 +179,11 @@ def main():
         human_reviewed=False, client_compatibility='separate-proof-required')
     try:
         for identifier in slots:
+            report['sessions'].append(dict(session_id=identifier, candidate=args.candidate,
+                verdict='incomplete', human_reviewed=False, setup_only=True))
+            (evidence / 'campaign.json').write_text(json.dumps(report, indent=2) + '\n')
             observation = run_session(root, identifier, args.candidate)
-            report['sessions'].append(observation)
+            report['sessions'][-1] = observation
             (evidence / 'campaign.json').write_text(json.dumps(report, indent=2) + '\n')
             if observation['verdict'] != 'unscored':
                 raise RuntimeError('original live attempt did not complete; retain the failed campaign')

@@ -11,9 +11,32 @@ from pathlib import Path
 from acceptance.suite.fsm import Scratch
 
 from acceptance.manual.session import Budget, Session, publish
+from acceptance.manual.accounting import model_call_count, model_signature
 
 
 class SessionBudgetTests(unittest.TestCase):
+    def test_underlying_requests_and_unforwarded_refusals_all_count(self):
+        requests = [{'method': 'resources/list'}, {'method': 'resources/list', 'params': {'cursor': 'next'}},
+                    {'method': 'tools/call', 'params': {'name': 'machine_list', 'arguments': {}}}]
+        attempts = [model_signature('ListMcpResourcesTool', {}),
+                    model_signature('mcp__fsm__machine_list', {}), model_signature('Bash', {})]
+        self.assertEqual(model_call_count(requests, attempts), 4)
+        attempts.extend([None] * 37)
+        self.assertEqual(model_call_count(requests, attempts), 41)
+
+    def test_cached_calls_repeated_arguments_and_invalid_tools_cannot_hide(self):
+        attempt = model_signature('mcp__fsm__machine_list', {})
+        requests = [{'method': 'tools/call', 'params': {'name': 'machine_list', 'arguments': {},
+                                                       '_meta': {'progressToken': 'setup'}}}]
+        self.assertEqual(model_call_count(requests, [attempt, attempt]), 2)
+        self.assertEqual(model_call_count([], [model_signature('ReadMcpResourceTool', {'uri': 'fsm://executor'})]), 1)
+        self.assertEqual(model_call_count(requests, [model_signature('mcp__fsm__invalid', {})]), 2)
+
+    def test_missing_or_malformed_original_attempt_inventory_refuses(self):
+        for inventory in (None, {}, ['invented'], [None] * 42):
+            with self.subTest(inventory=inventory), self.assertRaisesRegex(RuntimeError, 'inventory'):
+                model_call_count([], inventory)
+
     def test_client_eof_preserves_server_input_until_owner_cleanup(self):
         with Scratch('live-eof-owner-drain-control') as scratch:
             session = Session(Path(scratch.path), [], {})

@@ -5,6 +5,7 @@ documentation and the synthetic MCP service enter the model conversation.
 Every delivered attempt is retained, including interrupted or failed attempts.
 """
 import argparse
+from datetime import datetime, timezone
 import hashlib
 import importlib.util
 import json
@@ -13,7 +14,11 @@ from pathlib import Path
 import selectors
 import signal
 import subprocess
+import sys
 import time
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from acceptance.manual.accounting import model_signature
 
 
 def briefs(path):
@@ -62,6 +67,7 @@ def run_client(host, container, current, destination, prompt):
         '--print', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose']
     (destination / 'invocation.json').write_text(json.dumps(cli, indent=2) + '\n')
     model, version, final, process = None, None, None, None
+    signatures, tool_identifiers = [], set()
     started = time.monotonic()
     receipt = dict(monotonic=started, prompt_sha256=hashlib.sha256(prompt.encode()).hexdigest(),
                    session_id=current['session_id'], candidate=current['candidate'],
@@ -72,6 +78,7 @@ def run_client(host, container, current, destination, prompt):
             process = subprocess.Popen(cli, cwd=destination, env=dict(os.environ),
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=error, start_new_session=True)
             started = time.monotonic()
+            receipt['started_at'] = datetime.now(timezone.utc).isoformat()
             process.stdin.write((json.dumps(dict(type='user',
                 message=dict(role='user', content=prompt))) + '\n').encode())
             process.stdin.flush()
@@ -104,10 +111,19 @@ def run_client(host, container, current, destination, prompt):
                         model, version = event.get('model'), event.get('claude_code_version')
                     if event.get('type') == 'assistant':
                         model = event.get('message', {}).get('model', model)
+                        for item in event.get('message', {}).get('content', []):
+                            if (isinstance(item, dict) and item.get('type') == 'tool_use'
+                                and item['id'] not in tool_identifiers):
+                                tool_identifiers.add(item['id'])
+                                signatures.append(model_signature(item['name'], item['input']))
+                                if len(signatures) > 40:
+                                    raise RuntimeError('genuine model tool attempt budget exceeded')
                     if event.get('type') == 'result':
-                        final = dict(monotonic=time.monotonic(), has_final_answer=not event.get('is_error', False),
+                        observed = time.monotonic()
+                        final = dict(monotonic=observed, ended_at=datetime.now(timezone.utc).isoformat(),
+                            has_final_answer=not event.get('is_error', False),
                             model=model, client_version=version, result=event.get('result'),
-                            elapsed_seconds=time.monotonic() - started)
+                            elapsed_seconds=observed - started)
                 if len(pending) > 1_048_576:
                     raise RuntimeError('original incomplete client frame exceeds its bound')
                 if final is not None:
@@ -115,8 +131,11 @@ def run_client(host, container, current, destination, prompt):
             selector.close()
     finally:
         if final is None:
-            final = dict(monotonic=time.monotonic(), has_final_answer=False, model=model,
-                         client_version=version, elapsed_seconds=time.monotonic() - started)
+            observed = time.monotonic()
+            final = dict(monotonic=observed, ended_at=datetime.now(timezone.utc).isoformat(),
+                         has_final_answer=False, model=model,
+                         client_version=version, elapsed_seconds=observed - started)
+        final['model_tool_signatures'] = signatures
         (destination / 'client-result.json').write_text(json.dumps(final, indent=2) + '\n')
         try:
             remote_receipt(host, container, current['directory'], 'client-result.json', final)

@@ -13,6 +13,8 @@ import threading
 import time
 import uuid
 
+from .accounting import model_call_count
+
 MAXIMUM_FRAME = 1_048_576
 MAXIMUM_CAPTURE = 64 * 1_048_576
 
@@ -178,10 +180,17 @@ class Session:
                     raise RuntimeError(self.failure)
                 final = json.loads(result.read_text())
                 elapsed = self.budget.finish(final['monotonic'])
+                with self.lock:
+                    frames = [json.loads(line) for line in (self.directory / 'wire.jsonl').read_text().splitlines()]
+                requests = [json.loads(row['frame']) for row in frames
+                            if row['direction'] == 'client-to-server' and row['monotonic'] >= delivery['monotonic']]
+                calls = model_call_count(requests, final.get('model_tool_signatures'))
+                if calls > self.budget.maximum_calls:
+                    raise RuntimeError('model call budget exceeded including client-side attempts')
                 if final.get('has_final_answer') is not True:
                     raise RuntimeError('genuine client did not produce a final model answer')
                 return dict(delivery=delivery, final=final, elapsed_seconds=elapsed,
-                            model_call_count=self.budget.calls, counting='all-post-delivery-MCP-requests')
+                            model_call_count=calls, counting='underlying-MCP-requests-plus-unforwarded-model-attempts')
             except Exception as error:
                 self.fail(error)
                 raise

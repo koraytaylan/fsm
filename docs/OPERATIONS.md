@@ -248,6 +248,10 @@ machine definitions or sending product operations for the model.
 Every MCP request/response, exact delivery/final timestamps, original CLI
 conversation, independent external state and native cleanup receipt is retained;
 late initialization receipts cannot hide post-delivery discovery calls.
+Budget accounting reconciles the original model tool attempts with MCP requests:
+cached results and client-side refusals still count, and multiple underlying
+requests cannot be hidden by one client tool; original UTC and monotonic
+delivery/final timestamps are both retained, and slots are registered before setup.
 Client EOF leaves the original server input open until its separately recorded
 execution-owner drain completes, so transport retirement cannot race cleanup.
 Each native producer retains the 1 GiB/zero-swap bound, each model has the frozen

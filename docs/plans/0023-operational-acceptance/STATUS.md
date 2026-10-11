@@ -473,6 +473,18 @@ A genuine Claude Code 2.1.296 compatibility capture at `5ddfa6a4` independently
 records initialize, tools-list and one read-only call across 25 advertised tools;
 its originals stay in the task cache and it supplies no scored-session verdict.
 
+Frozen [genuine live-session originals at `c10f9799`](https://github.com/koraytaylan/fsm/actions/runs/38123860434)
+retain all nine fresh uncoached sessions, 21–36 reconciled calls and 88–115
+seconds per session, nine confirmed owner drains and 27 original domain closures.
+Independent external observations show unchanged case-review resources, one
+retained item after compensated failure and two items after contract repair,
+all unsuspended; 1,355 original source blobs and every artifact hash verify.
+Matched helper and container removal succeeded; originals remain **unscored**,
+with archive digest `5e166d3557d3008903cac8c28d43a601a10194b6a66d3155da83d2734c93c12c`.
+The earlier over-budget campaign remains incomplete and retained; ten focused
+controls cover the discovered entrypoint, documentation, EOF and client-side
+budget corrections, whose successor requires a fresh complete campaign.
+
 Sustained native operation, nine human-reviewed uncoached
 live-model sessions, final-candidate MCP client compatibility and independent final review remain
 mandatory and incomplete; no passing skip or synthetic control replaces them.
