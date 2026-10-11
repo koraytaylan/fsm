@@ -261,11 +261,13 @@ def _wait_for_files(predicate, process, seconds: float):
         if found:
             return found
         if process.poll() is not None:
-            diagnostic = bytes(getattr(process, 'acceptance_stderr', b''))[-4096:]
+            captured = bytes(getattr(process, 'acceptance_stderr', b''))
+            diagnostic = captured if len(captured) <= 4096 else captured[:2048] + b'\n[diagnostic middle omitted]\n' + captured[-2048:]
             raise AssertionError("the installed execution host exited before quiet progress; diagnostics: "
                                  + diagnostic.decode('utf-8', errors='replace'))
         if time.monotonic() >= deadline:
-            diagnostic = bytes(getattr(process, 'acceptance_stderr', b''))[-4096:]
+            captured = bytes(getattr(process, 'acceptance_stderr', b''))
+            diagnostic = captured if len(captured) <= 4096 else captured[:2048] + b'\n[diagnostic middle omitted]\n' + captured[-2048:]
             raise AssertionError("the installed workflow did not produce its required external evidence; diagnostics: "
                                  + diagnostic.decode('utf-8', errors='replace'))
         time.sleep(0.01)
@@ -604,7 +606,7 @@ def _installed_workflow(report, transport: str, kind: str, outcome: str, *,
         table = workflow_table(native.resource, native.handler, kind=kind, outcome=outcome,
                                release=native.release)
         table_path = native.approve(store, table)
-        with _installed_client(store, table_path, transport, diagnostic_format="json") as (client, host), ExitStack() as clients:
+        with _installed_client(store, table_path, transport) as (client, host), ExitStack() as clients:
             client.initialize()
             admission_evidence = (_installed_admission(report, client, native, store,
                                    json.loads(machine.read_text())) if admission else None)
