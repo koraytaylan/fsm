@@ -21,6 +21,48 @@ import urllib.request
 REPOSITORY = 'koraytaylan/fsm'
 LABEL = 'fsm-operational-disposable'
 
+# Rootless sysfs ancestors expose unmapped host-root ownership; retain every
+# original kernel subtree beneath namespace-root-owned private mount ancestors.
+SYSFS_VIEW = r'''
+from pathlib import Path
+import subprocess
+
+def mount(*arguments):
+    subprocess.run(['mount', *arguments], check=True, timeout=10)
+
+cgroup = Path('/sys/fs/cgroup')
+identity = (cgroup.stat().st_dev, cgroup.stat().st_ino)
+original = Path('/run/fsm-operational-kernel-sysfs')
+original.mkdir(mode=0o700)
+mount('--rbind', '/sys', str(original))
+mount('--make-rprivate', str(original))
+mount('-t', 'tmpfs', '-o', 'size=1m,nosuid,nodev,mode=0755', 'tmpfs', '/sys')
+
+def retain(source, destination):
+    if source.is_symlink():
+        destination.symlink_to(source.readlink())
+    elif source.is_dir():
+        destination.mkdir(mode=0o755)
+        mount('--rbind', str(source), str(destination))
+        mount('--make-rprivate', str(destination))
+    else:
+        raise RuntimeError('unexpected sysfs top-level entry')
+
+for source in original.iterdir():
+    if source.name == 'fs':
+        destination = Path('/sys/fs')
+        destination.mkdir(mode=0o755)
+        for child in source.iterdir():
+            retain(child, destination / child.name)
+    else:
+        retain(source, Path('/sys') / source.name)
+assert identity == (cgroup.stat().st_dev, cgroup.stat().st_ino)
+for path in (Path('/sys'), Path('/sys/fs'), cgroup):
+    assert path.stat().st_uid == 0 and not path.stat().st_mode & 0o022
+assert (cgroup / 'memory.max').read_text().strip() == '1073741824'
+assert (cgroup / 'memory.swap.max').read_text().strip() == '0'
+'''
+
 
 def run(arguments, *, input=None, timeout=120):
     result = subprocess.run(arguments, input=input, text=True, capture_output=True,
@@ -122,6 +164,7 @@ class Host:
                 'test "$(cat /sys/fs/cgroup/memory.max)" = 1073741824; '
                 'test "$(cat /sys/fs/cgroup/memory.swap.max)" = 0; '
                 'mkdir -p /home/fsm/actions-runner'])
+            self.exec(container, ['python3', '-B', '-c', SYSFS_VIEW])
             self.exec(container, ['bash', '-ec',
                 'for tool in python3 rustup cargo git sudo systemd-run gdb nm free swapon; '
                 'do command -v "$tool" >/dev/null; done'], user='fsm')

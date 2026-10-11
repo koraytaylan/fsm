@@ -163,6 +163,13 @@ container built from `acceptance/Runner.Containerfile`, with systemd/cgroup v2,
 Python 3, Git, Rustup, GDB, binutils and a non-root `fsm` runner account.
 Podman's `--systemd=always` prepares the delegated cgroup mount; the rootful
 consumer's manual remount is refused in this rootless user namespace.
+Rootless sysfs ancestors expose unmapped host-root ownership, which the native
+authority correctly refuses. Before runner registration, the provisioner gives
+`/sys` and `/sys/fs` namespace-root-owned private mount ancestors and retains
+the original kernel subtrees beneath them; it verifies unchanged delegated
+cgroup device/inode identity, root protection and effective memory/swap limits.
+This changes only the disposable container's mount view, with no host sysfs
+ownership change or relaxation of the production authority checks.
 Keep Podman storage, run root, runtime directory and temporary files in the
 owned home task cache, and use private PID/cgroup namespaces and slirp4netns
 networking, one worker,
