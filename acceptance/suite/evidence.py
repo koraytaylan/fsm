@@ -18,6 +18,7 @@ SOURCE_ROOTS = ("Cargo.toml", "Cargo.lock", "README.md", "CONTRIBUTING.md", "rus
                 ".github/workflows/ci.yml", ".github/workflows/release.yml",
                 "crates", "docs", "examples", "tools",
                 "acceptance/suite", "acceptance/tests", "acceptance/fixtures", "acceptance/Containerfile",
+                "acceptance/Runner.Containerfile",
                 "acceptance/acceptance.sh", "acceptance/run-installed-executor.py", "acceptance/run-operational.py",
                 "acceptance/run-native.py", "acceptance/verify-candidate.py", "acceptance/candidate-schema.json",
                 "acceptance/manual", ".github/workflows/operational-acceptance.yml", "acceptance/profiles")

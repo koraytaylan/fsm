@@ -158,15 +158,23 @@ explicitly leaves sustained operation and candidate completion outstanding.
 
 [GitHub's documented hosted-job limit](https://docs.github.com/en/actions/reference/limits)
 is six hours, below the required eight-hour duration; self-hosted jobs permit
-longer execution. Provision a fresh, dedicated Ubuntu 24.04 x86-64 VM with
-systemd/cgroup v2, Python 3, Git, Rustup, GDB, binutils, a non-root runner account
-and passwordless administrative access for the task's containment provisioning.
-Use at least 4 GiB RAM and 30 GiB free disk, no competing build, one ephemeral
-repository runner registered with `--ephemeral` and the
-`fsm-operational-disposable` label, and an external VM termination deadline
-of twelve hours; dispose of the VM after its one job even on cancellation or
-uncertain native cleanup. Do not label an ordinary development machine as this
-disposable runner. Provisioning must complete before setting repository variable
+longer execution. The user-selected disposable Linux host is a rootless Podman
+container built from `acceptance/Runner.Containerfile`, with systemd/cgroup v2,
+Python 3, Git, Rustup, GDB, binutils and a non-root `fsm` runner account.
+Podman's `--systemd=always` prepares the delegated cgroup mount; the rootful
+consumer's manual remount is refused in this rootless user namespace.
+Keep Podman storage, run root, runtime directory and temporary files in the
+owned home task cache, and use private PID/cgroup namespaces, one worker,
+an enforced 1 GiB memory limit and zero swap. Root inside this user namespace
+provides the task's protected authority without installing it on the host.
+No host stores, credentials or system directories enter the image or its build
+context. Allocate at least 30 GiB free task storage and no competing build.
+Register one ephemeral repository runner with `--ephemeral` and the
+`fsm-operational-disposable` label, give its container an enforced twelve-hour
+lifetime, and remove it after its one job even on cancellation or uncertain
+native cleanup. This is genuine execution on the host's Linux kernel; it
+supplies no macOS/Windows containment claim. Do not label the development host
+itself as the disposable runner. Provisioning must complete before setting repository variable
 `FSM_OPERATIONAL_RUNNER_READY=true`; without that explicit prerequisite, the
 sustained workflow fails before queuing its expensive job.
 
