@@ -175,7 +175,7 @@ jobs:
         env:
           FSM_NATIVE_CANDIDATE: ${{ inputs.candidate }}
         run: |
-          TMPDIR="$FSM_NATIVE_EVIDENCE/lifecycle" python -B acceptance/run-native.py \
+          TMPDIR="$FSM_NATIVE_EVIDENCE/lifecycle" python3 -B acceptance/run-native.py \
             --candidate "$FSM_NATIVE_CANDIDATE" --axis executor --toolchain stable
       - name: Real bounded sustained work or original host calibration
         env:
@@ -184,7 +184,7 @@ jobs:
           FSM_NATIVE_MODE: ${{ inputs.mode }}
           FSM_NATIVE_SEED: ${{ inputs.seed }}
         run: |
-          TMPDIR="$FSM_NATIVE_EVIDENCE/duration" python -B acceptance/run-native.py \
+          TMPDIR="$FSM_NATIVE_EVIDENCE/duration" python3 -B acceptance/run-native.py \
             --candidate "$FSM_NATIVE_CANDIDATE" --axis sustained --toolchain stable \
             --host "$FSM_NATIVE_HOST" --mode "$FSM_NATIVE_MODE" --seed "$FSM_NATIVE_SEED"
       - name: Retain lifecycle and duration evidence including failures

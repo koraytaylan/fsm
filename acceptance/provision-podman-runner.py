@@ -122,6 +122,9 @@ class Host:
                 'test "$(cat /sys/fs/cgroup/memory.max)" = 1073741824; '
                 'test "$(cat /sys/fs/cgroup/memory.swap.max)" = 0; '
                 'mkdir -p /home/fsm/actions-runner'])
+            self.exec(container, ['bash', '-ec',
+                'for tool in python3 rustup cargo git sudo systemd-run gdb nm free swapon; '
+                'do command -v "$tool" >/dev/null; done'], user='fsm')
             run(self.podman + ['cp', str(archive), container + ':/home/fsm/runner.tar.gz'])
             self.exec(container, ['bash', '-ec',
                 'tar -xzf /home/fsm/runner.tar.gz -C /home/fsm/actions-runner; '
