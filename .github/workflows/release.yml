@@ -24,9 +24,16 @@ on:
 
 permissions:
   contents: write
+  actions: read
+
+defaults:
+  run:
+    shell: bash
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_BUILD_JOBS: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
 
 jobs:
   # Cheap and first, so a mistyped tag fails before the matrix below occupies
@@ -34,6 +41,12 @@ jobs:
   version:
     runs-on: ubuntu-latest
     steps:
+      - name: Prepare owned release cache
+        run: |
+          release_cache="$HOME/.cache/fsm-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_JOB}"
+          mkdir -p "$release_cache"
+          if [[ "$RUNNER_OS" == Windows ]]; then release_cache="$(cygpath -w "$release_cache")"; fi
+          printf 'TMPDIR=%s\nTMP=%s\nTEMP=%s\n' "$release_cache" "$release_cache" "$release_cache" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
         with:
           # The containment proof below needs the tagged commit's ancestry, not
@@ -85,6 +98,12 @@ jobs:
       RUSTFLAGS: --deny warnings
       RUSTDOCFLAGS: --deny warnings
     steps:
+      - name: Prepare owned release cache
+        run: |
+          release_cache="$HOME/.cache/fsm-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_JOB}"
+          mkdir -p "$release_cache"
+          if [[ "$RUNNER_OS" == Windows ]]; then release_cache="$(cygpath -w "$release_cache")"; fi
+          printf 'TMPDIR=%s\nTMP=%s\nTEMP=%s\n' "$release_cache" "$release_cache" "$release_cache" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
       - run: rustup toolchain install ${{ matrix.rust }} --profile minimal --component rustfmt,clippy
       # Restores the dependency cache CI saves on develop for this same
@@ -135,6 +154,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      - name: Prepare owned release cache
+        run: |
+          release_cache="$HOME/.cache/fsm-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_JOB}"
+          mkdir -p "$release_cache"
+          if [[ "$RUNNER_OS" == Windows ]]; then release_cache="$(cygpath -w "$release_cache")"; fi
+          printf 'TMPDIR=%s\nTMP=%s\nTEMP=%s\n' "$release_cache" "$release_cache" "$release_cache" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
       - run: rustup toolchain install nightly --profile minimal
       - name: Install cargo-fuzz
@@ -183,6 +208,12 @@ jobs:
     needs: version
     runs-on: ubuntu-latest
     steps:
+      - name: Prepare owned release cache
+        run: |
+          release_cache="$HOME/.cache/fsm-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_JOB}"
+          mkdir -p "$release_cache"
+          if [[ "$RUNNER_OS" == Windows ]]; then release_cache="$(cygpath -w "$release_cache")"; fi
+          printf 'TMPDIR=%s\nTMP=%s\nTEMP=%s\n' "$release_cache" "$release_cache" "$release_cache" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
       - run: rustup toolchain install 1.89 --profile minimal
       - name: A downstream crate can depend on this tag
@@ -266,6 +297,12 @@ jobs:
     needs: version
     runs-on: ubuntu-latest
     steps:
+      - name: Prepare owned release cache
+        run: |
+          release_cache="$HOME/.cache/fsm-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_JOB}"
+          mkdir -p "$release_cache"
+          if [[ "$RUNNER_OS" == Windows ]]; then release_cache="$(cygpath -w "$release_cache")"; fi
+          printf 'TMPDIR=%s\nTMP=%s\nTEMP=%s\n' "$release_cache" "$release_cache" "$release_cache" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
@@ -326,6 +363,12 @@ jobs:
     env:
       RUSTUP_TOOLCHAIN: stable
     steps:
+      - name: Prepare owned release cache
+        run: |
+          release_cache="$HOME/.cache/fsm-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_JOB}"
+          mkdir -p "$release_cache"
+          if [[ "$RUNNER_OS" == Windows ]]; then release_cache="$(cygpath -w "$release_cache")"; fi
+          printf 'TMPDIR=%s\nTMP=%s\nTEMP=%s\n' "$release_cache" "$release_cache" "$release_cache" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
       - name: Install musl toolchain
         if: contains(matrix.target, 'musl')
@@ -371,10 +414,59 @@ jobs:
             fsm-*.tar.gz
             fsm-*.zip
 
+  candidate-evidence:
+    needs: [version, verify, git-dep, fuzz-smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Prepare owned release cache
+        run: |
+          release_cache="$HOME/.cache/fsm-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_JOB}"
+          mkdir -p "$release_cache"
+          if [[ "$RUNNER_OS" == Windows ]]; then release_cache="$(cygpath -w "$release_cache")"; fi
+          printf 'TMPDIR=%s\nTMP=%s\nTEMP=%s\n' "$release_cache" "$release_cache" "$release_cache" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Recheck immutable operational evidence and actual release prerequisites
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FSM_EVIDENCE_REVISION: ${{ vars.FSM_CANDIDATE_EVIDENCE_REVISION }}
+          FSM_TRUSTED_REVIEWERS: ${{ vars.FSM_ACCEPTANCE_REVIEWERS }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$FSM_EVIDENCE_REVISION" =~ ^[a-f0-9]{40}$ ]]; then
+            echo 'Missing frozen evidence: set FSM_CANDIDATE_EVIDENCE_REVISION to its full evidence-only commit SHA.' >&2
+            exit 1
+          fi
+          if [[ -z "$FSM_TRUSTED_REVIEWERS" ]]; then
+            echo 'Missing independent reviewer configuration: set FSM_ACCEPTANCE_REVIEWERS to the approved human GitHub logins.' >&2
+            exit 1
+          fi
+          git fetch --no-tags origin "$FSM_EVIDENCE_REVISION"
+          git show "$FSM_EVIDENCE_REVISION:acceptance/candidate-index.json" > "$TMPDIR/candidate-index.json"
+          verification=(python3 -B acceptance/verify-candidate.py --index "$TMPDIR/candidate-index.json"
+            --repository "$GITHUB_REPOSITORY" --evidence-revision "$FSM_EVIDENCE_REVISION" --release-run "$GITHUB_RUN_ID")
+          IFS=, read -r -a reviewers <<< "$FSM_TRUSTED_REVIEWERS"
+          for reviewer in "${reviewers[@]}"; do
+            if ! [[ "$reviewer" =~ ^[A-Za-z0-9-]+$ ]]; then
+              echo 'FSM_ACCEPTANCE_REVIEWERS contains an invalid GitHub login.' >&2
+              exit 1
+            fi
+            verification+=(--trusted-reviewer "$reviewer")
+          done
+          "${verification[@]}"
+
   release:
-    needs: [verify, git-dep, changelog, build, fuzz-smoke]
+    needs: [verify, git-dep, changelog, build, fuzz-smoke, candidate-evidence]
     runs-on: ubuntu-latest
     steps:
+      - name: Prepare owned release cache
+        run: |
+          release_cache="$HOME/.cache/fsm-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_JOB}"
+          mkdir -p "$release_cache"
+          if [[ "$RUNNER_OS" == Windows ]]; then release_cache="$(cygpath -w "$release_cache")"; fi
+          printf 'TMPDIR=%s\nTMP=%s\nTEMP=%s\n' "$release_cache" "$release_cache" "$release_cache" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
@@ -420,6 +512,12 @@ jobs:
     needs: release
     runs-on: ubuntu-latest
     steps:
+      - name: Prepare owned release cache
+        run: |
+          release_cache="$HOME/.cache/fsm-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_JOB}"
+          mkdir -p "$release_cache"
+          if [[ "$RUNNER_OS" == Windows ]]; then release_cache="$(cygpath -w "$release_cache")"; fi
+          printf 'TMPDIR=%s\nTMP=%s\nTEMP=%s\n' "$release_cache" "$release_cache" "$release_cache" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0

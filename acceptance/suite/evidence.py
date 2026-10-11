@@ -19,7 +19,8 @@ SOURCE_ROOTS = ("Cargo.toml", "Cargo.lock", "README.md", "CONTRIBUTING.md", "rus
                 "crates", "docs", "examples", "tools",
                 "acceptance/suite", "acceptance/tests", "acceptance/fixtures", "acceptance/Containerfile",
                 "acceptance/acceptance.sh", "acceptance/run-installed-executor.py", "acceptance/run-operational.py",
-                "acceptance/run-native.py", ".github/workflows/operational-acceptance.yml", "acceptance/profiles")
+                "acceptance/run-native.py", "acceptance/verify-candidate.py", "acceptance/candidate-schema.json",
+                "acceptance/manual", ".github/workflows/operational-acceptance.yml", "acceptance/profiles")
 IGNORED_DIRECTORIES = {"target", "__pycache__", ".git"}
 
 

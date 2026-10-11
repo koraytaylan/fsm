@@ -1113,6 +1113,68 @@ platform its own binary was built for, and a prebuilt one is musl-linked.
 
 ## Tagging and pushing
 
+### Operational evidence preflight
+
+Before tagging, freeze one `fsm.candidate-index/1` document described by
+[`acceptance/candidate-schema.json`](../acceptance/candidate-schema.json).
+It identifies the tested code SHA, exact implementation-contract digests,
+each installed executable, immutable GitHub artifact IDs/archive digests and
+original report paths/digests, the complete repository CI run, nine genuine
+uncoached sessions, Desktop compatibility and the independent five-concern
+operational review with executed clean-setup and interrupted-recovery runbooks.
+All six native baseline axes, both Linux executor axes, the separately
+calibrated Linux sustained axis and the complete unfiltered Podman consumer
+are mandatory; no filtered report, synthetic control, passing skip or
+calibration-only run supplies missing candidate evidence.
+
+The standard-library verifier downloads originals from the selected
+repository's authenticated GitHub API, verifies archive digests and actual
+producer jobs, and rechecks original reports, Git blobs, executable bytes and
+retirement records without executing native helpers locally.
+It refuses dirty or stale checkouts, missing proof, altered bytes, incomplete
+work/duration/resource bounds and unresolved review findings.
+Run it from the clean tested checkout or its explicitly identified evidence-only
+successor, using a task cache outside `/tmp`:
+
+```console
+$ TMPDIR="$HOME/.cache/fsm-candidate-review" python3 acceptance/verify-candidate.py \
+    --index /path/to/frozen/candidate-index.json --repository owner/fsm \
+    --trusted-reviewer independent-human-login
+```
+
+Trust reviewer identities independently of the index; a report naming its own
+author as a reviewer supplies no approval.
+After examining the frozen original artifacts, the independent human records
+a commit comment on the tested code revision containing this JSON object:
+
+```json
+{"schema":"fsm.candidate-approval/1","candidate":"<tested-code-SHA>","evidence_sha256":"<approval-subject-SHA-256>","verdict":"passed","unresolved_findings":[]}
+```
+
+`--approval-subject` prints that binding digest without claiming acceptance;
+it hashes the complete canonical index except `approval_comment_id`, so adding
+the actual comment ID creates no circular hash and cannot change the approved
+proof. The verifier checks the real comment author/type, candidate and body
+through GitHub, and requires the retained human scores and operational review
+to identify that trusted reviewer; generated reviewer text is not human proof.
+
+Preserve the finished index as `acceptance/candidate-index.json` in a separate
+evidence-only commit, then set repository variable
+`FSM_CANDIDATE_EVIDENCE_REVISION` to its full immutable SHA and
+`FSM_ACCEPTANCE_REVIEWERS` to the independently chosen, comma-separated GitHub
+reviewer logins. With `--evidence-revision <SHA>`, the verifier checks the index
+against its original Git blob and permits only that index, plan STATUS records
+and review Markdown to differ from the tested code; changes to implementation,
+normative contracts or acceptance protocols require a new tested candidate.
+Missing variables fail the publication guard rather than choosing a default
+reviewer or an earlier passing candidate.
+
+The tag workflow's `candidate-evidence` job repeats original-evidence checks
+and inspects the actual successful version, six release matrix, fuzz and tagged
+library-consumer jobs before `release` can execute.
+This adds a publication dependency while retaining every existing release
+gate; it neither creates a tag nor changes a version.
+
 Push the branch first, wait for its CI matrix, and only then push the tag.
 Splitting the two is what makes a platform-specific failure stoppable: the
 release workflow runs the same matrix, but a tag that has already been pushed
@@ -1133,8 +1195,10 @@ $ git push origin "$tag"
 ## What the tag runs
 
 The version check runs first. The six-leg gate matrix, git-dependency proof,
-changelog generation, and target CLI builds then run in parallel. The GitHub
-release with checksums waits for all four, and the fast-forward of `main` runs
+changelog generation, and target CLI builds then run in parallel. Immutable
+operational evidence is rechecked after the version, matrix, consumer and fuzz
+jobs pass; the GitHub release with checksums also waits for that evidence job,
+and the fast-forward of `main` runs
 last. Every step converges on re-runs, so a release that fails partway is
 finished with GitHub Actions' **Re-run failed jobs** action. Do not move, delete,
 or attempt to re-push the immutable tag.

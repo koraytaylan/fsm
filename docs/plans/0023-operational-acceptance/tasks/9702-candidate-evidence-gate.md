@@ -12,6 +12,7 @@ touches:
   - acceptance/verify-candidate.py
   - acceptance/tests/test_candidate.py
   - acceptance/candidate-schema.json
+  - acceptance/suite/evidence.py
   - .github/workflows/release.yml
   - docs/RELEASE.md
 status: planned

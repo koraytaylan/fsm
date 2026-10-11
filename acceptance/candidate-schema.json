@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Frozen operational candidate evidence index",
+  "description": "This schema describes the index; verify-candidate.py also checks original artifacts, Git blobs, actual GitHub job results and an independently trusted human approval.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "candidate", "contracts", "binaries", "native_axes", "consumer", "manual", "repository_gate", "operational_review", "approval_comment_id"],
+  "properties": {
+    "schema": {"const": "fsm.candidate-index/1"},
+    "candidate": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+    "contracts": {"type": "object", "minProperties": 8, "maxProperties": 8, "additionalProperties": {"$ref": "#/$defs/sha256"}},
+    "binaries": {"type": "object", "minProperties": 10, "maxProperties": 10, "additionalProperties": {"$ref": "#/$defs/sha256"}},
+    "native_axes": {
+      "type": "array", "minItems": 9, "maxItems": 9,
+      "items": {"allOf": [
+        {"$ref": "#/$defs/artifact"},
+        {"type": "object", "required": ["axis", "platform", "toolchain", "record_path", "record_sha256"], "properties": {
+          "axis": {"enum": ["baseline", "executor", "sustained"]},
+          "platform": {"enum": ["linux", "darwin", "win32"]},
+          "toolchain": {"enum": ["stable", "1.89.0"]},
+          "record_path": {"$ref": "#/$defs/path"}, "record_sha256": {"$ref": "#/$defs/sha256"},
+          "lifecycle_record_path": {"$ref": "#/$defs/path"}, "lifecycle_record_sha256": {"$ref": "#/$defs/sha256"}
+        }},
+        {"if": {"properties": {"axis": {"const": "sustained"}}}, "then": {"required": ["lifecycle_record_path", "lifecycle_record_sha256"]}}
+      ]}
+    },
+    "consumer": {"$ref": "#/$defs/report"},
+    "manual": {"$ref": "#/$defs/report"},
+    "repository_gate": {"type": "object", "additionalProperties": false, "required": ["run_id"], "properties": {"run_id": {"$ref": "#/$defs/id"}}},
+    "operational_review": {
+      "type": "object",
+      "required": ["candidate", "reviewer_identity", "independent_of_implementing_author", "verdict", "reviewed_at", "unresolved_findings", "concerns", "clean_setup_executed", "interrupted_recovery_executed", "clean_setup_runbook_reference", "clean_setup_runbook_sha256", "interrupted_recovery_runbook_reference", "interrupted_recovery_runbook_sha256", "conclusion_reference", "conclusion_sha256"],
+      "properties": {
+        "candidate": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+        "reviewer_identity": {"type": "string", "minLength": 1},
+        "independent_of_implementing_author": {"const": true}, "verdict": {"const": "passed"},
+        "clean_setup_executed": {"const": true}, "interrupted_recovery_executed": {"const": true},
+        "reviewed_at": {"type": "string", "minLength": 1}, "unresolved_findings": {"const": []},
+        "concerns": {"type": "array", "minItems": 5, "maxItems": 5, "items": {
+          "type": "object", "required": ["name", "verdict", "executed", "conclusion", "evidence_reference", "evidence_sha256"],
+          "properties": {
+            "name": {"enum": ["autonomous-embedded-execution", "machine-handler-admission", "lifecycle-safety", "live-model-usability", "sustained-operation"]},
+            "verdict": {"const": "passed"}, "executed": {"const": true}, "conclusion": {"type": "string", "minLength": 1},
+            "evidence_reference": {"$ref": "#/$defs/path"}, "evidence_sha256": {"$ref": "#/$defs/sha256"}
+          }
+        }}
+      }
+    },
+    "approval_comment_id": {"$ref": "#/$defs/id"}
+  },
+  "$defs": {
+    "id": {"type": "integer", "minimum": 1},
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "path": {"type": "string", "minLength": 1, "description": "A regular file within the immutable archive, using a relative POSIX path without dot components or symlinks."},
+    "artifact": {"type": "object", "required": ["run_id", "job_id", "artifact_id", "archive_sha256"], "properties": {
+      "run_id": {"$ref": "#/$defs/id"}, "job_id": {"$ref": "#/$defs/id"}, "artifact_id": {"$ref": "#/$defs/id"}, "archive_sha256": {"$ref": "#/$defs/sha256"}
+    }},
+    "report": {"allOf": [{"$ref": "#/$defs/artifact"}, {"type": "object", "required": ["report_path", "report_sha256"], "properties": {
+      "report_path": {"$ref": "#/$defs/path"}, "report_sha256": {"$ref": "#/$defs/sha256"}
+    }}]}
+  }
+}
