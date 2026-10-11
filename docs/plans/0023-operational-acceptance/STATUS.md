@@ -479,11 +479,18 @@ seconds per session, nine confirmed owner drains and 27 original domain closures
 Independent external observations show unchanged case-review resources, one
 retained item after compensated failure and two items after contract repair,
 all unsuspended; 1,355 original source blobs and every artifact hash verify.
+All nine original model verification/replay calls succeed, all 27 protected
+bindings match their original journal claim hashes/domains, and mutation traces
+confirm no overlap; the real client initialize/tools-list capture exposes 25
+tools and is assessed separately from authoring outcomes.
 Matched helper and container removal succeeded; originals remain **unscored**,
 with archive digest `5e166d3557d3008903cac8c28d43a601a10194b6a66d3155da83d2734c93c12c`.
-The earlier over-budget campaign remains incomplete and retained; ten focused
+The earlier over-budget campaign remains incomplete and retained; sixteen focused
 controls cover the discovered entrypoint, documentation, EOF and client-side
-budget corrections, whose successor requires a fresh complete campaign.
+budget corrections plus host-capacity refusal, whose successor requires a fresh
+complete campaign after capacity permits startup.
+Frozen author-audit digest:
+`42eea1ef0389c5838f1e9d6b64aed0e322bd9a82a35c2d5519bef98e5d9f9734`.
 
 Sustained native operation, nine human-reviewed uncoached
 live-model sessions, final-candidate MCP client compatibility and independent final review remain
