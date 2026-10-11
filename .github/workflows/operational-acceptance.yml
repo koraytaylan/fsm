@@ -162,6 +162,10 @@ jobs:
           printf 'TMPDIR=%s\nCARGO_TARGET_DIR=%s\nFSM_NATIVE_EVIDENCE=%s\n' "$sustained_cache" "$sustained_cache/target" "$sustained_cache" >> "$GITHUB_ENV"
           free -h
           swapon --show
+          if [[ -f /sys/fs/cgroup/memory.swap.max ]]; then
+            printf 'Container memory.max: '; cat /sys/fs/cgroup/memory.max
+            printf 'Container memory.swap.max: '; cat /sys/fs/cgroup/memory.swap.max
+          fi
       - run: rustup toolchain install stable --profile minimal --component clippy
       - name: Require the external hardware observer
         run: |

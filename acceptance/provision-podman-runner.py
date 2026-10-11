@@ -140,7 +140,8 @@ class Host:
             self.save(state)
             self.exec(container, ['systemd-run', '--unit=fsm-actions-runner',
                 '--property=User=fsm', '--property=WorkingDirectory=/home/fsm/actions-runner',
-                '--setenv=HOME=/home/fsm', '--setenv=PATH=/usr/local/cargo/bin:/usr/local/bin:/usr/bin:/bin',
+                '--setenv=HOME=/home/fsm',
+                '--setenv=PATH=/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
                 '--setenv=RUSTUP_HOME=/usr/local/rustup', '--setenv=CARGO_HOME=/usr/local/cargo',
                 '--setenv=TMPDIR=/home/fsm/.cache/fsm-operational-runner/temporary',
                 '--setenv=CARGO_BUILD_JOBS=1', '--setenv=PYTHONDONTWRITEBYTECODE=1',
