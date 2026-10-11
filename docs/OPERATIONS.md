@@ -196,6 +196,10 @@ retains the exact image/container/runner identities outside the repository,
 and sets readiness only after GitHub reports the runner online; stop clears
 readiness, retains diagnostics and removes only that recorded container and
 runner registration. Keep observing the actual job while the runner exists.
+After a provisioning repair, dispatch `scope=runner-check` on a fresh runner
+to execute one genuine installed quiet-client workflow before repeating the
+complete native inventory; this filtered diagnostic supplies no full-axis,
+sustained or candidate-completion verdict.
 
 Dispatch `scope=sustained`, a named `host`, exact candidate SHA and seed first
 with `mode=calibrate`; retain the original observations, commit numeric budgets

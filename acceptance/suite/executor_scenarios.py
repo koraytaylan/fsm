@@ -261,9 +261,13 @@ def _wait_for_files(predicate, process, seconds: float):
         if found:
             return found
         if process.poll() is not None:
-            raise AssertionError("the installed execution host exited before quiet progress")
+            diagnostic = bytes(getattr(process, 'acceptance_stderr', b''))[-4096:]
+            raise AssertionError("the installed execution host exited before quiet progress; diagnostics: "
+                                 + diagnostic.decode('utf-8', errors='replace'))
         if time.monotonic() >= deadline:
-            raise AssertionError("the installed workflow did not produce its required external evidence")
+            diagnostic = bytes(getattr(process, 'acceptance_stderr', b''))[-4096:]
+            raise AssertionError("the installed workflow did not produce its required external evidence; diagnostics: "
+                                 + diagnostic.decode('utf-8', errors='replace'))
         time.sleep(0.01)
 
 
