@@ -12,6 +12,8 @@ touches:
   - acceptance/run-native.py
   - acceptance/Containerfile
   - acceptance/Runner.Containerfile
+  - acceptance/provision-podman-runner.py
+  - acceptance/tests/test_provision.py
   - acceptance/suite/evidence.py
   - acceptance/tests/test_native.py
   - acceptance/profiles/operational.json

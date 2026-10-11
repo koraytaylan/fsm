@@ -164,7 +164,8 @@ Python 3, Git, Rustup, GDB, binutils and a non-root `fsm` runner account.
 Podman's `--systemd=always` prepares the delegated cgroup mount; the rootful
 consumer's manual remount is refused in this rootless user namespace.
 Keep Podman storage, run root, runtime directory and temporary files in the
-owned home task cache, and use private PID/cgroup namespaces, one worker,
+owned home task cache, and use private PID/cgroup namespaces and slirp4netns
+networking, one worker,
 an enforced 1 GiB memory limit and zero swap. Root inside this user namespace
 provides the task's protected authority without installing it on the host.
 No host stores, credentials or system directories enter the image or its build
@@ -177,6 +178,24 @@ supplies no macOS/Windows containment claim. Do not label the development host
 itself as the disposable runner. Provisioning must complete before setting repository variable
 `FSM_OPERATIONAL_RUNNER_READY=true`; without that explicit prerequisite, the
 sustained workflow fails before queuing its expensive job.
+
+After building the runner image from an isolated context containing only
+`Runner.Containerfile`, use the authenticated repository administrator's
+`gh` CLI and the home task cache:
+
+```sh
+python3 -B acceptance/provision-podman-runner.py start
+python3 -B acceptance/provision-podman-runner.py status
+# After the one job terminates, including failure or cancellation:
+python3 -B acceptance/provision-podman-runner.py stop
+```
+
+The provisioner verifies the official runner release asset's size and digest,
+sends the short-lived registration token through private container stdin,
+retains the exact image/container/runner identities outside the repository,
+and sets readiness only after GitHub reports the runner online; stop clears
+readiness, retains diagnostics and removes only that recorded container and
+runner registration. Keep observing the actual job while the runner exists.
 
 Dispatch `scope=sustained`, a named `host`, exact candidate SHA and seed first
 with `mode=calibrate`; retain the original observations, commit numeric budgets
