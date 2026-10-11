@@ -446,7 +446,7 @@ relabel the earlier matrix's tested revision; task 9602 remains in progress
 until a separately calibrated sustained run meets both eight hours and 10,000
 completed cycles on the same final candidate as the required remaining axes.
 
-Frozen disposable-host repair through `85f6d4ab` establishes one complete
+Frozen disposable-host repair through `ad8644ab` establishes one complete
 [genuine quiet-client path](https://github.com/koraytaylan/fsm/actions/runs/38117196180)
 with 24 passing assertions, four original native closures, restored resource
 state, verified journal and matched helper removal; its container is removed.
@@ -454,7 +454,21 @@ The original artifact digest is
 `c6d976d48dc2955699fac3a08015150c0102704ffa4025bdca64f18814649996`.
 The user-mapped Podman host preserves protected kernel/cgroup identities,
 genuine kernel entropy, non-root writable caches and private-owner inspection;
-production guards remain intact, with one worker, 1 GiB memory and zero swap.
+production guards remain intact.
+The subsequent complete-inventory attempt remains failed after native startup
+timeouts; its original records are retained, and exceptional consumer exit now
+preserves partial fixtures, journals, executable bytes and build receipts.
+The corrected shared-host budget gives the runner and protected observers
+2 GiB with zero swap while each producer remains at one worker, 1 GiB and
+zero swap: [focused recovery evidence](https://github.com/koraytaylan/fsm/actions/runs/38119646739)
+passes all 24 helper hardware-cut cells with 1,152 assertions and 120 original
+domain closures, followed by matched helper and container removal.
+Replay verifies 1,350 source blobs, original executable bytes and every cleanup
+receipt; 114 native startups have a 41 ms median and 61 ms maximum.
+The original artifact digest is
+`d86bd90d177ee743baed4319331a81a2a1fd9f79cde8e66338ac5c4c86232c02`.
+Nineteen focused controls pass; this filtered milestone supplies no complete
+native-axis, sustained or candidate verdict.
 A genuine Claude Code 2.1.296 compatibility capture at `5ddfa6a4` independently
 records initialize, tools-list and one read-only call across 25 advertised tools;
 its originals stay in the task cache and it supplies no scored-session verdict.
